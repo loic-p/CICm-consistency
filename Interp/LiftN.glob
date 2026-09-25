@@ -1,0 +1,1104 @@
+DIGEST 9fa152e542ad22f59db4ed2e0a723b62
+FCICM.Interp.LiftN
+R25:28 CICM.Syntax.core <> <> lib
+R30:37 CICM.Syntax.unscoped <> <> lib
+R39:44 CICM.Syntax.Syntax <> <> lib
+R46:52 CICM.Syntax.Erasure <> <> lib
+R80:92 CICM.Reduction.Def <> <> lib
+R94:108 CICM.Reduction.Stuck <> <> lib
+R110:130 CICM.Reduction.Determinism <> <> lib
+R158:167 CICM.Layer1.Per <> <> lib
+R169:178 CICM.Layer1.Def <> <> lib
+R180:192 CICM.Layer1.Bundle <> <> lib
+R194:204 CICM.Layer1.Elim <> <> lib
+R206:223 CICM.Layer1.Fundamental <> <> lib
+R251:260 CICM.Ranks.Pred <> <> lib
+R262:270 CICM.Ranks.Ord <> <> lib
+R272:280 CICM.Ranks.Acc <> <> lib
+R282:291 CICM.Ranks.Rank <> <> lib
+R319:327 CICM.Codes.Def <> <> lib
+R329:339 CICM.Codes.Sound <> <> lib
+R341:351 CICM.Codes.EqPER <> <> lib
+R353:364 CICM.Codes.Expand <> <> lib
+R366:374 CICM.Codes.Iso <> <> lib
+R378:385 CICM.Codes.WF <> <> lib
+R387:398 CICM.Codes.IsoPER <> <> lib
+R400:411 CICM.Codes.Levels <> <> lib
+R413:422 CICM.Codes.Lift <> <> lib
+R424:436 CICM.Codes.LiftIso <> <> lib
+R464:475 CICM.Interp.Codes <> <> lib
+R477:488 CICM.Interp.Stage <> <> lib
+R490:501 CICM.Interp.Build <> <> lib
+R503:512 CICM.Interp.Fam <> <> lib
+R514:525 CICM.Interp.PiFam <> <> lib
+R529:541 CICM.Interp.SigFam <> <> lib
+R543:553 CICM.Interp.Univ <> <> lib
+R555:564 CICM.Interp.Env <> <> lib
+R566:576 CICM.Interp.Elem <> <> lib
+R578:588 CICM.Interp.PiEl <> <> lib
+R590:601 CICM.Interp.SigEl <> <> lib
+R605:614 CICM.Interp.Rec <> <> lib
+R616:626 CICM.Interp.Lift <> <> lib
+R656:660 Stdlib.Arith.Arith <> <> lib
+R662:664 Stdlib.micromega.Lia <> <> lib
+def 2604:2610 <> lvlSMor
+R2617:2619 Corelib.Init.Datatypes <> nat ind
+binder 2613:2613 <> k:1
+R2627:2629 CICM.Ranks.Ord <> Ord ind
+binder 2623:2623 <> b:2
+R2637:2642 CICM.Codes.Lift <> nextOf def
+R2768:2768 CICM.Interp.LiftN <> b:2 var
+R2775:2783 CICM.Codes.Lift <> smorStage def
+R2912:2912 CICM.Interp.LiftN <> b:2 var
+R2898:2903 CICM.Interp.Codes <> ktrans def
+R2906:2906 Corelib.Init.Datatypes <> S constr
+R2908:2908 CICM.Interp.LiftN <> k:1 var
+R2885:2888 CICM.Interp.Codes <> ksym def
+R2891:2891 Corelib.Init.Datatypes <> S constr
+R2893:2893 CICM.Interp.LiftN <> k:1 var
+R2874:2879 CICM.Interp.Codes <> ktrans def
+R2881:2881 CICM.Interp.LiftN <> k:1 var
+R2865:2868 CICM.Interp.Codes <> ksym def
+R2870:2870 CICM.Interp.LiftN <> k:1 var
+R2853:2859 CICM.Codes.Lift <> lvlUMor def
+R2861:2861 CICM.Interp.LiftN <> k:1 var
+R2834:2836 CICM.Interp.Codes <> kOK def
+R2839:2839 Corelib.Init.Datatypes <> S constr
+R2841:2841 CICM.Interp.LiftN <> k:1 var
+R2826:2828 CICM.Interp.Codes <> kOK def
+R2830:2830 CICM.Interp.LiftN <> k:1 var
+R2813:2816 CICM.Interp.Codes <> kUEq def
+R2819:2819 Corelib.Init.Datatypes <> S constr
+R2821:2821 CICM.Interp.LiftN <> k:1 var
+R2804:2807 CICM.Interp.Codes <> kUEq def
+R2809:2809 CICM.Interp.LiftN <> k:1 var
+R2793:2794 CICM.Interp.Codes <> kU def
+R2797:2797 Corelib.Init.Datatypes <> S constr
+R2799:2799 CICM.Interp.LiftN <> k:1 var
+R2786:2787 CICM.Interp.Codes <> kU def
+R2789:2789 CICM.Interp.LiftN <> k:1 var
+R2754:2759 CICM.Interp.Codes <> ktrans def
+R2762:2762 Corelib.Init.Datatypes <> S constr
+R2764:2764 CICM.Interp.LiftN <> k:1 var
+R2741:2744 CICM.Interp.Codes <> ksym def
+R2747:2747 Corelib.Init.Datatypes <> S constr
+R2749:2749 CICM.Interp.LiftN <> k:1 var
+R2730:2735 CICM.Interp.Codes <> ktrans def
+R2737:2737 CICM.Interp.LiftN <> k:1 var
+R2721:2724 CICM.Interp.Codes <> ksym def
+R2726:2726 CICM.Interp.LiftN <> k:1 var
+R2709:2715 CICM.Codes.Lift <> lvlUMor def
+R2717:2717 CICM.Interp.LiftN <> k:1 var
+R2693:2695 CICM.Interp.Codes <> kOK def
+R2698:2698 Corelib.Init.Datatypes <> S constr
+R2700:2700 CICM.Interp.LiftN <> k:1 var
+R2685:2687 CICM.Interp.Codes <> kOK def
+R2689:2689 CICM.Interp.LiftN <> k:1 var
+R2672:2675 CICM.Interp.Codes <> kUEq def
+R2678:2678 Corelib.Init.Datatypes <> S constr
+R2680:2680 CICM.Interp.LiftN <> k:1 var
+R2663:2666 CICM.Interp.Codes <> kUEq def
+R2668:2668 CICM.Interp.LiftN <> k:1 var
+R2652:2653 CICM.Interp.Codes <> kU def
+R2656:2656 Corelib.Init.Datatypes <> S constr
+R2658:2658 CICM.Interp.LiftN <> k:1 var
+R2645:2646 CICM.Interp.Codes <> kU def
+R2648:2648 CICM.Interp.LiftN <> k:1 var
+def 2928:2935 <> unliftEl
+R2942:2944 Corelib.Init.Datatypes <> nat ind
+binder 2938:2938 <> k:3
+R2952:2954 CICM.Ranks.Ord <> Ord ind
+binder 2948:2948 <> b:4
+R2962:2965 CICM.Codes.Levels <> Code def
+R2967:2967 CICM.Interp.LiftN <> k:3 var
+R2969:2969 CICM.Interp.LiftN <> b:4 var
+binder 2958:2958 <> c:5
+R2977:2979 CICM.Syntax.Syntax Core etm ind
+binder 2973:2973 <> u:6
+R3005:3008 CICM.Codes.Def <> StEl proj
+R2990:2993 CICM.Interp.Codes <> kUst def
+R2996:2996 Corelib.Init.Datatypes <> S constr
+R2998:2998 CICM.Interp.LiftN <> k:3 var
+R3001:3001 CICM.Interp.LiftN <> b:4 var
+R3012:3019 CICM.Codes.Lift <> liftCode def
+R3021:3021 CICM.Interp.LiftN <> k:3 var
+R3023:3023 CICM.Interp.LiftN <> b:4 var
+R3025:3025 CICM.Interp.LiftN <> c:5 var
+R3028:3028 CICM.Interp.LiftN <> u:6 var
+binder 2985:2985 <> y:7
+R3045:3048 CICM.Codes.Def <> StEl proj
+R3034:3037 CICM.Interp.Codes <> kUst def
+R3039:3039 CICM.Interp.LiftN <> k:3 var
+R3041:3041 CICM.Interp.LiftN <> b:4 var
+R3051:3051 CICM.Interp.LiftN <> c:5 var
+R3053:3053 CICM.Interp.LiftN <> u:6 var
+R3060:3066 CICM.Codes.Lift <> sm_from proj
+R3086:3086 CICM.Interp.LiftN <> y:7 var
+R3084:3084 CICM.Interp.LiftN <> u:6 var
+R3082:3082 CICM.Interp.LiftN <> c:5 var
+R3069:3075 CICM.Interp.LiftN <> lvlSMor def
+R3077:3077 CICM.Interp.LiftN <> k:3 var
+R3079:3079 CICM.Interp.LiftN <> b:4 var
+prf 3096:3106 <> unliftEl_eq
+binder 3108:3108 <> k:8
+binder 3110:3110 <> b:9
+R3117:3120 CICM.Codes.Levels <> Code def
+R3122:3122 CICM.Interp.LiftN <> k:8 var
+R3124:3124 CICM.Interp.LiftN <> b:9 var
+binder 3113:3113 <> c:10
+binder 3127:3127 <> u:11
+binder 3129:3129 <> y:12
+binder 3131:3132 <> u':13
+binder 3134:3135 <> y':14
+R3189:3194 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R3157:3160 CICM.Codes.Def <> StEq proj
+R3142:3145 CICM.Interp.Codes <> kUst def
+R3148:3148 Corelib.Init.Datatypes <> S constr
+R3150:3150 CICM.Interp.LiftN <> k:8 var
+R3153:3153 CICM.Interp.LiftN <> b:9 var
+R3164:3171 CICM.Codes.Lift <> liftCode def
+R3173:3173 CICM.Interp.LiftN <> k:8 var
+R3175:3175 CICM.Interp.LiftN <> b:9 var
+R3177:3177 CICM.Interp.LiftN <> c:10 var
+R3180:3180 CICM.Interp.LiftN <> u:11 var
+R3182:3182 CICM.Interp.LiftN <> y:12 var
+R3184:3185 CICM.Interp.LiftN <> u':13 var
+R3187:3188 CICM.Interp.LiftN <> y':14 var
+R3207:3210 CICM.Codes.Def <> StEq proj
+R3196:3199 CICM.Interp.Codes <> kUst def
+R3201:3201 CICM.Interp.LiftN <> k:8 var
+R3203:3203 CICM.Interp.LiftN <> b:9 var
+R3213:3213 CICM.Interp.LiftN <> c:10 var
+R3215:3215 CICM.Interp.LiftN <> u:11 var
+R3218:3225 CICM.Interp.LiftN <> unliftEl def
+R3227:3227 CICM.Interp.LiftN <> k:8 var
+R3229:3229 CICM.Interp.LiftN <> b:9 var
+R3231:3231 CICM.Interp.LiftN <> c:10 var
+R3233:3233 CICM.Interp.LiftN <> u:11 var
+R3235:3235 CICM.Interp.LiftN <> y:12 var
+R3238:3239 CICM.Interp.LiftN <> u':13 var
+R3242:3249 CICM.Interp.LiftN <> unliftEl def
+R3251:3251 CICM.Interp.LiftN <> k:8 var
+R3253:3253 CICM.Interp.LiftN <> b:9 var
+R3255:3255 CICM.Interp.LiftN <> c:10 var
+R3257:3258 CICM.Interp.LiftN <> u':13 var
+R3260:3261 CICM.Interp.LiftN <> y':14 var
+R3279:3288 CICM.Codes.Lift <> sm_from_eq proj
+R3291:3297 CICM.Interp.LiftN <> lvlSMor def
+prf 3330:3344 <> liftEl_unliftEl
+binder 3346:3346 <> k:15
+binder 3348:3348 <> b:16
+R3355:3358 CICM.Codes.Levels <> Code def
+R3360:3360 CICM.Interp.LiftN <> k:15 var
+R3362:3362 CICM.Interp.LiftN <> b:16 var
+binder 3351:3351 <> c:17
+binder 3365:3365 <> u:18
+binder 3367:3367 <> y:19
+R3389:3392 CICM.Codes.Def <> StEq proj
+R3374:3377 CICM.Interp.Codes <> kUst def
+R3380:3380 Corelib.Init.Datatypes <> S constr
+R3382:3382 CICM.Interp.LiftN <> k:15 var
+R3385:3385 CICM.Interp.LiftN <> b:16 var
+R3396:3403 CICM.Codes.Lift <> liftCode def
+R3405:3405 CICM.Interp.LiftN <> k:15 var
+R3407:3407 CICM.Interp.LiftN <> b:16 var
+R3409:3409 CICM.Interp.LiftN <> c:17 var
+R3412:3412 CICM.Interp.LiftN <> u:18 var
+R3415:3420 CICM.Codes.LiftIso <> liftEl def
+R3424:3424 CICM.Interp.LiftN <> b:16 var
+R3426:3426 CICM.Interp.LiftN <> c:17 var
+R3428:3428 CICM.Interp.LiftN <> u:18 var
+R3431:3438 CICM.Interp.LiftN <> unliftEl def
+R3440:3440 CICM.Interp.LiftN <> k:15 var
+R3442:3442 CICM.Interp.LiftN <> b:16 var
+R3444:3444 CICM.Interp.LiftN <> c:17 var
+R3446:3446 CICM.Interp.LiftN <> u:18 var
+R3448:3448 CICM.Interp.LiftN <> y:19 var
+R3422:3422 CICM.Interp.LiftN <> k:15 var
+R3452:3452 CICM.Interp.LiftN <> u:18 var
+R3454:3454 CICM.Interp.LiftN <> y:19 var
+R3471:3480 CICM.Codes.Lift <> sm_to_from proj
+R3483:3489 CICM.Interp.LiftN <> lvlSMor def
+prf 3516:3530 <> unliftEl_liftEl
+binder 3532:3532 <> k:20
+binder 3534:3534 <> b:21
+R3541:3544 CICM.Codes.Levels <> Code def
+R3546:3546 CICM.Interp.LiftN <> k:20 var
+R3548:3548 CICM.Interp.LiftN <> b:21 var
+binder 3537:3537 <> c:22
+binder 3551:3551 <> u:23
+binder 3553:3553 <> x:24
+R3571:3574 CICM.Codes.Def <> StEq proj
+R3560:3563 CICM.Interp.Codes <> kUst def
+R3565:3565 CICM.Interp.LiftN <> k:20 var
+R3567:3567 CICM.Interp.LiftN <> b:21 var
+R3577:3577 CICM.Interp.LiftN <> c:22 var
+R3579:3579 CICM.Interp.LiftN <> u:23 var
+R3582:3589 CICM.Interp.LiftN <> unliftEl def
+R3591:3591 CICM.Interp.LiftN <> k:20 var
+R3593:3593 CICM.Interp.LiftN <> b:21 var
+R3595:3595 CICM.Interp.LiftN <> c:22 var
+R3597:3597 CICM.Interp.LiftN <> u:23 var
+R3600:3605 CICM.Codes.LiftIso <> liftEl def
+R3609:3609 CICM.Interp.LiftN <> b:21 var
+R3611:3611 CICM.Interp.LiftN <> c:22 var
+R3613:3613 CICM.Interp.LiftN <> u:23 var
+R3615:3615 CICM.Interp.LiftN <> x:24 var
+R3607:3607 CICM.Interp.LiftN <> k:20 var
+R3619:3619 CICM.Interp.LiftN <> u:23 var
+R3621:3621 CICM.Interp.LiftN <> x:24 var
+R3638:3647 CICM.Codes.Lift <> sm_from_to proj
+R3650:3656 CICM.Interp.LiftN <> lvlSMor def
+prf 3723:3732 <> famFrom_eq
+binder 3735:3735 <> k:25
+binder 3737:3738 <> u0:26
+R3746:3750 CICM.Interp.Fam <> kUFam def
+R3752:3752 CICM.Interp.LiftN <> k:25 var
+R3754:3755 CICM.Interp.LiftN <> u0:26 var
+binder 3742:3742 <> F:27
+binder 3758:3758 <> v:28
+binder 3760:3760 <> h:29
+binder 3762:3763 <> pf:30
+binder 3765:3765 <> w:31
+binder 3767:3767 <> x:32
+binder 3769:3770 <> w':33
+binder 3772:3773 <> x':34
+R3796:3801 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R3779:3783 CICM.Interp.Fam <> kEqAt def
+R3794:3795 CICM.Interp.LiftN <> x':34 var
+R3791:3792 CICM.Interp.LiftN <> w':33 var
+R3789:3789 CICM.Interp.LiftN <> x:32 var
+R3787:3787 CICM.Interp.LiftN <> w:31 var
+R3785:3785 CICM.Interp.LiftN <> F:27 var
+R3821:3824 CICM.Codes.Def <> StEq proj
+R3803:3806 CICM.Interp.Codes <> kUst def
+R3808:3808 CICM.Interp.LiftN <> k:25 var
+R3811:3812 CICM.Ranks.Rank <> rk def
+R3814:3814 CICM.Interp.LiftN <> v:28 var
+R3816:3816 CICM.Interp.LiftN <> h:29 var
+R3828:3831 CICM.Codes.Levels <> uf_c proj
+R3839:3840 CICM.Interp.LiftN <> pf:30 var
+R3837:3837 CICM.Interp.LiftN <> h:29 var
+R3835:3835 CICM.Interp.LiftN <> v:28 var
+R3833:3833 CICM.Interp.LiftN <> F:27 var
+R3843:3843 CICM.Interp.LiftN <> w:31 var
+R3846:3852 CICM.Interp.Fam <> famFrom def
+R3865:3865 CICM.Interp.LiftN <> x:32 var
+R3863:3863 CICM.Interp.LiftN <> w:31 var
+R3860:3861 CICM.Interp.LiftN <> pf:30 var
+R3858:3858 CICM.Interp.LiftN <> h:29 var
+R3856:3856 CICM.Interp.LiftN <> v:28 var
+R3854:3854 CICM.Interp.LiftN <> F:27 var
+R3911:3912 CICM.Interp.LiftN <> w':33 var
+R3915:3921 CICM.Interp.Fam <> famFrom def
+R3935:3936 CICM.Interp.LiftN <> x':34 var
+R3932:3933 CICM.Interp.LiftN <> w':33 var
+R3929:3930 CICM.Interp.LiftN <> pf:30 var
+R3927:3927 CICM.Interp.LiftN <> h:29 var
+R3925:3925 CICM.Interp.LiftN <> v:28 var
+R3923:3923 CICM.Interp.LiftN <> F:27 var
+R3954:3959 CICM.Codes.Iso <> cto_eq thm
+R3995:4000 CICM.Interp.Codes <> ktrans def
+R3986:3989 CICM.Interp.Codes <> ksym def
+R3978:3980 CICM.Interp.Codes <> kOK def
+R3969:3972 CICM.Interp.Codes <> kUEq def
+R3962:3963 CICM.Interp.Codes <> kU def
+def 4024:4031 <> elUnlift
+binder 4034:4034 <> k:35
+binder 4036:4036 <> u:36
+R4044:4048 CICM.Interp.Fam <> kUFam def
+R4050:4050 CICM.Interp.LiftN <> k:35 var
+R4052:4052 CICM.Interp.LiftN <> u:36 var
+binder 4040:4040 <> F:37
+binder 4055:4055 <> w:38
+R4062:4066 CICM.Interp.Fam <> kElAt def
+R4081:4081 CICM.Interp.LiftN <> w:38 var
+R4069:4076 CICM.Interp.Lift <> famLiftK def
+R4078:4078 CICM.Interp.LiftN <> F:37 var
+binder 4058:4058 <> y:39
+R4086:4090 CICM.Interp.Fam <> kElAt def
+R4094:4094 CICM.Interp.LiftN <> w:38 var
+R4092:4092 CICM.Interp.LiftN <> F:37 var
+R4101:4108 CICM.Interp.LiftN <> unliftEl def
+R4110:4110 CICM.Interp.LiftN <> k:35 var
+R4113:4114 CICM.Ranks.Rank <> rk def
+R4116:4116 CICM.Interp.LiftN <> u:36 var
+R4119:4122 CICM.Interp.Fam <> kAcc def
+R4124:4124 CICM.Interp.LiftN <> F:37 var
+R4129:4131 CICM.Interp.Fam <> kAt def
+R4133:4133 CICM.Interp.LiftN <> F:37 var
+R4136:4136 CICM.Interp.LiftN <> w:38 var
+R4143:4149 CICM.Interp.Fam <> famFrom def
+R4193:4193 CICM.Interp.LiftN <> y:39 var
+R4191:4191 CICM.Interp.LiftN <> w:38 var
+R4176:4186 CICM.Codes.Levels <> evalAg_refl thm
+R4188:4188 CICM.Interp.LiftN <> u:36 var
+R4167:4170 CICM.Interp.Fam <> kAcc def
+R4172:4172 CICM.Interp.LiftN <> F:37 var
+R4164:4164 CICM.Interp.LiftN <> u:36 var
+R4152:4159 CICM.Interp.Lift <> famLiftK def
+R4161:4161 CICM.Interp.LiftN <> F:37 var
+prf 4204:4214 <> elUnlift_eq
+binder 4217:4217 <> k:40
+binder 4219:4219 <> u:41
+R4227:4231 CICM.Interp.Fam <> kUFam def
+R4233:4233 CICM.Interp.LiftN <> k:40 var
+R4235:4235 CICM.Interp.LiftN <> u:41 var
+binder 4223:4223 <> F:42
+binder 4238:4238 <> w:43
+binder 4240:4240 <> y:44
+binder 4242:4243 <> w':45
+binder 4245:4246 <> y':46
+R4280:4283 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R4252:4256 CICM.Interp.Fam <> kEqAt def
+R4278:4279 CICM.Interp.LiftN <> y':46 var
+R4275:4276 CICM.Interp.LiftN <> w':45 var
+R4273:4273 CICM.Interp.LiftN <> y:44 var
+R4271:4271 CICM.Interp.LiftN <> w:43 var
+R4259:4266 CICM.Interp.Lift <> famLiftK def
+R4268:4268 CICM.Interp.LiftN <> F:42 var
+R4284:4288 CICM.Interp.Fam <> kEqAt def
+R4315:4322 CICM.Interp.LiftN <> elUnlift def
+R4329:4330 CICM.Interp.LiftN <> y':46 var
+R4326:4327 CICM.Interp.LiftN <> w':45 var
+R4324:4324 CICM.Interp.LiftN <> F:42 var
+R4311:4312 CICM.Interp.LiftN <> w':45 var
+R4295:4302 CICM.Interp.LiftN <> elUnlift def
+R4308:4308 CICM.Interp.LiftN <> y:44 var
+R4306:4306 CICM.Interp.LiftN <> w:43 var
+R4304:4304 CICM.Interp.LiftN <> F:42 var
+R4292:4292 CICM.Interp.LiftN <> w:43 var
+R4290:4290 CICM.Interp.LiftN <> F:42 var
+R4362:4372 CICM.Interp.LiftN <> unliftEl_eq thm
+R4377:4378 CICM.Ranks.Rank <> rk def
+R4383:4386 CICM.Interp.Fam <> kAcc def
+R4393:4395 CICM.Interp.Fam <> kAt def
+R4421:4430 CICM.Interp.LiftN <> famFrom_eq thm
+R4457:4467 CICM.Codes.Levels <> evalAg_refl thm
+R4448:4451 CICM.Interp.Fam <> kAcc def
+R4433:4440 CICM.Interp.Lift <> famLiftK def
+prf 4499:4513 <> elUnlift_elLift
+binder 4516:4516 <> k:47
+binder 4518:4518 <> u:48
+R4526:4530 CICM.Interp.Fam <> kUFam def
+R4532:4532 CICM.Interp.LiftN <> k:47 var
+R4534:4534 CICM.Interp.LiftN <> u:48 var
+binder 4522:4522 <> F:49
+binder 4537:4537 <> w:50
+R4544:4548 CICM.Interp.Fam <> kElAt def
+R4552:4552 CICM.Interp.LiftN <> w:50 var
+R4550:4550 CICM.Interp.LiftN <> F:49 var
+binder 4540:4540 <> x:51
+R4559:4563 CICM.Interp.Fam <> kEqAt def
+R4601:4601 CICM.Interp.LiftN <> x:51 var
+R4599:4599 CICM.Interp.LiftN <> w:50 var
+R4570:4577 CICM.Interp.LiftN <> elUnlift def
+R4584:4589 CICM.Interp.Lift <> elLift def
+R4595:4595 CICM.Interp.LiftN <> x:51 var
+R4593:4593 CICM.Interp.LiftN <> w:50 var
+R4591:4591 CICM.Interp.LiftN <> F:49 var
+R4581:4581 CICM.Interp.LiftN <> w:50 var
+R4579:4579 CICM.Interp.LiftN <> F:49 var
+R4567:4567 CICM.Interp.LiftN <> w:50 var
+R4565:4565 CICM.Interp.LiftN <> F:49 var
+R4620:4627 CICM.Interp.LiftN <> elUnlift def
+R4630:4635 CICM.Interp.Lift <> elLift def
+R4647:4656 CICM.Interp.Env <> kEqC_trans thm
+R4672:4682 CICM.Interp.LiftN <> unliftEl_eq thm
+R4687:4688 CICM.Ranks.Rank <> rk def
+R4693:4696 CICM.Interp.Fam <> kAcc def
+R4703:4705 CICM.Interp.Fam <> kAt def
+R4734:4746 CICM.Interp.SigEl <> famFrom_famTo thm
+R4809:4814 CICM.Codes.LiftIso <> liftEl def
+R4819:4820 CICM.Ranks.Rank <> rk def
+R4825:4828 CICM.Interp.Fam <> kAcc def
+R4835:4837 CICM.Interp.Fam <> kAt def
+R4773:4783 CICM.Codes.Levels <> evalAg_refl thm
+R4764:4767 CICM.Interp.Fam <> kAcc def
+R4749:4756 CICM.Interp.Lift <> famLiftK def
+R4862:4876 CICM.Interp.LiftN <> unliftEl_liftEl thm
+R4881:4882 CICM.Ranks.Rank <> rk def
+R4887:4890 CICM.Interp.Fam <> kAcc def
+R4897:4899 CICM.Interp.Fam <> kAt def
+prf 4922:4936 <> elLift_elUnlift
+binder 4939:4939 <> k:52
+binder 4941:4941 <> u:53
+R4949:4953 CICM.Interp.Fam <> kUFam def
+R4955:4955 CICM.Interp.LiftN <> k:52 var
+R4957:4957 CICM.Interp.LiftN <> u:53 var
+binder 4945:4945 <> F:54
+binder 4960:4960 <> w:55
+R4967:4971 CICM.Interp.Fam <> kElAt def
+R4986:4986 CICM.Interp.LiftN <> w:55 var
+R4974:4981 CICM.Interp.Lift <> famLiftK def
+R4983:4983 CICM.Interp.LiftN <> F:54 var
+binder 4963:4963 <> y:56
+R4993:4997 CICM.Interp.Fam <> kEqAt def
+R5046:5046 CICM.Interp.LiftN <> y:56 var
+R5044:5044 CICM.Interp.LiftN <> w:55 var
+R5015:5020 CICM.Interp.Lift <> elLift def
+R5027:5034 CICM.Interp.LiftN <> elUnlift def
+R5040:5040 CICM.Interp.LiftN <> y:56 var
+R5038:5038 CICM.Interp.LiftN <> w:55 var
+R5036:5036 CICM.Interp.LiftN <> F:54 var
+R5024:5024 CICM.Interp.LiftN <> w:55 var
+R5022:5022 CICM.Interp.LiftN <> F:54 var
+R5012:5012 CICM.Interp.LiftN <> w:55 var
+R5000:5007 CICM.Interp.Lift <> famLiftK def
+R5009:5009 CICM.Interp.LiftN <> F:54 var
+R5065:5072 CICM.Interp.LiftN <> elUnlift def
+R5075:5080 CICM.Interp.Lift <> elLift def
+R5092:5101 CICM.Interp.Env <> kEqC_trans thm
+R5117:5124 CICM.Interp.Fam <> famTo_eq thm
+R5190:5204 CICM.Interp.LiftN <> liftEl_unliftEl thm
+R5209:5210 CICM.Ranks.Rank <> rk def
+R5215:5218 CICM.Interp.Fam <> kAcc def
+R5225:5227 CICM.Interp.Fam <> kAt def
+R5253:5259 CICM.Interp.Fam <> famFrom def
+R5286:5296 CICM.Codes.Levels <> evalAg_refl thm
+R5277:5280 CICM.Interp.Fam <> kAcc def
+R5262:5269 CICM.Interp.Lift <> famLiftK def
+R5151:5161 CICM.Codes.Levels <> evalAg_refl thm
+R5142:5145 CICM.Interp.Fam <> kAcc def
+R5127:5134 CICM.Interp.Lift <> famLiftK def
+R5321:5333 CICM.Interp.PiEl <> famTo_famFrom thm
+R5360:5370 CICM.Codes.Levels <> evalAg_refl thm
+R5351:5354 CICM.Interp.Fam <> kAcc def
+R5336:5343 CICM.Interp.Lift <> famLiftK def
+prf 5767:5777 <> kEqAt_refl_
+binder 5780:5780 <> k:57
+binder 5782:5782 <> u:58
+R5790:5794 CICM.Interp.Fam <> kUFam def
+R5796:5796 CICM.Interp.LiftN <> k:57 var
+R5798:5798 CICM.Interp.LiftN <> u:58 var
+binder 5786:5786 <> F:59
+binder 5801:5801 <> w:60
+R5808:5812 CICM.Interp.Fam <> kElAt def
+R5816:5816 CICM.Interp.LiftN <> w:60 var
+R5814:5814 CICM.Interp.LiftN <> F:59 var
+binder 5804:5804 <> x:61
+R5821:5825 CICM.Interp.Fam <> kEqAt def
+R5835:5835 CICM.Interp.LiftN <> x:61 var
+R5833:5833 CICM.Interp.LiftN <> w:60 var
+R5831:5831 CICM.Interp.LiftN <> x:61 var
+R5829:5829 CICM.Interp.LiftN <> w:60 var
+R5827:5827 CICM.Interp.LiftN <> F:59 var
+R5852:5856 Corelib.Init.Logic <> proj2 thm
+R5881:5889 CICM.Interp.Env <> kRel_refl thm
+R5859:5867 CICM.Interp.Elem <> kRel_same thm
+def 5915:5922 <> famLiftN
+R5929:5931 Corelib.Init.Datatypes <> nat ind
+binder 5925:5925 <> d:62
+binder 5935:5935 <> k:63
+binder 5937:5937 <> u:64
+R5945:5949 CICM.Interp.Fam <> kUFam def
+R5951:5951 CICM.Interp.LiftN <> k:63 var
+R5953:5953 CICM.Interp.LiftN <> u:64 var
+binder 5941:5941 <> F:65
+R5958:5962 CICM.Interp.Fam <> kUFam def
+R5966:5968 Corelib.Init.Peano <> ::nat_scope:x_'+'_x not
+R5965:5965 CICM.Interp.LiftN <> d:62 var
+R5969:5969 CICM.Interp.LiftN <> k:63 var
+R5972:5972 CICM.Interp.LiftN <> u:64 var
+R5985:5985 CICM.Interp.LiftN <> d:62 var
+R6001:6001 CICM.Interp.LiftN <> F:65 var
+R6007:6007 Corelib.Init.Datatypes <> S constr
+R6015:6022 CICM.Interp.Lift <> famLiftK def
+R6025:6032 CICM.Interp.LiftN <> famLiftN:66 def
+R6037:6037 CICM.Interp.LiftN <> F:65 var
+prf 6054:6063 <> famLiftN_S
+binder 6065:6065 <> d:68
+binder 6068:6068 <> k:69
+binder 6070:6070 <> u:70
+R6078:6082 CICM.Interp.Fam <> kUFam def
+R6084:6084 CICM.Interp.LiftN <> k:69 var
+R6086:6086 CICM.Interp.LiftN <> u:70 var
+binder 6074:6074 <> F:71
+R6109:6111 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R6093:6100 CICM.Interp.LiftN <> famLiftN def
+R6108:6108 CICM.Interp.LiftN <> F:71 var
+R6103:6103 Corelib.Init.Datatypes <> S constr
+R6105:6105 CICM.Interp.LiftN <> d:68 var
+R6112:6119 CICM.Interp.Lift <> famLiftK def
+R6122:6129 CICM.Interp.LiftN <> famLiftN def
+R6133:6133 CICM.Interp.LiftN <> F:71 var
+R6131:6131 CICM.Interp.LiftN <> d:68 var
+def 6172:6178 <> elLiftN
+R6185:6187 Corelib.Init.Datatypes <> nat ind
+binder 6181:6181 <> d:72
+binder 6191:6191 <> k:73
+binder 6193:6193 <> u:74
+R6201:6205 CICM.Interp.Fam <> kUFam def
+R6207:6207 CICM.Interp.LiftN <> k:73 var
+R6209:6209 CICM.Interp.LiftN <> u:74 var
+binder 6197:6197 <> F:75
+binder 6212:6212 <> w:76
+R6219:6223 CICM.Interp.Fam <> kElAt def
+R6227:6227 CICM.Interp.LiftN <> w:76 var
+R6225:6225 CICM.Interp.LiftN <> F:75 var
+binder 6215:6215 <> x:77
+R6234:6238 CICM.Interp.Fam <> kElAt def
+R6255:6255 CICM.Interp.LiftN <> w:76 var
+R6241:6248 CICM.Interp.LiftN <> famLiftN def
+R6252:6252 CICM.Interp.LiftN <> F:75 var
+R6250:6250 CICM.Interp.LiftN <> d:72 var
+R6268:6268 CICM.Interp.LiftN <> d:72 var
+R6284:6284 CICM.Interp.LiftN <> x:77 var
+R6290:6290 Corelib.Init.Datatypes <> S constr
+R6298:6303 CICM.Interp.Lift <> elLift def
+R6324:6330 CICM.Interp.LiftN <> elLiftN:78 def
+R6339:6339 CICM.Interp.LiftN <> x:77 var
+R6337:6337 CICM.Interp.LiftN <> w:76 var
+R6335:6335 CICM.Interp.LiftN <> F:75 var
+R6321:6321 CICM.Interp.LiftN <> w:76 var
+R6306:6313 CICM.Interp.LiftN <> famLiftN def
+R6318:6318 CICM.Interp.LiftN <> F:75 var
+def 6359:6367 <> elUnliftN
+R6374:6376 Corelib.Init.Datatypes <> nat ind
+binder 6370:6370 <> d:80
+binder 6380:6380 <> k:81
+binder 6382:6382 <> u:82
+R6390:6394 CICM.Interp.Fam <> kUFam def
+R6396:6396 CICM.Interp.LiftN <> k:81 var
+R6398:6398 CICM.Interp.LiftN <> u:82 var
+binder 6386:6386 <> F:83
+binder 6401:6401 <> w:84
+R6429:6432 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R6407:6411 CICM.Interp.Fam <> kElAt def
+R6428:6428 CICM.Interp.LiftN <> w:84 var
+R6414:6421 CICM.Interp.LiftN <> famLiftN def
+R6425:6425 CICM.Interp.LiftN <> F:83 var
+R6423:6423 CICM.Interp.LiftN <> d:80 var
+R6433:6437 CICM.Interp.Fam <> kElAt def
+R6441:6441 CICM.Interp.LiftN <> w:84 var
+R6439:6439 CICM.Interp.LiftN <> F:83 var
+R6454:6454 CICM.Interp.LiftN <> d:80 var
+binder 6474:6474 <> y:87
+R6479:6479 CICM.Interp.LiftN <> y:87 var
+R6485:6485 Corelib.Init.Datatypes <> S constr
+binder 6497:6497 <> y:88
+R6502:6510 CICM.Interp.LiftN <> elUnliftN:85 def
+R6520:6527 CICM.Interp.LiftN <> elUnlift def
+R6547:6547 CICM.Interp.LiftN <> y:88 var
+R6545:6545 CICM.Interp.LiftN <> w:84 var
+R6530:6537 CICM.Interp.LiftN <> famLiftN def
+R6542:6542 CICM.Interp.LiftN <> F:83 var
+R6517:6517 CICM.Interp.LiftN <> w:84 var
+R6515:6515 CICM.Interp.LiftN <> F:83 var
+prf 6564:6573 <> elLiftN_eq
+binder 6575:6575 <> d:89
+binder 6578:6578 <> k:90
+binder 6580:6580 <> u:91
+R6588:6592 CICM.Interp.Fam <> kUFam def
+R6594:6594 CICM.Interp.LiftN <> k:90 var
+R6596:6596 CICM.Interp.LiftN <> u:91 var
+binder 6584:6584 <> F:92
+binder 6599:6599 <> w:93
+binder 6601:6601 <> x:94
+binder 6603:6604 <> w':95
+binder 6606:6607 <> x':96
+R6630:6635 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R6613:6617 CICM.Interp.Fam <> kEqAt def
+R6628:6629 CICM.Interp.LiftN <> x':96 var
+R6625:6626 CICM.Interp.LiftN <> w':95 var
+R6623:6623 CICM.Interp.LiftN <> x:94 var
+R6621:6621 CICM.Interp.LiftN <> w:93 var
+R6619:6619 CICM.Interp.LiftN <> F:92 var
+R6636:6640 CICM.Interp.Fam <> kEqAt def
+R6681:6687 CICM.Interp.LiftN <> elLiftN def
+R6696:6697 CICM.Interp.LiftN <> x':96 var
+R6693:6694 CICM.Interp.LiftN <> w':95 var
+R6691:6691 CICM.Interp.LiftN <> F:92 var
+R6689:6689 CICM.Interp.LiftN <> d:89 var
+R6677:6678 CICM.Interp.LiftN <> w':95 var
+R6660:6666 CICM.Interp.LiftN <> elLiftN def
+R6674:6674 CICM.Interp.LiftN <> x:94 var
+R6672:6672 CICM.Interp.LiftN <> w:93 var
+R6670:6670 CICM.Interp.LiftN <> F:92 var
+R6668:6668 CICM.Interp.LiftN <> d:89 var
+R6657:6657 CICM.Interp.LiftN <> w:93 var
+R6643:6650 CICM.Interp.LiftN <> famLiftN def
+R6654:6654 CICM.Interp.LiftN <> F:92 var
+R6652:6652 CICM.Interp.LiftN <> d:89 var
+R6794:6802 CICM.Interp.Lift <> elLift_eq thm
+prf 6824:6835 <> elUnliftN_eq
+binder 6837:6837 <> d:97
+binder 6840:6840 <> k:98
+binder 6842:6842 <> u:99
+R6850:6854 CICM.Interp.Fam <> kUFam def
+R6856:6856 CICM.Interp.LiftN <> k:98 var
+R6858:6858 CICM.Interp.LiftN <> u:99 var
+binder 6846:6846 <> F:100
+binder 6861:6861 <> w:101
+binder 6863:6863 <> y:102
+binder 6865:6866 <> w':103
+binder 6868:6869 <> y':104
+R6905:6910 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R6875:6879 CICM.Interp.Fam <> kEqAt def
+R6903:6904 CICM.Interp.LiftN <> y':104 var
+R6900:6901 CICM.Interp.LiftN <> w':103 var
+R6898:6898 CICM.Interp.LiftN <> y:102 var
+R6896:6896 CICM.Interp.LiftN <> w:101 var
+R6882:6889 CICM.Interp.LiftN <> famLiftN def
+R6893:6893 CICM.Interp.LiftN <> F:100 var
+R6891:6891 CICM.Interp.LiftN <> d:97 var
+R6911:6915 CICM.Interp.Fam <> kEqAt def
+R6945:6953 CICM.Interp.LiftN <> elUnliftN def
+R6962:6963 CICM.Interp.LiftN <> y':104 var
+R6959:6960 CICM.Interp.LiftN <> w':103 var
+R6957:6957 CICM.Interp.LiftN <> F:100 var
+R6955:6955 CICM.Interp.LiftN <> d:97 var
+R6941:6942 CICM.Interp.LiftN <> w':103 var
+R6922:6930 CICM.Interp.LiftN <> elUnliftN def
+R6938:6938 CICM.Interp.LiftN <> y:102 var
+R6936:6936 CICM.Interp.LiftN <> w:101 var
+R6934:6934 CICM.Interp.LiftN <> F:100 var
+R6932:6932 CICM.Interp.LiftN <> d:97 var
+R6919:6919 CICM.Interp.LiftN <> w:101 var
+R6917:6917 CICM.Interp.LiftN <> F:100 var
+R7064:7074 CICM.Interp.LiftN <> elUnlift_eq thm
+prf 7092:7108 <> elUnliftN_elLiftN
+binder 7110:7110 <> d:105
+binder 7113:7113 <> k:106
+binder 7115:7115 <> u:107
+R7123:7127 CICM.Interp.Fam <> kUFam def
+R7129:7129 CICM.Interp.LiftN <> k:106 var
+R7131:7131 CICM.Interp.LiftN <> u:107 var
+binder 7119:7119 <> F:108
+binder 7134:7134 <> w:109
+R7141:7145 CICM.Interp.Fam <> kElAt def
+R7149:7149 CICM.Interp.LiftN <> w:109 var
+R7147:7147 CICM.Interp.LiftN <> F:108 var
+binder 7137:7137 <> x:110
+R7156:7160 CICM.Interp.Fam <> kEqAt def
+R7204:7204 CICM.Interp.LiftN <> x:110 var
+R7202:7202 CICM.Interp.LiftN <> w:109 var
+R7167:7175 CICM.Interp.LiftN <> elUnliftN def
+R7184:7190 CICM.Interp.LiftN <> elLiftN def
+R7198:7198 CICM.Interp.LiftN <> x:110 var
+R7196:7196 CICM.Interp.LiftN <> w:109 var
+R7194:7194 CICM.Interp.LiftN <> F:108 var
+R7192:7192 CICM.Interp.LiftN <> d:105 var
+R7181:7181 CICM.Interp.LiftN <> w:109 var
+R7179:7179 CICM.Interp.LiftN <> F:108 var
+R7177:7177 CICM.Interp.LiftN <> d:105 var
+R7164:7164 CICM.Interp.LiftN <> w:109 var
+R7162:7162 CICM.Interp.LiftN <> F:108 var
+R7272:7282 CICM.Interp.LiftN <> kEqAt_refl_ thm
+R7297:7306 CICM.Interp.Env <> kEqC_trans thm
+R7322:7333 CICM.Interp.LiftN <> elUnliftN_eq thm
+R7346:7352 CICM.Interp.LiftN <> elLiftN def
+R7377:7391 CICM.Interp.LiftN <> elUnlift_elLift thm
+prf 7423:7439 <> elLiftN_elUnliftN
+binder 7441:7441 <> d:111
+binder 7444:7444 <> k:112
+binder 7446:7446 <> u:113
+R7454:7458 CICM.Interp.Fam <> kUFam def
+R7460:7460 CICM.Interp.LiftN <> k:112 var
+R7462:7462 CICM.Interp.LiftN <> u:113 var
+binder 7450:7450 <> F:114
+binder 7465:7465 <> w:115
+R7472:7476 CICM.Interp.Fam <> kElAt def
+R7493:7493 CICM.Interp.LiftN <> w:115 var
+R7479:7486 CICM.Interp.LiftN <> famLiftN def
+R7490:7490 CICM.Interp.LiftN <> F:114 var
+R7488:7488 CICM.Interp.LiftN <> d:111 var
+binder 7468:7468 <> y:116
+R7500:7504 CICM.Interp.Fam <> kEqAt def
+R7561:7561 CICM.Interp.LiftN <> y:116 var
+R7559:7559 CICM.Interp.LiftN <> w:115 var
+R7524:7530 CICM.Interp.LiftN <> elLiftN def
+R7539:7547 CICM.Interp.LiftN <> elUnliftN def
+R7555:7555 CICM.Interp.LiftN <> y:116 var
+R7553:7553 CICM.Interp.LiftN <> w:115 var
+R7551:7551 CICM.Interp.LiftN <> F:114 var
+R7549:7549 CICM.Interp.LiftN <> d:111 var
+R7536:7536 CICM.Interp.LiftN <> w:115 var
+R7534:7534 CICM.Interp.LiftN <> F:114 var
+R7532:7532 CICM.Interp.LiftN <> d:111 var
+R7521:7521 CICM.Interp.LiftN <> w:115 var
+R7507:7514 CICM.Interp.LiftN <> famLiftN def
+R7518:7518 CICM.Interp.LiftN <> F:114 var
+R7516:7516 CICM.Interp.LiftN <> d:111 var
+R7629:7639 CICM.Interp.LiftN <> kEqAt_refl_ thm
+R7654:7663 CICM.Interp.Env <> kEqC_trans thm
+R7678:7686 CICM.Interp.Lift <> elLift_eq thm
+R7702:7709 CICM.Interp.LiftN <> elUnlift def
+R7712:7719 CICM.Interp.LiftN <> famLiftN def
+R7744:7758 CICM.Interp.LiftN <> elLift_elUnlift thm
+prf 7844:7855 <> famLiftN_iso
+binder 7857:7857 <> d:117
+binder 7860:7860 <> k:118
+binder 7862:7862 <> u:119
+binder 7864:7865 <> u':120
+R7873:7877 CICM.Interp.Fam <> kUFam def
+R7879:7879 CICM.Interp.LiftN <> k:118 var
+R7881:7881 CICM.Interp.LiftN <> u:119 var
+binder 7869:7869 <> F:121
+R7890:7894 CICM.Interp.Fam <> kUFam def
+R7896:7896 CICM.Interp.LiftN <> k:118 var
+R7898:7899 CICM.Interp.LiftN <> u':120 var
+binder 7885:7886 <> F':122
+R7926:7929 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R7906:7908 CICM.Codes.Levels <> iso def
+R7919:7921 CICM.Interp.Fam <> kAt def
+R7923:7924 CICM.Interp.LiftN <> F':122 var
+R7911:7913 CICM.Interp.Fam <> kAt def
+R7915:7915 CICM.Interp.LiftN <> F:121 var
+R7930:7932 CICM.Codes.Levels <> iso def
+R7956:7958 CICM.Interp.Fam <> kAt def
+R7961:7968 CICM.Interp.LiftN <> famLiftN def
+R7972:7973 CICM.Interp.LiftN <> F':122 var
+R7970:7970 CICM.Interp.LiftN <> d:117 var
+R7935:7937 CICM.Interp.Fam <> kAt def
+R7940:7947 CICM.Interp.LiftN <> famLiftN def
+R7951:7951 CICM.Interp.LiftN <> F:121 var
+R7949:7949 CICM.Interp.LiftN <> d:117 var
+R8039:8050 CICM.Interp.Lift <> famLiftK_iso thm
+prf 8290:8304 <> famLiftK_natFam
+binder 8306:8306 <> k:123
+R8312:8314 CICM.Codes.Levels <> iso def
+R8345:8347 CICM.Interp.Fam <> kAt def
+R8350:8355 CICM.Interp.Fam <> natFam def
+R8358:8358 Corelib.Init.Datatypes <> S constr
+R8360:8360 CICM.Interp.LiftN <> k:123 var
+R8317:8319 CICM.Interp.Fam <> kAt def
+R8322:8329 CICM.Interp.Lift <> famLiftK def
+R8332:8337 CICM.Interp.Fam <> natFam def
+R8339:8339 CICM.Interp.LiftN <> k:123 var
+R8383:8383 Corelib.Init.Datatypes <> S constr
+R8395:8402 CICM.Interp.Fam <> eqty_nat thm
+R8411:8419 CICM.Reduction.Determinism <> eval_whnf thm
+R8428:8435 CICM.Interp.Fam <> whnf_nat def
+prf 8450:8465 <> famLiftK_propFam
+binder 8467:8467 <> k:124
+R8473:8475 CICM.Codes.Levels <> iso def
+R8507:8509 CICM.Interp.Fam <> kAt def
+R8512:8518 CICM.Interp.Fam <> propFam def
+R8521:8521 Corelib.Init.Datatypes <> S constr
+R8523:8523 CICM.Interp.LiftN <> k:124 var
+R8478:8480 CICM.Interp.Fam <> kAt def
+R8483:8490 CICM.Interp.Lift <> famLiftK def
+R8493:8499 CICM.Interp.Fam <> propFam def
+R8501:8501 CICM.Interp.LiftN <> k:124 var
+R8546:8546 Corelib.Init.Datatypes <> S constr
+R8558:8566 CICM.Interp.Fam <> eqty_prop thm
+R8575:8583 CICM.Reduction.Determinism <> eval_whnf thm
+R8592:8600 CICM.Interp.Fam <> whnf_prop def
+prf 8615:8629 <> famLiftK_prfFam
+binder 8631:8631 <> k:125
+binder 8633:8633 <> p:126
+binder 8635:8636 <> Hp:127
+binder 8638:8638 <> H:128
+R8644:8646 CICM.Codes.Levels <> iso def
+R8684:8686 CICM.Interp.Fam <> kAt def
+R8689:8694 CICM.Interp.Fam <> prfFam def
+R8697:8697 Corelib.Init.Datatypes <> S constr
+R8699:8699 CICM.Interp.LiftN <> k:125 var
+R8702:8702 CICM.Interp.LiftN <> p:126 var
+R8704:8705 CICM.Interp.LiftN <> Hp:127 var
+R8707:8707 CICM.Interp.LiftN <> H:128 var
+R8649:8651 CICM.Interp.Fam <> kAt def
+R8654:8661 CICM.Interp.Lift <> famLiftK def
+R8664:8669 CICM.Interp.Fam <> prfFam def
+R8671:8671 CICM.Interp.LiftN <> k:125 var
+R8673:8673 CICM.Interp.LiftN <> p:126 var
+R8675:8676 CICM.Interp.LiftN <> Hp:127 var
+R8678:8678 CICM.Interp.LiftN <> H:128 var
+R8755:8755 Corelib.Init.Datatypes <> S constr
+R8768:8775 CICM.Interp.Fam <> eqty_prf thm
+R8790:8798 CICM.Reduction.Determinism <> eval_whnf thm
+R8808:8815 CICM.Interp.Fam <> whnf_prf def
+R8832:8840 CICM.Reduction.Determinism <> eval_whnf thm
+R8850:8857 CICM.Interp.Fam <> whnf_prf def
+prf 9042:9056 <> famLiftN_natFam
+binder 9058:9058 <> d:129
+binder 9060:9060 <> k:130
+R9066:9068 CICM.Codes.Levels <> iso def
+R9101:9103 CICM.Interp.Fam <> kAt def
+R9106:9111 CICM.Interp.Fam <> natFam def
+R9115:9117 Corelib.Init.Peano <> ::nat_scope:x_'+'_x not
+R9114:9114 CICM.Interp.LiftN <> d:129 var
+R9118:9118 CICM.Interp.LiftN <> k:130 var
+R9071:9073 CICM.Interp.Fam <> kAt def
+R9076:9083 CICM.Interp.LiftN <> famLiftN def
+R9088:9093 CICM.Interp.Fam <> natFam def
+R9095:9095 CICM.Interp.LiftN <> k:130 var
+R9085:9085 CICM.Interp.LiftN <> d:129 var
+R9165:9172 CICM.Interp.Env <> iso_self def
+R9187:9195 CICM.Interp.Env <> iso_trans thm
+R9206:9217 CICM.Interp.Lift <> famLiftK_iso thm
+R9235:9249 CICM.Interp.LiftN <> famLiftK_natFam thm
+prf 9265:9280 <> famLiftN_propFam
+binder 9282:9282 <> d:131
+binder 9284:9284 <> k:132
+R9290:9292 CICM.Codes.Levels <> iso def
+R9326:9328 CICM.Interp.Fam <> kAt def
+R9331:9337 CICM.Interp.Fam <> propFam def
+R9341:9343 Corelib.Init.Peano <> ::nat_scope:x_'+'_x not
+R9340:9340 CICM.Interp.LiftN <> d:131 var
+R9344:9344 CICM.Interp.LiftN <> k:132 var
+R9295:9297 CICM.Interp.Fam <> kAt def
+R9300:9307 CICM.Interp.LiftN <> famLiftN def
+R9312:9318 CICM.Interp.Fam <> propFam def
+R9320:9320 CICM.Interp.LiftN <> k:132 var
+R9309:9309 CICM.Interp.LiftN <> d:131 var
+R9391:9398 CICM.Interp.Env <> iso_self def
+R9413:9421 CICM.Interp.Env <> iso_trans thm
+R9432:9443 CICM.Interp.Lift <> famLiftK_iso thm
+R9461:9476 CICM.Interp.LiftN <> famLiftK_propFam thm
+prf 9492:9506 <> famLiftN_prfFam
+binder 9508:9508 <> d:133
+binder 9510:9510 <> k:134
+binder 9512:9512 <> p:135
+binder 9514:9515 <> Hp:136
+binder 9517:9517 <> H:137
+R9523:9525 CICM.Codes.Levels <> iso def
+R9565:9567 CICM.Interp.Fam <> kAt def
+R9570:9575 CICM.Interp.Fam <> prfFam def
+R9579:9581 Corelib.Init.Peano <> ::nat_scope:x_'+'_x not
+R9578:9578 CICM.Interp.LiftN <> d:133 var
+R9582:9582 CICM.Interp.LiftN <> k:134 var
+R9585:9585 CICM.Interp.LiftN <> p:135 var
+R9587:9588 CICM.Interp.LiftN <> Hp:136 var
+R9590:9590 CICM.Interp.LiftN <> H:137 var
+R9528:9530 CICM.Interp.Fam <> kAt def
+R9533:9540 CICM.Interp.LiftN <> famLiftN def
+R9545:9550 CICM.Interp.Fam <> prfFam def
+R9552:9552 CICM.Interp.LiftN <> k:134 var
+R9554:9554 CICM.Interp.LiftN <> p:135 var
+R9556:9557 CICM.Interp.LiftN <> Hp:136 var
+R9559:9559 CICM.Interp.LiftN <> H:137 var
+R9542:9542 CICM.Interp.LiftN <> d:133 var
+R9636:9643 CICM.Interp.Env <> iso_self def
+R9658:9666 CICM.Interp.Env <> iso_trans thm
+R9677:9688 CICM.Interp.Lift <> famLiftK_iso thm
+R9706:9720 CICM.Interp.LiftN <> famLiftK_prfFam thm
+def 10551:10557 <> lvlCast
+binder 10560:10560 <> k:138
+binder 10562:10563 <> k':139
+binder 10565:10565 <> u:140
+R10574:10576 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10573:10573 CICM.Interp.LiftN <> k:138 var
+R10577:10578 CICM.Interp.LiftN <> k':139 var
+binder 10569:10569 <> E:141
+R10586:10590 CICM.Interp.Fam <> kUFam def
+R10592:10592 CICM.Interp.LiftN <> k:138 var
+R10594:10594 CICM.Interp.LiftN <> u:140 var
+binder 10582:10582 <> F:142
+R10599:10603 CICM.Interp.Fam <> kUFam def
+R10605:10606 CICM.Interp.LiftN <> k':139 var
+R10608:10608 CICM.Interp.LiftN <> u:140 var
+R10615:10621 Corelib.Init.Logic <> eq_rect scheme
+R10651:10651 CICM.Interp.LiftN <> E:141 var
+R10648:10649 CICM.Interp.LiftN <> k':139 var
+R10646:10646 CICM.Interp.LiftN <> F:142 var
+binder 10630:10630 <> z:143
+R10635:10639 CICM.Interp.Fam <> kUFam def
+R10641:10641 CICM.Interp.LiftN <> z:143 var
+R10643:10643 CICM.Interp.LiftN <> u:140 var
+R10623:10623 CICM.Interp.LiftN <> k:138 var
+prf 10661:10672 <> lvlCast_refl
+binder 10675:10675 <> k:144
+binder 10677:10677 <> u:145
+R10685:10689 CICM.Interp.Fam <> kUFam def
+R10691:10691 CICM.Interp.LiftN <> k:144 var
+R10693:10693 CICM.Interp.LiftN <> u:145 var
+binder 10681:10681 <> F:146
+R10719:10721 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10698:10704 CICM.Interp.LiftN <> lvlCast def
+R10718:10718 CICM.Interp.LiftN <> F:146 var
+R10707:10713 Corelib.Init.Logic <> eq_refl constr
+R10715:10715 CICM.Interp.LiftN <> k:144 var
+R10722:10722 CICM.Interp.LiftN <> F:146 var
+prf 10989:10999 <> lvlCast_irr
+binder 11002:11002 <> k:147
+binder 11004:11004 <> u:148
+R11013:11015 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11012:11012 CICM.Interp.LiftN <> k:147 var
+R11016:11016 CICM.Interp.LiftN <> k:147 var
+binder 11008:11008 <> E:149
+R11024:11028 CICM.Interp.Fam <> kUFam def
+R11030:11030 CICM.Interp.LiftN <> k:147 var
+R11032:11032 CICM.Interp.LiftN <> u:148 var
+binder 11020:11020 <> F:150
+R11048:11050 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11037:11043 CICM.Interp.LiftN <> lvlCast def
+R11047:11047 CICM.Interp.LiftN <> F:150 var
+R11045:11045 CICM.Interp.LiftN <> E:149 var
+R11051:11051 CICM.Interp.LiftN <> F:150 var
+R11072:11088 Stdlib.Logic.Eqdep_dec <> UIP_dec thm
+R11103:11109 Corelib.Init.Logic <> eq_refl constr
+R11090:11099 Stdlib.Arith.PeanoNat Nat eq_dec thm
+def 11443:11451 <> lvlCastEl
+binder 11454:11454 <> k:151
+binder 11456:11457 <> k':152
+binder 11459:11459 <> u:153
+R11468:11470 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11467:11467 CICM.Interp.LiftN <> k:151 var
+R11471:11472 CICM.Interp.LiftN <> k':152 var
+binder 11463:11463 <> E:154
+R11480:11484 CICM.Interp.Fam <> kUFam def
+R11486:11486 CICM.Interp.LiftN <> k:151 var
+R11488:11488 CICM.Interp.LiftN <> u:153 var
+binder 11476:11476 <> F:155
+binder 11491:11491 <> w:156
+R11498:11502 CICM.Interp.Fam <> kElAt def
+R11506:11506 CICM.Interp.LiftN <> w:156 var
+R11504:11504 CICM.Interp.LiftN <> F:155 var
+binder 11494:11494 <> x:157
+R11513:11517 CICM.Interp.Fam <> kElAt def
+R11533:11533 CICM.Interp.LiftN <> w:156 var
+R11520:11526 CICM.Interp.LiftN <> lvlCast def
+R11530:11530 CICM.Interp.LiftN <> F:155 var
+R11528:11528 CICM.Interp.LiftN <> E:154 var
+R11546:11546 CICM.Interp.LiftN <> E:154 var
+R11557:11559 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11569:11573 CICM.Interp.Fam <> kElAt def
+R11599:11599 CICM.Interp.LiftN <> w:156 var
+R11576:11582 CICM.Interp.LiftN <> lvlCast def
+R11596:11596 CICM.Interp.LiftN <> F:155 var
+R11594:11594 CICM.Interp.LiftN <> e:158 var
+R11591:11591 CICM.Interp.LiftN <> z:159 var
+R11610:11616 Corelib.Init.Logic <> eq_refl constr
+R11621:11621 CICM.Interp.LiftN <> x:157 var
+prf 11637:11647 <> lvlCast_iso
+binder 11650:11650 <> k:160
+binder 11652:11653 <> k':161
+binder 11655:11655 <> u:162
+binder 11657:11658 <> u':163
+R11667:11669 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11666:11666 CICM.Interp.LiftN <> k:160 var
+R11670:11671 CICM.Interp.LiftN <> k':161 var
+binder 11662:11662 <> E:164
+R11679:11683 CICM.Interp.Fam <> kUFam def
+R11685:11685 CICM.Interp.LiftN <> k:160 var
+R11687:11687 CICM.Interp.LiftN <> u:162 var
+binder 11675:11675 <> F:165
+R11696:11700 CICM.Interp.Fam <> kUFam def
+R11702:11702 CICM.Interp.LiftN <> k:160 var
+R11704:11705 CICM.Interp.LiftN <> u':163 var
+binder 11691:11692 <> F':166
+R11732:11735 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R11712:11714 CICM.Codes.Levels <> iso def
+R11725:11727 CICM.Interp.Fam <> kAt def
+R11729:11730 CICM.Interp.LiftN <> F':166 var
+R11717:11719 CICM.Interp.Fam <> kAt def
+R11721:11721 CICM.Interp.LiftN <> F:165 var
+R11736:11738 CICM.Codes.Levels <> iso def
+R11761:11763 CICM.Interp.Fam <> kAt def
+R11766:11772 CICM.Interp.LiftN <> lvlCast def
+R11776:11777 CICM.Interp.LiftN <> F':166 var
+R11774:11774 CICM.Interp.LiftN <> E:164 var
+R11741:11743 CICM.Interp.Fam <> kAt def
+R11746:11752 CICM.Interp.LiftN <> lvlCast def
+R11756:11756 CICM.Interp.LiftN <> F:165 var
+R11754:11754 CICM.Interp.LiftN <> E:164 var
+binder 11812:11812 <> H:167
+R11817:11817 CICM.Interp.LiftN <> H:167 var
+binder 11812:11812 <> H:168
+R11817:11817 CICM.Interp.LiftN <> H:168 var
+prf 11837:11848 <> lvlCastEl_eq
+binder 11851:11851 <> k:169
+binder 11853:11854 <> k':170
+binder 11856:11856 <> u:171
+R11865:11867 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11864:11864 CICM.Interp.LiftN <> k:169 var
+R11868:11869 CICM.Interp.LiftN <> k':170 var
+binder 11860:11860 <> E:172
+R11877:11881 CICM.Interp.Fam <> kUFam def
+R11883:11883 CICM.Interp.LiftN <> k:169 var
+R11885:11885 CICM.Interp.LiftN <> u:171 var
+binder 11873:11873 <> F:173
+binder 11888:11888 <> w:174
+binder 11890:11890 <> x:175
+binder 11892:11893 <> w':176
+binder 11895:11896 <> x':177
+R11919:11924 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R11902:11906 CICM.Interp.Fam <> kEqAt def
+R11917:11918 CICM.Interp.LiftN <> x':177 var
+R11914:11915 CICM.Interp.LiftN <> w':176 var
+R11912:11912 CICM.Interp.LiftN <> x:175 var
+R11910:11910 CICM.Interp.LiftN <> w:174 var
+R11908:11908 CICM.Interp.LiftN <> F:173 var
+R11925:11929 CICM.Interp.Fam <> kEqAt def
+R11971:11979 CICM.Interp.LiftN <> lvlCastEl def
+R11988:11989 CICM.Interp.LiftN <> x':177 var
+R11985:11986 CICM.Interp.LiftN <> w':176 var
+R11983:11983 CICM.Interp.LiftN <> F:173 var
+R11981:11981 CICM.Interp.LiftN <> E:172 var
+R11967:11968 CICM.Interp.LiftN <> w':176 var
+R11948:11956 CICM.Interp.LiftN <> lvlCastEl def
+R11964:11964 CICM.Interp.LiftN <> x:175 var
+R11962:11962 CICM.Interp.LiftN <> w:174 var
+R11960:11960 CICM.Interp.LiftN <> F:173 var
+R11958:11958 CICM.Interp.LiftN <> E:172 var
+R11945:11945 CICM.Interp.LiftN <> w:174 var
+R11932:11938 CICM.Interp.LiftN <> lvlCast def
+R11942:11942 CICM.Interp.LiftN <> F:173 var
+R11940:11940 CICM.Interp.LiftN <> E:172 var
+binder 12023:12023 <> H:178
+R12028:12028 CICM.Interp.LiftN <> H:178 var
+binder 12023:12023 <> H:179
+R12028:12028 CICM.Interp.LiftN <> H:179 var
+prf 12044:12057 <> lvlCastEl_ctoK
+binder 12060:12060 <> k:180
+binder 12062:12063 <> k':181
+binder 12065:12065 <> u:182
+binder 12067:12068 <> u':183
+R12077:12079 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R12076:12076 CICM.Interp.LiftN <> k:180 var
+R12080:12081 CICM.Interp.LiftN <> k':181 var
+binder 12072:12072 <> E:184
+R12089:12093 CICM.Interp.Fam <> kUFam def
+R12095:12095 CICM.Interp.LiftN <> k:180 var
+R12097:12097 CICM.Interp.LiftN <> u:182 var
+binder 12085:12085 <> F:185
+R12106:12110 CICM.Interp.Fam <> kUFam def
+R12112:12112 CICM.Interp.LiftN <> k:180 var
+R12114:12115 CICM.Interp.LiftN <> u':183 var
+binder 12101:12102 <> F':186
+R12125:12127 CICM.Codes.Levels <> iso def
+R12138:12140 CICM.Interp.Fam <> kAt def
+R12142:12143 CICM.Interp.LiftN <> F':186 var
+R12130:12132 CICM.Interp.Fam <> kAt def
+R12134:12134 CICM.Interp.LiftN <> F:185 var
+binder 12121:12121 <> P:187
+binder 12147:12147 <> w:188
+R12154:12158 CICM.Interp.Fam <> kElAt def
+R12162:12162 CICM.Interp.LiftN <> w:188 var
+R12160:12160 CICM.Interp.LiftN <> F:185 var
+binder 12150:12150 <> x:189
+R12266:12270 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R12169:12172 CICM.Interp.Env <> ctoK def
+R12248:12256 CICM.Interp.LiftN <> lvlCastEl def
+R12264:12264 CICM.Interp.LiftN <> x:189 var
+R12262:12262 CICM.Interp.LiftN <> w:188 var
+R12260:12260 CICM.Interp.LiftN <> F:185 var
+R12258:12258 CICM.Interp.LiftN <> E:184 var
+R12238:12238 CICM.Interp.LiftN <> w:188 var
+R12216:12226 CICM.Interp.LiftN <> lvlCast_iso thm
+R12235:12235 CICM.Interp.LiftN <> P:187 var
+R12232:12233 CICM.Interp.LiftN <> F':186 var
+R12230:12230 CICM.Interp.LiftN <> F:185 var
+R12228:12228 CICM.Interp.LiftN <> E:184 var
+R12195:12197 CICM.Interp.Fam <> kAt def
+R12200:12206 CICM.Interp.LiftN <> lvlCast def
+R12210:12211 CICM.Interp.LiftN <> F':186 var
+R12208:12208 CICM.Interp.LiftN <> E:184 var
+R12175:12177 CICM.Interp.Fam <> kAt def
+R12180:12186 CICM.Interp.LiftN <> lvlCast def
+R12190:12190 CICM.Interp.LiftN <> F:185 var
+R12188:12188 CICM.Interp.LiftN <> E:184 var
+R12271:12279 CICM.Interp.LiftN <> lvlCastEl def
+R12289:12292 CICM.Interp.Env <> ctoK def
+R12315:12315 CICM.Interp.LiftN <> x:189 var
+R12313:12313 CICM.Interp.LiftN <> w:188 var
+R12311:12311 CICM.Interp.LiftN <> P:187 var
+R12303:12305 CICM.Interp.Fam <> kAt def
+R12307:12308 CICM.Interp.LiftN <> F':186 var
+R12295:12297 CICM.Interp.Fam <> kAt def
+R12299:12299 CICM.Interp.LiftN <> F:185 var
+R12286:12286 CICM.Interp.LiftN <> w:188 var
+R12283:12284 CICM.Interp.LiftN <> F':186 var
+R12281:12281 CICM.Interp.LiftN <> E:184 var

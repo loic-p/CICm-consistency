@@ -65,17 +65,21 @@ Open Scope subst_scope.
    Contrast absurd, whose erasure err is *stuck* and hence in every PER:
    that is exactly why ex falso costs layer 1 nothing, and why it stays. *)
 
-(* eqty (univ 1) (Type0 -> Type0) Type0 : a false equation between types. *)
-Definition EqT : tm := Core.eqty (univ 1) (pi (univ 0) (univ 0)) (univ 0).
-Definition PT : tm := prf EqT.
+(* eqty (univ 2 1) (Type0 -> Type0) Type0 : a false equation between types.
+   With the level annotations, `univ 1 0` is the universe of the level-0 types
+   (living at level 1), so the arrow is a level-1 Pi and the equation is a
+   level-0 proposition -- `prop` being impredicative, that choice is free. *)
+Definition EqT : tm :=
+  Core.eqty (univ 2 1) (pi 1 (univ 1 0) (univ 1 0)) (univ 1 0).
+Definition PT : tm := prf 0 EqT.
 
 (* In context [PT], transport the identity function on Type0 along the
    variable proof, from the type (Type0 -> Type0) to the type Type0. *)
 Definition Cod : tm :=
-  transp (univ 1) (var_tm 0) (pi (univ 0) (univ 0)) (univ 0)
-         (var_tm 0) (lam (univ 0) (univ 0) (var_tm 0)).
+  transp (univ 2 1) (var_tm 0) (pi 1 (univ 1 0) (univ 1 0)) (univ 1 0)
+         (var_tm 0) (lam 1 (univ 1 0) (univ 1 0) (var_tm 0)).
 
-Definition Tbad : tm := pi PT Cod.
+Definition Tbad : tm := pi 0 PT Cod.
 
 (* ------------------------------------------------------------------ *)
 (* 1.  Under the large rule, Tbad is a well-formed closed type, with  *)
@@ -86,50 +90,57 @@ Section LargeTransp.
 
 (* The two absent rules, as hypotheses: all this file assumes. *)
 Hypothesis t_eq : forall G A t u k,
-  ty G A (univ k) -> ty G t A -> ty G u A -> ty G (Core.eqty A t u) prop.
+  ty G A (UU k) -> ty G t A -> ty G u A -> ty G (Core.eqty A t u) (prop 0).
 
 Hypothesis t_transp_large : forall G A B t u e b k j,
-  ty G A (univ k) -> ty (A :: G) B (univ j) ->
-  ty G t A -> ty G u A -> ty G e (prf (Core.eqty A t u)) -> ty G b (B [t..]) ->
+  ty G A (UU k) -> ty (A :: G) B (UU j) ->
+  ty G t A -> ty G u A -> ty G e (prf 0 (Core.eqty A t u)) -> ty G b (B [t..]) ->
   ty G (transp A B t u e b) (B [u..]).
 
 Lemma wf_nil : wfc nil.
 Proof. exact w_nil. Qed.
 
-Lemma ty_EqT : ty nil EqT prop.
+Lemma ty_U0 G (W : wfc G) : ty G (univ 1 0) (UU 1).
+Proof. exact (t_univ G 1 0 (le_n 1) W). Qed.
+
+Lemma ty_U1 G (W : wfc G) : ty G (univ 2 1) (UU 2).
+Proof. exact (t_univ G 2 1 (le_n 2) W). Qed.
+
+Lemma wf_U0 G (W : wfc G) : wfc (univ 1 0 :: G).
+Proof. exact (w_cons G (univ 1 0) 1 W (ty_U0 G W)). Qed.
+
+Lemma ty_arrow G (W : wfc G) : ty G (pi 1 (univ 1 0) (univ 1 0)) (UU 1).
 Proof.
-  apply (t_eq nil (univ 1) _ _ 2).
-  - apply t_univ, wf_nil.
-  - apply (t_pi nil (univ 0) (univ 0) 1); apply t_univ;
-      [apply wf_nil | apply (w_cons nil (univ 0) 1); [apply wf_nil | apply t_univ, wf_nil]].
-  - apply t_univ, wf_nil.
+  exact (t_pi G 1 1 (univ 1 0) (univ 1 0) (le_n 1) (ty_U0 G W)
+           (ty_U0 _ (wf_U0 G W))).
 Qed.
 
-Lemma ty_PT : ty nil PT (univ 0).
-Proof. apply t_prf, ty_EqT. Qed.
+Lemma ty_EqT : ty nil EqT (prop 0).
+Proof.
+  exact (t_eq nil (univ 2 1) _ _ 2 (ty_U1 nil wf_nil) (ty_arrow nil wf_nil)
+           (ty_U0 nil wf_nil)).
+Qed.
+
+Lemma ty_PT : ty nil PT (UU 0).
+Proof. exact (t_prf nil 0 0 EqT (le_n 0) ty_EqT). Qed.
 
 Lemma wf_PT : wfc (PT :: nil).
-Proof. apply (w_cons nil PT 0); [apply wf_nil | apply ty_PT]. Qed.
+Proof. exact (w_cons nil PT 0 wf_nil ty_PT). Qed.
 
-Lemma ty_Cod : ty (PT :: nil) Cod (univ 0).
+Lemma ty_Cod : ty (PT :: nil) Cod (univ 1 0).
 Proof.
-  apply (t_transp_large (PT :: nil) (univ 1) (var_tm 0) _ _ _ _ 2 1).
-  - apply t_univ, wf_PT.
-  - apply t_var; [apply (w_cons _ (univ 1) 2); [apply wf_PT | apply t_univ, wf_PT]
-                 | apply lookup_O].
-  - apply (t_pi _ (univ 0) (univ 0) 1); apply t_univ;
-      [apply wf_PT | apply (w_cons _ (univ 0) 1); [apply wf_PT | apply t_univ, wf_PT]].
-  - apply t_univ, wf_PT.
-  - apply t_var; [apply wf_PT | apply lookup_O].
-  - apply (t_lam _ (univ 0) (univ 0) _ 1).
-    + apply t_univ, wf_PT.
-    + apply t_univ, (w_cons _ (univ 0) 1); [apply wf_PT | apply t_univ, wf_PT].
-    + apply t_var; [apply (w_cons _ (univ 0) 1); [apply wf_PT | apply t_univ, wf_PT]
-                   | apply lookup_O].
+  refine (t_transp_large (PT :: nil) (univ 2 1) (var_tm 0) _ _ _ _ 2 1
+            (ty_U1 _ wf_PT) _ (ty_arrow _ wf_PT) (ty_U0 _ wf_PT)
+            (t_var _ 0 _ wf_PT (lookup_O _ _)) _).
+  - exact (t_var _ 0 _ (w_cons _ (univ 2 1) 2 wf_PT (ty_U1 _ wf_PT))
+             (lookup_O _ _)).
+  - refine (t_lam _ 1 1 (univ 1 0) (univ 1 0) (var_tm 0) (le_n 1)
+              (ty_U0 _ wf_PT) (ty_U0 _ (wf_U0 _ wf_PT)) _).
+    exact (t_var _ 0 _ (wf_U0 _ wf_PT) (lookup_O _ _)).
 Qed.
 
-Theorem ty_Tbad : ty nil Tbad (univ 0).
-Proof. apply (t_pi nil PT Cod 0); [apply ty_PT | apply ty_Cod]. Qed.
+Theorem ty_Tbad : ty nil Tbad (UU 0).
+Proof. exact (t_pi nil 0 0 PT Cod (le_n 0) ty_PT ty_Cod). Qed.
 
 End LargeTransp.
 
@@ -169,11 +180,11 @@ Qed.
    half of the layer-1 fundamental lemma (blueprint Theorem 6.7), which is
    the half every later layer consumes. *)
 Corollary large_transp_refutes_layer1 :
-  (forall G A t u k, ty G A (univ k) -> ty G t A -> ty G u A ->
-     ty G (Core.eqty A t u) prop) ->
+  (forall G A t u k, ty G A (UU k) -> ty G t A -> ty G u A ->
+     ty G (Core.eqty A t u) (prop 0)) ->
   (forall G A B t u e b k j,
-     ty G A (univ k) -> ty (A :: G) B (univ j) ->
-     ty G t A -> ty G u A -> ty G e (prf (Core.eqty A t u)) -> ty G b (B [t..]) ->
+     ty G A (UU k) -> ty (A :: G) B (UU j) ->
+     ty G t A -> ty G u A -> ty G e (prf 0 (Core.eqty A t u)) -> ty G b (B [t..]) ->
      ty G (transp A B t u e b) (B [u..])) ->
-  ~ (forall A k, ty nil A (univ k) -> Good_ty (er A)).
+  ~ (forall A k, ty nil A (UU k) -> Good_ty (er A)).
 Proof. intros HE HL H; apply Tbad_not_good, (H Tbad 0 (ty_Tbad HE HL)). Qed.

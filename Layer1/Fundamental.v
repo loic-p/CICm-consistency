@@ -216,11 +216,11 @@ Proof. rewrite er_subst1; apply sub_cons. Qed.
 
 (* The same, under Prf: the erasure has to be pushed through the Prf head
    before the substitution can be rearranged. *)
-Lemma er_sub1_prf (B u : tm) (s : nat -> etm) :
-  subst_etm s (er (prf (B [u..])))
+Lemma er_sub1_prf (j : nat) (B u : tm) (s : nat -> etm) :
+  subst_etm s (er (prf j (B [u..])))
   = eprf (subst_etm (scons (subst_etm s (er u)) s) (er B)).
 Proof.
-  change (subst_etm s (er (prf (B [u..])))) with (eprf (subst_etm s (er (B [u..])))).
+  change (subst_etm s (er (prf j (B [u..])))) with (eprf (subst_etm s (er (B [u..])))).
   rewrite er_sub1; reflexivity.
 Qed.
 
@@ -269,9 +269,9 @@ Qed.
    read off by er_nrec_succ, and sem_step puts it back into the applied form
    that the erased recursor's computation rule produces.  Nothing here opens a
    Pi-type any more -- the step has no type to open. *)
-Lemma sem_step_body (G : ctx) (C t t' : tm) (g g' : nat -> etm)
+Lemma sem_step_body (G : ctx) (j : nat) (C t t' : tm) (g g' : nat -> etm)
   (HS : SubstRel G g g')
-  (Hs : forall sigma sigma', SubstRel (C :: nat_ :: G) sigma sigma' ->
+  (Hs : forall sigma sigma', SubstRel (C :: nat_ j :: G) sigma sigma' ->
           Rel (subst_etm sigma (er (nrec_succ C)))
               (subst_etm sigma (er t)) (subst_etm sigma' (er t'))) :
   forall m m', NatPer m m' -> forall y y',
@@ -284,16 +284,16 @@ Proof.
   assert (Hm' : Rel enat m m')
     by (apply Rel_nat_intro;
         [apply gt_nat | apply eval_whnf; left; apply v_nat | exact Hm]).
-  assert (H1 : SubstRel (nat_ :: G) (scons m g) (scons m' g'))
-    by (apply (SubstRel_cons G nat_ g g' m m' HS); exact Hm').
+  assert (H1 : SubstRel (nat_ j :: G) (scons m g) (scons m' g'))
+    by (apply (SubstRel_cons G (nat_ j) g g' m m' HS); exact Hm').
   pose proof (Hs (scons y (scons m g)) (scons y' (scons m' g'))
-                (SubstRel_cons (nat_ :: G) C _ _ y y' H1 Hy)) as H2.
+                (SubstRel_cons (nat_ j :: G) C _ _ y y' H1 Hy)) as H2.
   rewrite er_nrec_succ in H2; exact H2.
 Qed.
 
-Lemma sem_step (G : ctx) (C t t' : tm) (g g' : nat -> etm)
+Lemma sem_step (G : ctx) (j : nat) (C t t' : tm) (g g' : nat -> etm)
   (HS : SubstRel G g g')
-  (Hs : forall sigma sigma', SubstRel (C :: nat_ :: G) sigma sigma' ->
+  (Hs : forall sigma sigma', SubstRel (C :: nat_ j :: G) sigma sigma' ->
           Rel (subst_etm sigma (er (nrec_succ C)))
               (subst_etm sigma (er t)) (subst_etm sigma' (er t'))) :
   forall m m', NatPer m m' -> forall y y',
@@ -304,7 +304,7 @@ Lemma sem_step (G : ctx) (C t t' : tm) (g g' : nat -> etm)
 Proof.
   intros m m' Hm y y' Hy.
   eapply Rel_exp; [apply reds_lam2_app | apply reds_lam2_app |].
-  apply (sem_step_body G C t t' g g' HS Hs); assumption.
+  apply (sem_step_body G j C t t' g g' HS Hs); assumption.
 Qed.
 
 Lemma sem_natrec (C : tm) (sg : nat -> etm) (k : nat) (z z' sc sc' : etm)
@@ -372,34 +372,34 @@ Proof. intros H; eapply Rel_trans; [exact H | apply Rel_sym, H]. Qed.
 (* The semantic type formers, at a pair of substitutions.             *)
 (* ------------------------------------------------------------------ *)
 
-Lemma sem_pi_eq (A B A' B' : tm) (k : nat) (s s' : nat -> etm)
+Lemma sem_pi_eq (A B A' B' : tm) (k m m' : nat) (s s' : nat -> etm)
   (HA : eqty k (subst_etm s (er A)) (subst_etm s' (er A')))
   (HB : forall u u', Rel (subst_etm s (er A)) u u' ->
         eqty k (subst_etm (scons u s) (er B)) (subst_etm (scons u' s') (er B'))) :
-  eqty k (subst_etm s (er (pi A B))) (subst_etm s' (er (pi A' B'))).
+  eqty k (subst_etm s (er (pi m A B))) (subst_etm s' (er (pi m' A' B'))).
 Proof.
   cbn; apply eqty_pi; [exact HA |].
   intros u u' Hu; eapply eqty_exp;
     [apply (reds_lam_app (er B) s u) | apply (reds_lam_app (er B') s' u') | apply HB, Hu].
 Qed.
 
-Lemma sem_sig_eq (A B A' B' : tm) (k : nat) (s s' : nat -> etm)
+Lemma sem_sig_eq (A B A' B' : tm) (k m m' : nat) (s s' : nat -> etm)
   (HA : eqty k (subst_etm s (er A)) (subst_etm s' (er A')))
   (HB : forall u u', Rel (subst_etm s (er A)) u u' ->
         eqty k (subst_etm (scons u s) (er B)) (subst_etm (scons u' s') (er B'))) :
-  eqty k (subst_etm s (er (sig_ A B))) (subst_etm s' (er (sig_ A' B'))).
+  eqty k (subst_etm s (er (sig_ m A B))) (subst_etm s' (er (sig_ m' A' B'))).
 Proof.
   cbn; apply eqty_sig; [exact HA |].
   intros u u' Hu; eapply eqty_exp;
     [apply (reds_lam_app (er B) s u) | apply (reds_lam_app (er B') s' u') | apply HB, Hu].
 Qed.
 
-Lemma sem_lam (A B : tm) (t t' : etm) (s s' : nat -> etm)
-  (HT : Good_ty (subst_etm s (er (pi A B))))
+Lemma sem_lam (k : nat) (A B : tm) (t t' : etm) (s s' : nat -> etm)
+  (HT : Good_ty (subst_etm s (er (pi k A B))))
   (H : forall u u', Rel (subst_etm s (er A)) u u' ->
        Rel (subst_etm (scons u s) (er B))
            (subst_etm (scons u s) t) (subst_etm (scons u' s') t')) :
-  Rel (subst_etm s (er (pi A B))) (subst_etm s (elam t)) (subst_etm s' (elam t')).
+  Rel (subst_etm s (er (pi k A B))) (subst_etm s (elam t)) (subst_etm s' (elam t')).
 Proof.
   eapply Rel_pi_intro; [exact HT | apply eval_whnf; left; apply v_pi |].
   intros u u' Hu.
@@ -408,8 +408,8 @@ Proof.
   apply H, Hu.
 Qed.
 
-Lemma sem_app (A B : tm) (f g u u' : etm) (s : nat -> etm)
-  (Hf : Rel (subst_etm s (er (pi A B))) f g)
+Lemma sem_app (k : nat) (A B : tm) (f g u u' : etm) (s : nat -> etm)
+  (Hf : Rel (subst_etm s (er (pi k A B))) f g)
   (Hu : Rel (subst_etm s (er A)) u u') :
   Rel (subst_etm (scons u s) (er B)) (eapp f u) (eapp g u').
 Proof.
@@ -417,13 +417,13 @@ Proof.
   apply (Rel_red_ty _ _ _ _ (reds_lam_app (er B) s u)) in H; exact H.
 Qed.
 
-Lemma sem_pair (A B : tm) (t t' u u' : etm) (s : nat -> etm)
-  (HT : Good_ty (subst_etm s (er (sig_ A B))))
+Lemma sem_pair (k : nat) (A B : tm) (t t' u u' : etm) (s : nat -> etm)
+  (HT : Good_ty (subst_etm s (er (sig_ k A B))))
   (H1 : Rel (subst_etm s (er A)) t t')
   (H2 : Rel (subst_etm (scons t s) (er B)) u u') :
-  Rel (subst_etm s (er (sig_ A B))) (epair t u) (epair t' u').
+  Rel (subst_etm s (er (sig_ k A B))) (epair t u) (epair t' u').
 Proof.
-  assert (Hev : eval (subst_etm s (er (sig_ A B)))
+  assert (Hev : eval (subst_etm s (er (sig_ k A B)))
                      (esig (subst_etm s (er A)) (elam (subst_etm (up_etm_etm s) (er B)))))
     by (apply eval_whnf; left; apply v_sig).
   assert (Hft : Rel (subst_etm s (er A)) (efst (epair t u)) t)
@@ -454,21 +454,21 @@ Definition SCv (G : ctx) (t u A : tm) : Prop :=
     Rel (subst_etm s (er A)) (subst_etm s (er t)) (subst_etm s' (er u)) /\
     Rel (subst_etm s (er A)) (subst_etm s (er u)) (subst_etm s' (er t)).
 
-Lemma SEl_U G A k : SEl G A (univ k) -> forall s s', SubstRel G s s' ->
+Lemma SEl_U G A k : SEl G A (UU k) -> forall s s', SubstRel G s s' ->
   eqty k (subst_etm s (er A)) (subst_etm s' (er A)).
 Proof.
   intros H s s' HS; eapply Rel_univ_elim;
     [apply eval_whnf; left; apply v_univ | apply H, HS].
 Qed.
 
-Lemma SEl_P G p : SEl G p prop -> forall s s', SubstRel G s s' ->
+Lemma SEl_P G p j : SEl G p (prop j) -> forall s s', SubstRel G s s' ->
   PR (subst_etm s (er p)) (subst_etm s' (er p)).
 Proof.
   intros H s s' HS; eapply Rel_prop_elim;
     [apply eval_whnf; left; apply v_prop | apply H, HS].
 Qed.
 
-Lemma SCv_U G A B k : SCv G A B (univ k) -> forall s s', SubstRel G s s' ->
+Lemma SCv_U G A B k : SCv G A B (UU k) -> forall s s', SubstRel G s s' ->
   eqty k (subst_etm s (er A)) (subst_etm s' (er B)) /\
   eqty k (subst_etm s (er B)) (subst_etm s' (er A)).
 Proof.
@@ -476,7 +476,7 @@ Proof.
     (eapply Rel_univ_elim; [apply eval_whnf; left; apply v_univ | eassumption]).
 Qed.
 
-Lemma SCv_P G p q : SCv G p q prop -> forall s s', SubstRel G s s' ->
+Lemma SCv_P G p q j : SCv G p q (prop j) -> forall s s', SubstRel G s s' ->
   PR (subst_etm s (er p)) (subst_etm s' (er q)) /\
   PR (subst_etm s (er q)) (subst_etm s' (er p)).
 Proof.
@@ -509,8 +509,8 @@ Lemma ev_eqty X Y Z : eval (eeqty X Y Z) (eeqty X Y Z).
 Proof. apply eval_whnf; left; apply v_eqty. Qed.
 
 (* The erasure of an eta-expansion, pushed under a substitution. *)
-Lemma er_eta (A B f : tm) (g : nat -> etm) :
-  subst_etm g (er (lam A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))))
+Lemma er_eta (k : nat) (A B f : tm) (g : nat -> etm) :
+  subst_etm g (er (lam k A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))))
   = elam (eapp (ren_etm shift (subst_etm g (er f))) (var_etm 0)).
 Proof. cbn; rewrite er_ren, sub_shift_up; reflexivity. Qed.
 
@@ -542,103 +542,107 @@ Proof.
     eapply Rel_cast;
       [apply (proj1 (SCv_U _ _ _ _ IHc g g (SubstRel_refl _ _ _ HS))) | apply IHt, HS].
   (* --- t_univ --- *)
-  - intros G k _ _ g g' HS.
+  - intros G k j Hjk _ _ g g' HS.
     eapply Rel_univ_intro; [apply gt_univ | apply ev_univ | apply eqty_univ; lia].
   (* --- t_up --- *)
-  - intros G A k _ IHA g g' HS.
+  - intros G j A _ IHA g g' HS.
     eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |].
-    apply (eqty_cumul k (S k)); [lia | apply (SEl_U _ _ _ IHA _ _ HS)].
+    apply (eqty_cumul j (S j)); [lia | apply (SEl_U _ _ _ IHA _ _ HS)].
   (* --- t_up_tm: the lift is invisible on realisers, so the term's value and
          its type's value are literally those of t and A --- *)
-  - intros G A t k _ IHA _ IHt g g' HS. apply IHt, HS.
+  - intros G j A t _ IHA _ IHt g g' HS. apply IHt, HS.
   (* --- t_pi --- *)
-  - intros G A B k _ IHA _ IHB g g' HS.
+  - intros G k j A B Hjk _ IHA _ IHB g g' HS.
     eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |].
-    apply sem_pi_eq; [apply (SEl_U _ _ _ IHA _ _ HS) |].
-    intros u u' Hu; apply (SEl_U _ _ _ IHB), (SubstRel_cons _ _ _ _ _ _ HS Hu).
+    apply sem_pi_eq;
+      [ apply (eqty_cumul j k _ _ Hjk), (SEl_U _ _ _ IHA _ _ HS) |].
+    intros u u' Hu; apply (eqty_cumul j k _ _ Hjk).
+    apply (SEl_U _ _ _ IHB), (SubstRel_cons _ _ _ _ _ _ HS Hu).
   (* --- t_lam --- *)
-  - intros G A B t k _ IHA _ IHB _ IHt g g' HS.
+  - intros G k j A B t Hjk _ IHA _ IHB _ IHt g g' HS.
     apply sem_lam.
-    + apply (gt_of k), sem_pi_eq;
+    + apply (gt_of j), sem_pi_eq;
         [apply (SEl_U _ _ _ IHA _ _ (SubstRel_refl _ _ _ HS)) |].
       intros u u' Hu; apply (SEl_U _ _ _ IHB),
         (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS) Hu).
     + intros u u' Hu; apply IHt, (SubstRel_cons _ _ _ _ _ _ HS Hu).
   (* --- t_app --- *)
-  - intros G A B f u k _ IHA _ IHB _ IHf _ IHu g g' HS.
-    rewrite er_sub1; apply (sem_app A B); [apply IHf, HS | apply IHu, HS].
+  - intros G k j A B f u Hjk _ IHA _ IHB _ IHf _ IHu g g' HS.
+    rewrite er_sub1; apply (sem_app k A B); [apply IHf, HS | apply IHu, HS].
   (* --- t_sig --- *)
-  - intros G A B k _ IHA _ IHB g g' HS.
+  - intros G k j A B Hjk _ IHA _ IHB g g' HS.
     eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |].
-    apply sem_sig_eq; [apply (SEl_U _ _ _ IHA _ _ HS) |].
-    intros u u' Hu; apply (SEl_U _ _ _ IHB), (SubstRel_cons _ _ _ _ _ _ HS Hu).
+    apply sem_sig_eq;
+      [ apply (eqty_cumul j k _ _ Hjk), (SEl_U _ _ _ IHA _ _ HS) |].
+    intros u u' Hu; apply (eqty_cumul j k _ _ Hjk).
+    apply (SEl_U _ _ _ IHB), (SubstRel_cons _ _ _ _ _ _ HS Hu).
   (* --- t_pair --- *)
-  - intros G A B t u k _ IHA _ IHB _ IHt _ IHu g g' HS.
-    apply (sem_pair A B).
-    + apply (gt_of k), sem_sig_eq;
+  - intros G k j A B t u Hjk _ IHA _ IHB _ IHt _ IHu g g' HS.
+    apply (sem_pair k A B).
+    + apply (gt_of j), sem_sig_eq;
         [apply (SEl_U _ _ _ IHA _ _ (SubstRel_refl _ _ _ HS)) |].
       intros v v' Hv; apply (SEl_U _ _ _ IHB),
         (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS) Hv).
     + apply IHt, HS.
     + pose proof (IHu g g' HS) as H; rewrite er_sub1 in H; exact H.
   (* --- t_fst --- *)
-  - intros G A B p k _ IHA _ IHB _ IHp g g' HS.
+  - intros G k j A B p Hjk _ IHA _ IHB _ IHp g g' HS.
     exact (proj1 (Rel_sig_elim _ _ _ _ _ (ev_sig _ _) (IHp g g' HS))).
   (* --- t_snd --- *)
-  - intros G A B p k _ IHA _ IHB _ IHp g g' HS.
+  - intros G k j A B p Hjk _ IHA _ IHB _ IHp g g' HS.
     rewrite er_sub1.
     pose proof (proj2 (Rel_sig_elim _ _ _ _ _ (ev_sig _ _) (IHp g g' HS))) as H.
     apply (Rel_red_ty _ _ _ _ (reds_lam_app (er B) g _)) in H; exact H.
   (* --- t_nat --- *)
-  - intros G _ _ g g' HS.
+  - intros G k _ _ g g' HS.
     eapply Rel_univ_intro; [apply gt_univ | apply ev_univ | apply eqty_nat].
   (* --- t_zero --- *)
-  - intros G _ _ g g' HS.
+  - intros G k _ _ g g' HS.
     apply Rel_nat_intro; [apply gt_nat | apply ev_nat | apply np_zero; apply ev_zero].
   (* --- t_succ --- *)
-  - intros G n _ IHn g g' HS.
+  - intros G k n _ IHn g g' HS.
     apply Rel_nat_intro; [apply gt_nat | apply ev_nat |].
     eapply np_succ; [apply ev_succ | apply ev_succ |].
     eapply Rel_nat_elim; [apply ev_nat | apply IHn, HS].
   (* --- t_natrec --- *)
-  - intros G C z sc n k _ IHC _ IHz _ IHs _ IHn g g' HS.
+  - intros G C z sc n k j _ IHC _ IHz _ IHs _ IHn g g' HS.
     assert (HCe : forall m m', NatPer m m' ->
               eqty k (subst_etm (scons m g) (er C)) (subst_etm (scons m' g) (er C))).
     { intros m m' Hm; apply (SEl_U _ _ _ IHC).
-      apply (SubstRel_cons _ nat_ _ _ _ _ (SubstRel_refl _ _ _ HS)).
+      apply (SubstRel_cons _ (nat_ j) _ _ _ _ (SubstRel_refl _ _ _ HS)).
       apply Rel_nat_intro; [apply gt_nat | apply ev_nat | exact Hm]. }
     rewrite er_sub1.
     apply (sem_natrec C g k _ _ _ _ HCe).
     + pose proof (IHz g g' HS) as H; rewrite er_sub1 in H; exact H.
-    + apply (sem_step G C sc sc g g' HS IHs).
+    + apply (sem_step G j C sc sc g g' HS IHs).
     + eapply Rel_nat_elim; [apply ev_nat | apply IHn, HS].
   (* --- t_prop --- *)
-  - intros G _ _ g g' HS.
+  - intros G k _ _ g g' HS.
     eapply Rel_univ_intro; [apply gt_univ | apply ev_univ | apply eqty_prop].
   (* --- t_prf --- *)
-  - intros G p _ IHp g g' HS.
+  - intros G k j p Hjk _ IHp g g' HS.
     eapply Rel_univ_intro;
-      [apply gt_univ | apply ev_univ | apply eqty_prf, (SEl_P _ _ IHp _ _ HS)].
+      [apply gt_univ | apply ev_univ | apply eqty_prf, (SEl_P _ _ _ IHp _ _ HS)].
   (* --- t_all --- *)
-  - intros G A p k _ IHA _ IHp g g' HS.
+  - intros G A p j k _ IHA _ IHp g g' HS.
     apply Rel_prop_intro; [apply gt_prop | apply ev_prop |].
     eapply PR_all; apply ev_all.
   (* --- t_all_intro --- *)
-  - intros G A p t k _ IHA _ IHp _ IHt g g' HS.
+  - intros G A p t j k _ IHA _ IHp _ IHt g g' HS.
     eapply Rel_prf_intro; [| apply ev_prf].
     apply (gt_of 0), eqty_prf; eapply PR_all; apply ev_all.
   (* --- t_all_elim --- *)
-  - intros G A p f u k _ IHA _ IHp _ IHf _ IHu g g' HS.
+  - intros G A p f u j k _ IHA _ IHp _ IHf _ IHu g g' HS.
     rewrite er_sub1_prf.
     eapply Rel_prf_intro; [| apply ev_prf].
     apply (gt_of 0), eqty_prf.
-    apply (SEl_P _ _ IHp), (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS)).
+    apply (SEl_P _ _ _ IHp), (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS)).
     apply (Rel_refl_l _ _ _ (IHu g g' HS)).
   (* --- t_false --- *)
-  - intros G _ _ g g' HS.
+  - intros G k _ _ g g' HS.
     apply Rel_prop_intro; [apply gt_prop | apply ev_prop | apply PR_false; apply ev_false].
   (* --- t_absurd --- *)
-  - intros G T e k _ IHT _ IHe g g' HS.
+  - intros G T e k j _ IHT _ IHe g g' HS.
     apply Rel_stuck;
       [apply (gt_of k), (SEl_U _ _ _ IHT _ _ (SubstRel_refl _ _ _ HS))
       | apply stuckv_err | apply stuckv_err].
@@ -661,36 +665,74 @@ Proof.
     pose proof (proj1 (SCv_U _ _ _ _ IHAB g g (SubstRel_refl _ _ _ HS))) as E.
     split; eapply Rel_cast; [exact E | exact H1 | exact E | exact H2].
   (* --- c_prf_irr --- *)
-  - intros G p e e' _ IHp _ _ _ _ g g' HS.
-    assert (HG : Good_ty (subst_etm g (er (prf p))))
-      by (apply (gt_of 0), eqty_prf, (SEl_P _ _ IHp _ _ (SubstRel_refl _ _ _ HS))).
+  - intros G j p e e' _ IHp _ _ _ _ g g' HS.
+    assert (HG : Good_ty (subst_etm g (er (prf j p))))
+      by (apply (gt_of 0), eqty_prf, (SEl_P _ _ _ IHp _ _ (SubstRel_refl _ _ _ HS))).
     split; eapply Rel_prf_intro; [exact HG | apply ev_prf | exact HG | apply ev_prf].
   (* --- c_up --- *)
-  - intros G A A' k _ IHA _ IHA' _ IHc g g' HS.
+  - intros G j A A' _ IHA _ IHA' _ IHc g g' HS.
     destruct (SCv_U _ _ _ _ IHc g g' HS) as [E1 E2]; split.
     + eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |].
-      apply (eqty_cumul k (S k)); [lia | exact E1].
+      apply (eqty_cumul j (S j)); [lia | exact E1].
     + eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |].
-      apply (eqty_cumul k (S k)); [lia | exact E2].
+      apply (eqty_cumul j (S j)); [lia | exact E2].
   (* --- c_up_tm --- *)
-  - intros G A t t' k _ IHA _ IHt _ IHt' _ IHc g g' HS. exact (IHc g g' HS).
+  - intros G j A t t' _ IHA _ IHt _ IHt' _ IHc g g' HS. exact (IHc g g' HS).
+  (* --- the six lift computations: the two sides have the SAME erasure, so
+         each is the formation case of the corresponding former, one level up,
+         twice --- *)
+  - (* c_up_univ *) intros G k j Hjk _ _ g g' HS.
+    split; (eapply Rel_univ_intro;
+            [apply gt_univ | apply ev_univ | apply eqty_univ; lia]).
+  - (* c_up_nat *) intros G k _ _ g g' HS.
+    split; (eapply Rel_univ_intro;
+            [apply gt_univ | apply ev_univ | apply eqty_nat]).
+  - (* c_up_prop *) intros G k _ _ g g' HS.
+    split; (eapply Rel_univ_intro;
+            [apply gt_univ | apply ev_univ | apply eqty_prop]).
+  - (* c_up_prf *) intros G k j p Hjk _ IHp g g' HS.
+    split; (eapply Rel_univ_intro;
+            [apply gt_univ | apply ev_univ
+            | apply eqty_prf, (SEl_P _ _ _ IHp _ _ HS)]).
+  - (* c_up_pi *) intros G k j A B Hjk _ IHA _ IHB g g' HS.
+    assert (HA : eqty (S k) (subst_etm g (er A)) (subst_etm g' (er A))) by
+      (apply (eqty_cumul j (S k) _ _ (le_S _ _ Hjk)), (SEl_U _ _ _ IHA _ _ HS)).
+    assert (HB : forall u u', Rel (subst_etm g (er A)) u u' ->
+                 eqty (S k) (subst_etm (scons u g) (er B))
+                            (subst_etm (scons u' g') (er B))) by
+      (intros u u' Hu; apply (eqty_cumul j (S k) _ _ (le_S _ _ Hjk));
+       apply (SEl_U _ _ _ IHB), (SubstRel_cons _ _ _ _ _ _ HS Hu)).
+    split; (eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |]).
+    + exact (sem_pi_eq A B A B (S k) k (S k) g g' HA HB).
+    + exact (sem_pi_eq A B A B (S k) (S k) k g g' HA HB).
+  - (* c_up_sig *) intros G k j A B Hjk _ IHA _ IHB g g' HS.
+    assert (HA : eqty (S k) (subst_etm g (er A)) (subst_etm g' (er A))) by
+      (apply (eqty_cumul j (S k) _ _ (le_S _ _ Hjk)), (SEl_U _ _ _ IHA _ _ HS)).
+    assert (HB : forall u u', Rel (subst_etm g (er A)) u u' ->
+                 eqty (S k) (subst_etm (scons u g) (er B))
+                            (subst_etm (scons u' g') (er B))) by
+      (intros u u' Hu; apply (eqty_cumul j (S k) _ _ (le_S _ _ Hjk));
+       apply (SEl_U _ _ _ IHB), (SubstRel_cons _ _ _ _ _ _ HS Hu)).
+    split; (eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |]).
+    + exact (sem_sig_eq A B A B (S k) k (S k) g g' HA HB).
+    + exact (sem_sig_eq A B A B (S k) (S k) k g g' HA HB).
   (* --- c_pi --- *)
-  - intros G A A' B B' k _ IHA _ IHB _ IHA' _ IHB' _ IHcA _ IHcB g g' HS.
+  - intros G k j A A' B B' Hjk _ IHA _ IHB _ IHA' _ IHB' _ IHcA _ IHcB g g' HS.
     destruct (SCv_U _ _ _ _ IHcA g g' HS) as [EA1 EA2].
     destruct (SCv_U _ _ _ _ IHcA g g (SubstRel_refl _ _ _ HS)) as [_ EAr2].
     split; (eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |]).
-    + apply sem_pi_eq; [exact EA1 |].
-      intros u u' Hu.
+    + apply sem_pi_eq; [apply (eqty_cumul j k _ _ Hjk), EA1 |].
+      intros u u' Hu; apply (eqty_cumul j k _ _ Hjk).
       apply (proj1 (SCv_U _ _ _ _ IHcB _ _ (SubstRel_cons _ _ _ _ _ _ HS Hu))).
-    + apply sem_pi_eq; [exact EA2 |].
-      intros u u' Hu.
+    + apply sem_pi_eq; [apply (eqty_cumul j k _ _ Hjk), EA2 |].
+      intros u u' Hu; apply (eqty_cumul j k _ _ Hjk).
       apply (proj2 (SCv_U _ _ _ _ IHcB _ _
         (SubstRel_cons _ _ _ _ _ _ HS (Rel_cast _ _ _ _ _ EAr2 Hu)))).
   (* --- c_lam --- *)
-  - intros G A A' B B' t t' k _ IHA _ IHB _ IHA' _ IHB' _ IHcA _ IHcB _ IHt _ IHt'
+  - intros G k j A A' B B' t t' Hjk _ IHA _ IHB _ IHA' _ IHB' _ IHcA _ IHcB _ IHt _ IHt'
       _ IHct g g' HS.
-    assert (HT : Good_ty (subst_etm g (er (pi A B)))).
-    { apply (gt_of k), sem_pi_eq;
+    assert (HT : Good_ty (subst_etm g (er (pi k A B)))).
+    { apply (gt_of j), sem_pi_eq;
         [apply (SEl_U _ _ _ IHA _ _ (SubstRel_refl _ _ _ HS)) |].
       intros u u' Hu; apply (SEl_U _ _ _ IHB),
         (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS) Hu). }
@@ -698,26 +740,26 @@ Proof.
     + intros u u' Hu; apply (proj1 (IHct _ _ (SubstRel_cons _ _ _ _ _ _ HS Hu))).
     + intros u u' Hu; apply (proj2 (IHct _ _ (SubstRel_cons _ _ _ _ _ _ HS Hu))).
   (* --- c_app --- *)
-  - intros G A B f f' u u' k _ IHA _ IHB _ IHf _ IHf' _ IHcf _ IHu _ IHu' _ IHcu g g' HS.
+  - intros G k j A B f f' u u' Hjk _ IHA _ IHB _ IHf _ IHf' _ IHcf _ IHu _ IHu' _ IHcu g g' HS.
     destruct (IHcf g g' HS) as [Hf1 Hf2].
     destruct (IHcu g g' HS) as [Hu1 Hu2].
     destruct (IHcu g g (SubstRel_refl _ _ _ HS)) as [_ Hur2].
     rewrite er_sub1; split.
-    + apply (sem_app A B); [exact Hf1 | exact Hu1].
+    + apply (sem_app k A B); [exact Hf1 | exact Hu1].
     + eapply Rel_cast;
         [apply (SEl_U _ _ _ IHB _ _
            (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS) Hur2)) |].
-      apply (sem_app A B); [exact Hf2 | exact Hu2].
+      apply (sem_app k A B); [exact Hf2 | exact Hu2].
   (* --- c_beta --- *)
-  - intros G A B t u k _ IHA _ IHB _ IHt _ IHu g g' HS.
+  - intros G k j A B t u Hjk _ IHA _ IHB _ IHt _ IHu g g' HS.
     pose proof (IHt _ _ (SubstRel_cons _ _ _ _ _ _ HS (IHu g g' HS))) as H.
     rewrite !er_sub1; split.
     + eapply Rel_exp; [apply (reds_lam_app (er t) g _) | apply reds_refl | exact H].
     + eapply Rel_exp; [apply reds_refl | apply (reds_lam_app (er t) g' _) | exact H].
   (* --- c_eta --- *)
-  - intros G A B f k _ IHA _ IHB _ IHf g g' HS.
-    assert (HT : Good_ty (subst_etm g (er (pi A B)))).
-    { apply (gt_of k), sem_pi_eq;
+  - intros G k j A B f Hjk _ IHA _ IHB _ IHf g g' HS.
+    assert (HT : Good_ty (subst_etm g (er (pi k A B)))).
+    { apply (gt_of j), sem_pi_eq;
         [apply (SEl_U _ _ _ IHA _ _ (SubstRel_refl _ _ _ HS)) |].
       intros u u' Hu; apply (SEl_U _ _ _ IHB),
         (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS) Hu). }
@@ -725,25 +767,25 @@ Proof.
       intros u u' Hu;
       (eapply Rel_exp_ty; [apply (reds_lam_app (er B) g u) |]).
     + eapply Rel_exp; [apply reds_eta | apply reds_refl |].
-      apply (sem_app A B); [apply IHf, HS | exact Hu].
+      apply (sem_app k A B); [apply IHf, HS | exact Hu].
     + eapply Rel_exp; [apply reds_refl | apply reds_eta |].
-      apply (sem_app A B); [apply IHf, HS | exact Hu].
+      apply (sem_app k A B); [apply IHf, HS | exact Hu].
   (* --- c_sig --- *)
-  - intros G A A' B B' k _ IHA _ IHB _ IHA' _ IHB' _ IHcA _ IHcB g g' HS.
+  - intros G k j A A' B B' Hjk _ IHA _ IHB _ IHA' _ IHB' _ IHcA _ IHcB g g' HS.
     destruct (SCv_U _ _ _ _ IHcA g g' HS) as [EA1 EA2].
     destruct (SCv_U _ _ _ _ IHcA g g (SubstRel_refl _ _ _ HS)) as [_ EAr2].
     split; (eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |]).
-    + apply sem_sig_eq; [exact EA1 |].
-      intros u u' Hu.
+    + apply sem_sig_eq; [apply (eqty_cumul j k _ _ Hjk), EA1 |].
+      intros u u' Hu; apply (eqty_cumul j k _ _ Hjk).
       apply (proj1 (SCv_U _ _ _ _ IHcB _ _ (SubstRel_cons _ _ _ _ _ _ HS Hu))).
-    + apply sem_sig_eq; [exact EA2 |].
-      intros u u' Hu.
+    + apply sem_sig_eq; [apply (eqty_cumul j k _ _ Hjk), EA2 |].
+      intros u u' Hu; apply (eqty_cumul j k _ _ Hjk).
       apply (proj2 (SCv_U _ _ _ _ IHcB _ _
         (SubstRel_cons _ _ _ _ _ _ HS (Rel_cast _ _ _ _ _ EAr2 Hu)))).
   (* --- c_pair --- *)
-  - intros G A B t t' u u' k _ IHA _ IHB _ IHt _ IHt' _ IHct _ IHu _ IHu' _ IHcu g g' HS.
-    assert (HT : Good_ty (subst_etm g (er (sig_ A B)))).
-    { apply (gt_of k), sem_sig_eq;
+  - intros G k j A B t t' u u' Hjk _ IHA _ IHB _ IHt _ IHt' _ IHct _ IHu _ IHu' _ IHcu g g' HS.
+    assert (HT : Good_ty (subst_etm g (er (sig_ k A B)))).
+    { apply (gt_of j), sem_sig_eq;
         [apply (SEl_U _ _ _ IHA _ _ (SubstRel_refl _ _ _ HS)) |].
       intros v v' Hv; apply (SEl_U _ _ _ IHB),
         (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS) Hv). }
@@ -752,18 +794,18 @@ Proof.
     destruct (IHcu g g' HS) as [Hu1 Hu2].
     rewrite er_sub1 in Hu1, Hu2.
     split.
-    + apply (sem_pair A B); [exact HT | exact Ht1 | exact Hu1].
-    + apply (sem_pair A B); [exact HT | exact Ht2 |].
+    + apply (sem_pair k A B); [exact HT | exact Ht1 | exact Hu1].
+    + apply (sem_pair k A B); [exact HT | exact Ht2 |].
       eapply Rel_cast;
         [apply (SEl_U _ _ _ IHB _ _
            (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS) Htr1)) | exact Hu2].
   (* --- c_fst --- *)
-  - intros G A B p p' k _ IHA _ IHB _ IHp _ IHp' _ IHcp g g' HS.
+  - intros G k j A B p p' Hjk _ IHA _ IHB _ IHp _ IHp' _ IHcp g g' HS.
     destruct (IHcp g g' HS) as [H1 H2]; split.
     + exact (proj1 (Rel_sig_elim _ _ _ _ _ (ev_sig _ _) H1)).
     + exact (proj1 (Rel_sig_elim _ _ _ _ _ (ev_sig _ _) H2)).
   (* --- c_snd --- *)
-  - intros G A B p p' k _ IHA _ IHB _ IHp _ IHp' _ IHcp g g' HS.
+  - intros G k j A B p p' Hjk _ IHA _ IHB _ IHp _ IHp' _ IHcp g g' HS.
     destruct (IHcp g g' HS) as [H1 H2].
     destruct (IHcp g g (SubstRel_refl _ _ _ HS)) as [_ Hr2].
     rewrite er_sub1; split.
@@ -775,18 +817,18 @@ Proof.
       apply (SEl_U _ _ _ IHB _ _ (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS)
         (proj1 (Rel_sig_elim _ _ _ _ _ (ev_sig _ _) Hr2)))).
   (* --- c_fst_beta --- *)
-  - intros G A B t u k _ IHA _ IHB _ IHt _ IHu g g' HS; split.
+  - intros G k j A B t u Hjk _ IHA _ IHB _ IHt _ IHu g g' HS; split.
     + eapply Rel_exp; [apply reds_fst_pair | apply reds_refl | apply IHt, HS].
     + eapply Rel_exp; [apply reds_refl | apply reds_fst_pair | apply IHt, HS].
   (* --- c_snd_beta --- *)
-  - intros G A B t u k _ IHA _ IHB _ IHt _ IHu g g' HS.
+  - intros G k j A B t u Hjk _ IHA _ IHB _ IHt _ IHu g g' HS.
     pose proof (IHu g g' HS) as H; split.
     + eapply Rel_exp; [apply reds_snd_pair | apply reds_refl | exact H].
     + eapply Rel_exp; [apply reds_refl | apply reds_snd_pair | exact H].
   (* --- c_surj --- *)
-  - intros G A B p k _ IHA _ IHB _ IHp g g' HS.
-    assert (HT : Good_ty (subst_etm g (er (sig_ A B)))).
-    { apply (gt_of k), sem_sig_eq;
+  - intros G k j A B p Hjk _ IHA _ IHB _ IHp g g' HS.
+    assert (HT : Good_ty (subst_etm g (er (sig_ k A B)))).
+    { apply (gt_of j), sem_sig_eq;
         [apply (SEl_U _ _ _ IHA _ _ (SubstRel_refl _ _ _ HS)) |].
       intros v v' Hv; apply (SEl_U _ _ _ IHB),
         (SubstRel_cons _ _ _ _ _ _ (SubstRel_refl _ _ _ HS) Hv). }
@@ -809,49 +851,49 @@ Proof.
         eapply Rel_exp_ty; [apply (reds_lam_app (er B) g _) |].
         eapply Rel_exp; [apply reds_refl | apply reds_snd_pair | exact Hs1].
   (* --- c_succ --- *)
-  - intros G n n' _ IHn _ IHn' _ IHcn g g' HS.
+  - intros G k n n' _ IHn _ IHn' _ IHcn g g' HS.
     destruct (IHcn g g' HS) as [H1 H2].
     split; (apply Rel_nat_intro; [apply gt_nat | apply ev_nat |]);
       (eapply np_succ; [apply ev_succ | apply ev_succ |]).
     + eapply Rel_nat_elim; [apply ev_nat | exact H1].
     + eapply Rel_nat_elim; [apply ev_nat | exact H2].
   (* --- c_natrec --- *)
-  - intros G C C' z z' sc sc' n n' k _ IHC _ IHC' _ IHcC _ IHz _ IHz' _ IHcz
+  - intros G C C' z z' sc sc' n n' k j _ IHC _ IHC' _ IHcC _ IHz _ IHz' _ IHcz
       _ IHs _ IHs' _ IHcs _ IHn _ IHn' _ IHcn g g' HS.
     assert (HCe : forall m m', NatPer m m' ->
               eqty k (subst_etm (scons m g) (er C)) (subst_etm (scons m' g) (er C))).
     { intros m m' Hm; apply (SEl_U _ _ _ IHC).
-      apply (SubstRel_cons _ nat_ _ _ _ _ (SubstRel_refl _ _ _ HS)).
+      apply (SubstRel_cons _ (nat_ j) _ _ _ _ (SubstRel_refl _ _ _ HS)).
       apply Rel_nat_intro; [apply gt_nat | apply ev_nat | exact Hm]. }
     destruct (IHcz g g' HS) as [Hz1 Hz2]; rewrite er_sub1 in Hz1, Hz2.
     destruct (IHcn g g' HS) as [Hn1 Hn2].
     destruct (IHcn g g (SubstRel_refl _ _ _ HS)) as [_ Hnr2].
     rewrite er_sub1; split.
     + apply (sem_natrec C g k _ _ _ _ HCe Hz1
-               (sem_step G C sc sc' g g' HS
+               (sem_step G j C sc sc' g g' HS
                   (fun si si' H => proj1 (IHcs si si' H)))).
       eapply Rel_nat_elim; [apply ev_nat | exact Hn1].
     + eapply Rel_cast;
         [apply HCe; (eapply Rel_nat_elim; [apply ev_nat | exact Hnr2]) |].
       apply (sem_natrec C g k _ _ _ _ HCe Hz2
-               (sem_step G C sc' sc g g' HS
+               (sem_step G j C sc' sc g g' HS
                   (fun si si' H => proj2 (IHcs si si' H)))).
       eapply Rel_nat_elim; [apply ev_nat | exact Hn2].
   (* --- c_rec_zero --- *)
-  - intros G C z sc k _ IHC _ IHz _ IHs g g' HS.
+  - intros G C z sc k j _ IHC _ IHz _ IHs g g' HS.
     pose proof (IHz g g' HS) as H; rewrite er_sub1 in H; rewrite er_sub1; split.
     + eapply Rel_exp; [apply (reds_rec_zero _ _ _ ev_zero) | apply reds_refl | exact H].
     + eapply Rel_exp; [apply reds_refl | apply (reds_rec_zero _ _ _ ev_zero) | exact H].
   (* --- c_rec_succ --- *)
-  - intros G C z sc n k _ IHC _ IHz _ IHs _ IHn g g' HS.
+  - intros G C z sc n k j _ IHC _ IHz _ IHs _ IHn g g' HS.
     assert (HCe : forall m m', NatPer m m' ->
               eqty k (subst_etm (scons m g) (er C)) (subst_etm (scons m' g) (er C))).
     { intros m m' Hm; apply (SEl_U _ _ _ IHC).
-      apply (SubstRel_cons _ nat_ _ _ _ _ (SubstRel_refl _ _ _ HS)).
+      apply (SubstRel_cons _ (nat_ j) _ _ _ _ (SubstRel_refl _ _ _ HS)).
       apply Rel_nat_intro; [apply gt_nat | apply ev_nat | exact Hm]. }
     pose proof (IHz g g' HS) as Hz; rewrite er_sub1 in Hz.
-    pose proof (sem_step G C sc sc g g' HS IHs) as Hst.
-    pose proof (sem_step_body G C sc sc g g' HS IHs) as Hbody.
+    pose proof (sem_step G j C sc sc g g' HS IHs) as Hst.
+    pose proof (sem_step_body G j C sc sc g g' HS IHs) as Hbody.
     pose proof (Rel_nat_elim _ _ _ ev_nat (IHn g g' HS)) as Hn.
     pose proof (sem_natrec C g k _ _ _ _ HCe Hz Hst _ _ Hn) as Hrec.
     rewrite er_sub1, !er_sub2; split.
@@ -866,13 +908,13 @@ Proof.
             [apply (reds_rec_succ _ _ _ _ (ev_succ _)) | apply reds_lam2_app] |].
       exact (Hbody _ _ Hn _ _ Hrec).
   (* --- c_prf --- *)
-  - intros G p p' _ IHp _ IHp' _ IHcp g g' HS.
-    destruct (SCv_P _ _ _ IHcp g g' HS) as [E1 E2].
+  - intros G k j p p' Hjk _ IHp _ IHp' _ IHcp g g' HS.
+    destruct (SCv_P _ _ _ _ IHcp g g' HS) as [E1 E2].
     split; (eapply Rel_univ_intro; [apply gt_univ | apply ev_univ |]).
     + apply eqty_prf, E1.
     + apply eqty_prf, E2.
   (* --- c_all --- *)
-  - intros G A A' p p' k _ IHA _ IHp _ IHA' _ IHp' _ IHcA _ IHcp g g' HS.
+  - intros G A A' p p' j k _ IHA _ IHp _ IHA' _ IHp' _ IHcA _ IHcp g g' HS.
     split; (apply Rel_prop_intro; [apply gt_prop | apply ev_prop |]);
       (eapply PR_all; apply ev_all).
 Qed.
@@ -887,15 +929,15 @@ Proof. apply fundamental. Qed.
 Corollary fundamental_cv G t u A : cv G t u A -> SCv G t u A.
 Proof. apply fundamental. Qed.
 
-Corollary fundamental_U G A k : ty G A (univ k) ->
+Corollary fundamental_U G A k : ty G A (UU k) ->
   forall g g', SubstRel G g g' -> eqty k (subst_etm g (er A)) (subst_etm g' (er A)).
 Proof. intros H; apply (SEl_U _ _ _ (fundamental_ty _ _ _ H)). Qed.
 
-Corollary fundamental_P G p : ty G p prop ->
+Corollary fundamental_P G p j : ty G p (prop j) ->
   forall g g', SubstRel G g g' -> PR (subst_etm g (er p)) (subst_etm g' (er p)).
-Proof. intros H; apply (SEl_P _ _ (fundamental_ty _ _ _ H)). Qed.
+Proof. intros H; apply (SEl_P _ _ _ (fundamental_ty _ _ _ H)). Qed.
 
-Corollary fundamental_cv_U G A B k : cv G A B (univ k) ->
+Corollary fundamental_cv_U G A B k : cv G A B (UU k) ->
   forall g g', SubstRel G g g' -> eqty k (subst_etm g (er A)) (subst_etm g' (er B)).
 Proof. intros H g g' HS; apply (proj1 (SCv_U _ _ _ _ (fundamental_cv _ _ _ _ H) g g' HS)). Qed.
 
@@ -905,13 +947,13 @@ Proof. intros H g g' HS; apply (proj1 (SCv_U _ _ _ _ (fundamental_cv _ _ _ _ H) 
 Lemma SubstRel_nil : SubstRel nil var_etm var_etm.
 Proof. exact I. Qed.
 
-Corollary closed_eqty A k : ty nil A (univ k) -> eqty k (er A) (er A).
+Corollary closed_eqty A k : ty nil A (UU k) -> eqty k (er A) (er A).
 Proof.
   intros H; pose proof (fundamental_U _ _ _ H var_etm var_etm SubstRel_nil) as E.
   rewrite !instId'_etm in E; exact E.
 Qed.
 
-Corollary closed_Good_ty A k : ty nil A (univ k) -> Good_ty (er A).
+Corollary closed_Good_ty A k : ty nil A (UU k) -> Good_ty (er A).
 Proof. intros H; exists k; apply closed_eqty, H. Qed.
 
 Corollary closed_Good t A : ty nil t A -> Good (er A) (er t).
@@ -927,11 +969,11 @@ Qed.
    Typing/Rules.v would make this theorem false, which is why Eq is absent
    from the formalised theory rather than present in a weakened form. *)
 Corollary Eq_with_transport_inadmissible :
-  (forall G A t u k, ty G A (univ k) -> ty G t A -> ty G u A ->
-     ty G (Core.eqty A t u) prop) ->
+  (forall G A t u k, ty G A (UU k) -> ty G t A -> ty G u A ->
+     ty G (Core.eqty A t u) (prop 0)) ->
   (forall G A B t u e b k j,
-     ty G A (univ k) -> ty (A :: G) B (univ j) ->
-     ty G t A -> ty G u A -> ty G e (prf (Core.eqty A t u)) -> ty G b (B [t..]) ->
+     ty G A (UU k) -> ty (A :: G) B (UU j) ->
+     ty G t A -> ty G u A -> ty G e (prf 0 (Core.eqty A t u)) -> ty G b (B [t..]) ->
      ty G (transp A B t u e b) (B [u..])) -> False.
 Proof.
   intros HE HL; apply (large_transp_refutes_layer1 HE HL).

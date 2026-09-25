@@ -7,7 +7,7 @@ From CICM Require Import Codes.Def Codes.Sound Codes.EqPER Codes.Expand Codes.Is
   Codes.WF Codes.IsoPER Codes.Levels Codes.Lift Codes.LiftIso.
 From CICM Require Import Interp.Codes Interp.Stage Interp.Build Interp.Fam Interp.Lift
   Interp.PiFam Interp.SigFam Interp.Univ Interp.Env Interp.Elem Interp.PiEl Interp.SigEl
-  Interp.Rec Interp.Def Interp.Inv Interp.Ctx Interp.Subst Interp.Fun.
+  Interp.Rec Interp.LiftN Interp.Def Interp.Inv Interp.Ctx Interp.Subst Interp.Fun.
 From Stdlib Require Import Arith Lia.
 
 Import UnscopedNotations.
@@ -73,224 +73,18 @@ Proof.
     apply Rel_sym; apply (kRel_rel FA' FA u' x' u x); apply kRel_sym; exact Hrel.
 Qed.
 
-Definition SemTm (G : ctx) (t A : tm) : Type :=
-  forall k rho rho' (HE : EnvRelOf G rho rho')
-    (F : kUFam k (ers rho A)) (F' : kUFam k (ers rho' A))
-    (DA : ITy rho A k (ers rho A) F) (DA' : ITy rho' A k (ers rho' A) F')
-    (IA : iso (kAt F) (kAt F')),
-    { x : kElAt F (ers rho t) &
-    { x' : kElAt F' (ers rho' t) &
-      (ITm rho t k (ers rho A) F (ers rho t) x *
-       ITm rho' t k (ers rho' A) F' (ers rho' t) x' *
-       kRel F F' (ers rho t) x (ers rho' t) x')%type } }.
+(* Related environments have the same levels, so level functionality applies to
+   two derivations taken in them.  That is what pins the components' level at
+   Pi and Sigma, which the subject records only through its annotation, and the
+   proposition's level at Prf, which it does not record at all.
+   (lvls_of_EnvRel itself lives in Interp/Fun.v, next to level functionality.) *)
+Lemma lvls_of_EnvRelOf G rho rho' : EnvRelOf G rho rho' -> lvls rho = lvls rho'.
+Proof. intros [_ [_ [HR _]]]; exact (lvls_of_EnvRel rho rho' HR). Qed.
 
-Definition SemTy (G : ctx) (t A : tm) : Type :=
-  forall m rho rho' (HE : EnvRelOf G rho rho')
-    (F : kUFam (S m) (ers rho A)) (F' : kUFam (S m) (ers rho' A))
-    (DA : ITy rho A (S m) (ers rho A) F) (DA' : ITy rho' A (S m) (ers rho' A) F')
-    (IA : iso (kAt F) (kAt F'))
-    (P : iso (kAt F) (kAt (univFam m))),
-    { FT : kUFam m (ers rho t) &
-    { FT' : kUFam m (ers rho' t) &
-      (ITy rho t m (ers rho t) FT * ITy rho' t m (ers rho' t) FT' *
-       iso (kAt FT) (kAt FT'))%type } }.
-
-Definition SemJ (G : ctx) (t A : tm) : Type := (SemTm G t A * SemTy G t A)%type.
-
-(* Conversion, in BOTH orders, exactly as layer 1 states it and for the same
-   reason: SubstRel is not symmetric (moving the relation from one entry's
-   realiser to the other's is layer 1's type clause at the context type), so
-   the pair of environments is fixed throughout and both directions have to be
-   carried explicitly. *)
-Definition SemC (G : ctx) (t t' A : tm) : Type :=
-  forall k rho rho' (HE : EnvRelOf G rho rho')
-    (F : kUFam k (ers rho A)) (F' : kUFam k (ers rho' A))
-    (DA : ITy rho A k (ers rho A) F) (DA' : ITy rho' A k (ers rho' A) F')
-    (IA : iso (kAt F) (kAt F')),
-    { x : kElAt F (ers rho t) &
-    { x' : kElAt F' (ers rho' t') &
-    { y : kElAt F (ers rho t') &
-    { y' : kElAt F' (ers rho' t) &
-      (ITm rho t k (ers rho A) F (ers rho t) x *
-       ITm rho' t' k (ers rho' A) F' (ers rho' t') x' *
-       kRel F F' (ers rho t) x (ers rho' t') x' *
-       ITm rho t' k (ers rho A) F (ers rho t') y *
-       ITm rho' t k (ers rho' A) F' (ers rho' t) y' *
-       kRel F F' (ers rho t') y (ers rho' t) y')%type } } } }.
-
-(* The realisers of the closed formers are closed, so erasure in an
-   environment leaves them alone -- and it does so definitionally, which is
-   what lets `ity_univ` and friends be applied with `eq_refl`. *)
-Lemma ers_univ rho m : ers rho (univ m) = euniv m.
-Proof. reflexivity. Qed.
-
-Lemma ers_nat rho : ers rho nat_ = enat.
-Proof. reflexivity. Qed.
-
-Lemma ers_prop rho : ers rho prop = eprop.
-Proof. reflexivity. Qed.
-
-(* ------------------------------------------------------------------ *)
-(* The two bridges every case uses.                                   *)
-(* ------------------------------------------------------------------ *)
-
-(* The type part, uniformly, at every subject that is NOT a type former:
-   convert the value into the universe with i_conv and read it off as a family
-   with ity_of.  The two families are isomorphic because the two values are
-   related, and the universe's equality IS the isomorphism of the families it
-   decodes to (Interp/Univ.v's uEq_iso).  This one lemma discharges the type
-   part in every case except the seven formers and the conversion rule. *)
-Lemma sem_ty_of (G : ctx) (t A : tm) (H : notFormer t) : SemTm G t A -> SemTy G t A.
-Proof.
-  intros Stm m rho rho' HE F F' DA DA' IA P.
-  destruct (Stm (S m) rho rho' HE F F' DA DA' IA) as [x [x' [[Dx Dx'] Hrel]]].
-  pose (P' := iso_trans (kAt F') (kAt F) (kAt (univFam m)) (iso_sym _ _ IA) P).
-  exists (elFam (ctoK (kAt F) (kAt (univFam m)) P (ers rho t) x)).
-  exists (elFam (ctoK (kAt F') (kAt (univFam m)) P' (ers rho' t) x')).
-  split; [split |].
-  - apply (ity_of rho t m (ers rho t) _ H).
-    exact (i_conv rho t (S m) (ers rho A) F (euniv m) (univFam m) (ers rho t) x P Dx).
-  - apply (ity_of rho' t m (ers rho' t) _ H).
-    exact (i_conv rho' t (S m) (ers rho' A) F' (euniv m) (univFam m) (ers rho' t) x' P' Dx').
-  - assert (Hu : kEqAt (univFam m) (ers rho t)
-                   (ctoK (kAt F) (kAt (univFam m)) P (ers rho t) x)
-                   (ers rho' t)
-                   (ctoK (kAt F') (kAt (univFam m)) P' (ers rho' t) x')).
-    { apply (proj2 (kRel_same (univFam m) _ _ _ _)).
-      eapply hetC_trans; [apply hetC_sym; apply hetC_to |].
-      eapply hetC_trans; [exact Hrel | apply hetC_to]. }
-    apply (uEq_iso _ _ Hu).
-Qed.
-
-(* A type's own interpretation, from its formation judgement: instantiate the
-   type part at the universe family itself, where the isomorphism is the
-   identity.  This is how every rule reads the families of the types it
-   mentions. *)
-Lemma semJ_univ (G : ctx) (A : tm) (k : nat) :
-  SemJ G A (univ k) ->
-  forall rho rho' (HE : EnvRelOf G rho rho'),
-    { FA : kUFam k (ers rho A) &
-    { FA' : kUFam k (ers rho' A) &
-      (ITy rho A k (ers rho A) FA * ITy rho' A k (ers rho' A) FA' *
-       iso (kAt FA) (kAt FA'))%type } }.
-Proof.
-  intros [_ Sty] rho rho' HE.
-  exact (Sty k rho rho' HE (univFam k) (univFam k)
-           (ity_univ rho k (euniv k) eq_refl) (ity_univ rho' k (euniv k) eq_refl)
-           (iso_self (univFam k)) (iso_self (univFam k))).
-Qed.
-
-(* And the term part at a universe type, where the family is the universe's
-   own and the relatedness is the universe's equality. *)
-Lemma semTm_univ (G : ctx) (A : tm) (k : nat) :
-  SemTm G A (univ k) ->
-  forall rho rho' (HE : EnvRelOf G rho rho'),
-    { v : kElAt (univFam k) (ers rho A) &
-    { v' : kElAt (univFam k) (ers rho' A) &
-      (ITm rho A (S k) (euniv k) (univFam k) (ers rho A) v *
-       ITm rho' A (S k) (euniv k) (univFam k) (ers rho' A) v' *
-       kEqAt (univFam k) (ers rho A) v (ers rho' A) v')%type } }.
-Proof.
-  intros Stm rho rho' HE.
-  destruct (Stm (S k) rho rho' HE (univFam k) (univFam k)
-              (ity_univ rho k (euniv k) eq_refl) (ity_univ rho' k (euniv k) eq_refl)
-              (iso_self (univFam k))) as [v [v' [[Dv Dv'] Hrel]]].
-  exists v, v'; split; [split; [exact Dv | exact Dv'] |].
-  apply (proj2 (kRel_same (univFam k) _ _ _ _)); exact Hrel.
-Qed.
-
-(* The layer-1 equality of a type's two realisers, which is what the universe's
-   own equality asks for and what nothing at layer 2 can supply. *)
-Lemma sem_lty (G : ctx) (A : tm) (k : nat) (D : ty G A (univ k)) :
-  forall rho rho', EnvRelOf G rho rho' -> eqty k (ers rho A) (ers rho' A).
-Proof.
-  intros rho rho' [_ [_ [_ HS]]].
-  exact (fundamental_U G A k D (rsub rho) (rsub rho') HS).
-Qed.
-
-(* ------------------------------------------------------------------ *)
-(* The type formers, once and for all.                                *)
-(*                                                                    *)
-(* Every rule whose subject is a type former has the same shape: build *)
-(* the family (that is the rule's real content), read it as an element *)
-(* of the universe with i_ty, and push it into whatever family the     *)
-(* statement was handed with i_conv.  Only the first step differs from *)
-(* rule to rule, so it is the only thing sem_former asks for.          *)
-(* ------------------------------------------------------------------ *)
-
-Lemma sem_former (G : ctx) (t : tm) (j : nat)
-  (Lty : forall rho rho', EnvRelOf G rho rho' -> eqty j (ers rho t) (ers rho' t))
-  (mk : forall rho rho' (HE : EnvRelOf G rho rho'),
-        { FT : kUFam j (ers rho t) &
-        { FT' : kUFam j (ers rho' t) &
-          (ITy rho t j (ers rho t) FT * ITy rho' t j (ers rho' t) FT' *
-           iso (kAt FT) (kAt FT'))%type } }) :
-  SemJ G t (univ j).
-Proof.
-  split.
-  - (* the term part *)
-    intros k rho rho' HE F F' DA DA' IA.
-    pose proof (ity_univ_lvl rho (univ j) k (ers rho (univ j)) F DA) as El;
-      cbn [UnivLvl] in El; subst k.
-    pose proof (ity_univ_iso rho (univ j) (S j) (ers rho (univ j)) F DA) as Q;
-      cbn [UnivIso] in Q.
-    destruct (mk rho rho' HE) as [FT [FT' [[DT DT'] IT]]].
-    pose (Q' := iso_trans (kAt F') (kAt F) (kAt (univFam j)) (iso_sym _ _ IA) Q).
-    exists (ctoK (kAt (univFam j)) (kAt F) (iso_sym _ _ Q) (ers rho t) (famEl FT)).
-    exists (ctoK (kAt (univFam j)) (kAt F') (iso_sym _ _ Q') (ers rho' t) (famEl FT')).
-    split; [split |].
-    + exact (i_conv rho t (S j) (euniv j) (univFam j) (ers rho (univ j)) F (ers rho t)
-               (famEl FT) (iso_sym _ _ Q) (i_ty rho t j (ers rho t) FT DT)).
-    + exact (i_conv rho' t (S j) (euniv j) (univFam j) (ers rho' (univ j)) F' (ers rho' t)
-               (famEl FT') (iso_sym _ _ Q') (i_ty rho' t j (ers rho' t) FT' DT')).
-    + eapply hetC_trans; [apply hetC_sym; apply hetC_to |].
-      eapply hetC_trans; [| apply hetC_to].
-      apply (proj1 (kRel_same (univFam j) _ _ _ _)).
-      apply uEq_of.
-      * apply Lty; exact HE.
-      * intros v h pf v' h' pf'.
-        eapply iso_trans; [apply uf_coh |].
-        eapply iso_trans; [exact IT | apply uf_coh].
-  - (* the type part: the level is forced, and then mk IS the answer *)
-    intros m rho rho' HE F F' DA DA' IA P.
-    pose proof (ity_univ_lvl rho (univ j) (S m) (ers rho (univ j)) F DA) as El;
-      cbn [UnivLvl] in El; injection El as El1; destruct El1.
-    exact (mk rho rho' HE).
-Qed.
-
-(* ------------------------------------------------------------------ *)
-(* The closed formers: nothing to build, so sem_former does it all.   *)
-(* ------------------------------------------------------------------ *)
-
-Lemma sem_nat (G : ctx) (W : wfc G) : SemJ G nat_ (univ 0).
-Proof.
-  apply (sem_former G nat_ 0).
-  - exact (sem_lty G nat_ 0 (t_nat G W)).
-  - intros rho rho' HE.
-    exists (natFam 0), (natFam 0); split; [split | apply iso_self].
-    + exact (ity_nat rho (ers rho nat_) eq_refl).
-    + exact (ity_nat rho' (ers rho' nat_) eq_refl).
-Qed.
-
-Lemma sem_prop (G : ctx) (W : wfc G) : SemJ G prop (univ 0).
-Proof.
-  apply (sem_former G prop 0).
-  - exact (sem_lty G prop 0 (t_prop G W)).
-  - intros rho rho' HE.
-    exists (propFam 0), (propFam 0); split; [split | apply iso_self].
-    + exact (ity_prop rho (ers rho prop) eq_refl).
-    + exact (ity_prop rho' (ers rho' prop) eq_refl).
-Qed.
-
-Lemma sem_univ (G : ctx) (W : wfc G) (k : nat) : SemJ G (univ k) (univ (S k)).
-Proof.
-  apply (sem_former G (univ k) (S k)).
-  - exact (sem_lty G (univ k) (S k) (t_univ G k W)).
-  - intros rho rho' HE.
-    exists (univFam k), (univFam k); split; [split | apply iso_self].
-    + exact (ity_univ rho k (ers rho (univ k)) eq_refl).
-    + exact (ity_univ rho' k (ers rho' (univ k)) eq_refl).
-Qed.
+(* NOTE.  The two-environment statements (SemTm / SemTy / SemC) and the
+   `sem_former` machinery that went with them are GONE: 9.2 is proved in ONE
+   environment (ITot for totality, IRel for relatedness) and lifted to two by
+   `funtm`, which made them dead weight. *)
 
 (* ------------------------------------------------------------------ *)
 (* FUNCTIONALITY, PROVED INSIDE 9.2.                                  *)
@@ -357,41 +151,21 @@ Proof.
     intros rho rho' HR x x' D D';
     pose proof (itm_inv _ _ _ _ _ _ _ D) as E;
     pose proof (itm_inv _ _ _ _ _ _ _ D') as E';
-    destruct k as [| k0]; cbn [TmInv] in E, E'.
-  - destruct E' as [HT' | E'];
-      [ exact (kRel_of_total F F' Piso HT' w x w' x' Hrel) |].
-    destruct E as [HT | E];
-      [ exact (kRel_of_total F F' Piso (TotalFam_iso F F' Piso HT) w x w' x' Hrel) |].
-    cbn [TmShape VarShape] in E, E'.
-    destruct rho as [| en rho0]; [destruct E |].
-    destruct rho' as [| en' rho0']; [destruct E' |].
-    cbn [EnvRel] in HR; destruct HR as [_ Hen].
+    cbn [TmInv] in E, E';
+    destruct E' as [[HT' _] | E'];
+      try (solve [exact (kRel_of_total F F' Piso HT' w x w' x' Hrel)]);
+    destruct E as [[HT _] | E];
+      try (solve [exact (kRel_of_total F F' Piso
+                           (TotalFam_iso F F' Piso HT) w x w' x' Hrel)]);
+    cbn [TmShape VarShape] in E, E';
+    destruct rho as [| en rho0]; try (solve [destruct E]);
+    destruct rho' as [| en' rho0']; try (solve [destruct E']);
+    cbn [EnvRel] in HR.
+  - destruct HR as [_ Hen].
     eapply EntryRel_at.
     eapply EntryRel_trans; [exact E |].
     eapply EntryRel_trans; [exact Hen | apply EntryRel_sym; exact E'].
-  - cbn [TmShape VarShape] in E, E'.
-    destruct rho as [| en rho0]; [destruct E |].
-    destruct rho' as [| en' rho0']; [destruct E' |].
-    cbn [EnvRel] in HR; destruct HR as [_ Hen].
-    eapply EntryRel_at.
-    eapply EntryRel_trans; [exact E |].
-    eapply EntryRel_trans; [exact Hen | apply EntryRel_sym; exact E'].
-  - destruct E' as [HT' | E'];
-      [ exact (kRel_of_total F F' Piso HT' w x w' x' Hrel) |].
-    destruct E as [HT | E];
-      [ exact (kRel_of_total F F' Piso (TotalFam_iso F F' Piso HT) w x w' x' Hrel) |].
-    cbn [TmShape VarShape] in E, E'.
-    destruct rho as [| en rho0]; [destruct E |].
-    destruct rho' as [| en' rho0']; [destruct E' |].
-    cbn [EnvRel] in HR; destruct HR as [HR0 _].
-    destruct E as [x0 [D0 HE]]; destruct E' as [x0' [D0' HE']].
-    eapply hetC_eq_l; [exact HE |].
-    eapply hetC_eq_r;
-      [ exact (IH rho0 rho0' HR0 x0 x0' D0 D0') | apply kEqC_sym; exact HE' ].
-  - cbn [TmShape VarShape] in E, E'.
-    destruct rho as [| en rho0]; [destruct E |].
-    destruct rho' as [| en' rho0']; [destruct E' |].
-    cbn [EnvRel] in HR; destruct HR as [HR0 _].
+  - destruct HR as [HR0 _].
     destruct E as [x0 [D0 HE]]; destruct E' as [x0' [D0' HE']].
     eapply hetC_eq_l; [exact HE |].
     eapply hetC_eq_r;
@@ -425,36 +199,31 @@ Ltac funtm_start D D' :=
   pose proof (itm_inv _ _ _ _ _ _ _ D) as E;
   pose proof (itm_inv _ _ _ _ _ _ _ D') as E'.
 
-Ltac funtm_proofs F F' Piso w x w' x' Hrel :=
-  match goal with
-  | E' : (TotalFam _ + _)%type |- _ =>
-      destruct E' as [HT' | E'];
-      [ exact (kRel_of_total F F' Piso HT' w x w' x' Hrel) |];
-      match goal with
-      | E : (TotalFam _ + _)%type |- _ =>
-          destruct E as [HT | E];
-          [ exact (kRel_of_total F F' Piso (TotalFam_iso F F' Piso HT) w x w' x' Hrel) |]
-      end
-  end.
+Ltac funtm_proofs Ea Eb F F' Piso w x w' x' Hrel :=
+  destruct Eb as [[HT' _] | Eb];
+  [ exact (kRel_of_total F F' Piso HT' w x w' x' Hrel) |];
+  destruct Ea as [[HT _] | Ea];
+  [ exact (kRel_of_total F F' Piso (TotalFam_iso F F' Piso HT) w x w' x' Hrel) |].
 
-Lemma funtm_zero (G : ctx) : FunTm G zero.
+Lemma funtm_zero (G : ctx) (kk : nat) : FunTm G (zero kk).
 Proof.
   intros rho rho' HE k Sy F w x D Sy' F' w' x' D' Piso Hrel.
   funtm_start D D'.
-  destruct k as [| k0]; cbn [TmInv TmShape ZeroVal] in E, E'; [| destruct E].
-  funtm_proofs F F' Piso w x w' x' Hrel.
-  eapply kRel_of_IsVal2; [exact E | exact E' | apply kRel_refl].
+  cbn [TmInv TmShape ZeroVal] in E, E'.
+  funtm_proofs E E' F F' Piso w x w' x' Hrel.
+  destruct E as [Ek Hv]; destruct E' as [Ek' Hv'].
+  eapply kRel_of_IsVal2; [exact Hv | exact Hv' | apply kRel_refl].
 Qed.
 
-Lemma funtm_false (G : ctx) : FunTm G false_.
+Lemma funtm_false (G : ctx) (kk : nat) : FunTm G (false_ kk).
 Proof.
   intros rho rho' HE k Sy F w x D Sy' F' w' x' D' Piso Hrel.
   funtm_start D D'.
-  destruct k as [| k0]; cbn [TmInv TmShape FalseVal] in E, E'; [| destruct E].
-  funtm_proofs F F' Piso w x w' x' Hrel.
-  destruct E as [g Hv]; destruct E' as [g' Hv'].
+  cbn [TmInv TmShape FalseVal] in E, E'.
+  funtm_proofs E E' F F' Piso w x w' x' Hrel.
+  destruct E as [g [Ek Hv]]; destruct E' as [g' [Ek' Hv']].
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
-  apply (proj1 (kRel_same (propFam 0) _ _ _ _)).
+  apply (proj1 (kRel_same (propFam k) _ _ _ _)).
   apply propEq_iff; split; [split; exact (fun h => h) | exact g].
 Qed.
 
@@ -473,20 +242,21 @@ Lemma funtm_former (G : ctx) (t : tm)
 Proof.
   intros rho rho' HE k Sy F w x D Sy' F' w' x' D' Piso Hrel.
   funtm_start D D'.
-  destruct k as [| k0]; cbn [TmInv] in E, E'.
-  - funtm_proofs F F' Piso w x w' x' Hrel.
-    apply Hsh in E; cbn [TyVal] in E; destruct E.
-  - apply Hsh in E; apply Hsh in E'; cbn [TyVal] in E, E'.
-    destruct E as [F0 [D0 Hv]]; destruct E' as [F0' [D0' Hv']].
-    destruct (H rho rho' k0 w F0 w' F0' HE D0 D0') as [Hty Hi].
-    eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
-    apply (proj1 (kRel_same (univFam k0) _ _ _ _)).
-    apply uEq_of; [exact Hty | intros v h pf v' h' pf'].
-    eapply iso_trans; [apply uf_coh |].
-    eapply iso_trans; [exact Hi | apply uf_coh].
+  cbn [TmInv] in E, E'.
+  funtm_proofs E E' F F' Piso w x w' x' Hrel.
+  apply Hsh in E; apply Hsh in E'.
+  destruct k as [| k0]; [cbn [TyVal] in E; destruct E |].
+  cbn [TyVal] in E, E'.
+  destruct E as [F0 [D0 Hv]]; destruct E' as [F0' [D0' Hv']].
+  destruct (H rho rho' k0 w F0 w' F0' HE D0 D0') as [Hty Hi].
+  eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
+  apply (proj1 (kRel_same (univFam k0) _ _ _ _)).
+  apply uEq_of; [exact Hty | intros v h pf v' h' pf'].
+  eapply iso_trans; [apply uf_coh |].
+  eapply iso_trans; [exact Hi | apply uf_coh].
 Qed.
 
-Lemma funtm_nat (G : ctx) : FunTm G nat_.
+Lemma funtm_nat (G : ctx) (kk : nat) : FunTm G (nat_ kk).
 Proof.
   apply funtm_former; [intros rho k Sy F w x H; exact H |].
   intros rho rho' k w F w' F' HE D D'.
@@ -494,11 +264,12 @@ Proof.
     pose proof (ers_of_ITy _ _ _ _ _ D') as Ew'; subst w w'.
   split; [exact (uf_ty F) |].
   eapply iso_trans;
-    [ exact (ity_nat_inv rho nat_ k (ers rho nat_) F D)
-    | apply iso_sym; exact (ity_nat_inv rho' nat_ k (ers rho' nat_) F' D') ].
+    [ exact (ity_nat_inv rho (nat_ kk) k (ers rho (nat_ kk)) F D)
+    | apply iso_sym;
+      exact (ity_nat_inv rho' (nat_ kk) k (ers rho' (nat_ kk)) F' D') ].
 Qed.
 
-Lemma funtm_prop (G : ctx) : FunTm G prop.
+Lemma funtm_prop (G : ctx) (kk : nat) : FunTm G (prop kk).
 Proof.
   apply funtm_former; [intros rho k Sy F w x H; exact H |].
   intros rho rho' k w F w' F' HE D D'.
@@ -506,23 +277,24 @@ Proof.
     pose proof (ers_of_ITy _ _ _ _ _ D') as Ew'; subst w w'.
   split; [exact (uf_ty F) |].
   eapply iso_trans;
-    [ exact (ity_prop_inv rho prop k (ers rho prop) F D)
-    | apply iso_sym; exact (ity_prop_inv rho' prop k (ers rho' prop) F' D') ].
+    [ exact (ity_prop_inv rho (prop kk) k (ers rho (prop kk)) F D)
+    | apply iso_sym;
+      exact (ity_prop_inv rho' (prop kk) k (ers rho' (prop kk)) F' D') ].
 Qed.
 
-Lemma funtm_univ (G : ctx) (m : nat) : FunTm G (univ m).
+Lemma funtm_univ (G : ctx) (d m : nat) : FunTm G (univ (d + S m) m).
 Proof.
   apply funtm_former; [intros rho k Sy F w x H; exact H |].
   intros rho rho' k w F w' F' HE D D'.
   pose proof (ers_of_ITy _ _ _ _ _ D) as Ew;
     pose proof (ers_of_ITy _ _ _ _ _ D') as Ew'; subst w w'.
-  pose proof (ity_univ_lvl rho (univ m) k (ers rho (univ m)) F D) as El;
-    cbn [UnivLvl] in El; subst k.
+  pose proof (ity_lvl_dec rho _ k _ F D) as El; cbn [LvlDec] in El; subst k.
   split; [exact (uf_ty F) |].
-  pose proof (ity_univ_iso rho (univ m) (S m) (ers rho (univ m)) F D) as Q;
-    cbn [UnivIso] in Q.
-  pose proof (ity_univ_iso rho' (univ m) (S m) (ers rho' (univ m)) F' D') as Q';
-    cbn [UnivIso] in Q'.
+  destruct (ity_univ_iso rho (univ (d + S m) m) (d + S m) _ F D) as [d1 [E1 Q]].
+  destruct (ity_univ_iso rho' (univ (d + S m) m) (d + S m) _ F' D') as [d2 [E2 Q']].
+  assert (Ed1 : d1 = d) by lia; assert (Ed2 : d2 = d) by lia; subst d1 d2.
+  rewrite (lvlCast_irr (eq_sym E1) F) in Q.
+  rewrite (lvlCast_irr (eq_sym E2) F') in Q'.
   eapply iso_trans; [exact Q | apply iso_sym; exact Q'].
 Qed.
 
@@ -530,30 +302,30 @@ Lemma funtm_succ (G : ctx) (n : tm) (IHn : FunTm G n) : FunTm G (succ n).
 Proof.
   intros rho rho' HE k Sy F w x D Sy' F' w' x' D' Piso Hrel.
   funtm_start D D'.
-  destruct k as [| k0]; cbn [TmInv TmShape SuccVal] in E, E'; [| destruct E].
-  funtm_proofs F F' Piso w x w' x' Hrel.
+  cbn [TmInv TmShape SuccVal] in E, E'.
+  funtm_proofs E E' F F' Piso w x w' x' Hrel.
   destruct E as [wn [xn [Dn Hv]]]; destruct E' as [wn' [xn' [Dn' Hv']]].
   assert (Hs : Rel enat (esucc wn) (esucc wn')).
   { destruct Hv as [Q HQ]; destruct Hv' as [Q' HQ'].
     eapply Rel_trans;
       [ apply Rel_sym; exact (proj2 (proj1 (natEq_iff _ _) HQ)) |].
     eapply Rel_trans;
-      [ exact (Rel_tyeq Sy' enat w w' (iso_ty F' (natFam 0) Q') Hrel)
+      [ exact (Rel_tyeq Sy' enat w w' (iso_ty F' (natFam k) Q') Hrel)
       | exact (proj2 (proj1 (natEq_iff _ _) HQ')) ]. }
   assert (Hn : Rel enat wn wn')
     by (apply Rel_nat_intro;
         [ apply gt_nat | apply ev_nat
         | apply (NatPer_succ_inv (esucc wn) (esucc wn') wn wn' eq_refl eq_refl);
           exact (Rel_nat_elim enat (esucc wn) (esucc wn') ev_nat Hs) ]).
-  pose proof (IHn rho rho' HE 0 enat (natFam 0) wn xn Dn enat (natFam 0) wn' xn' Dn'
-                (iso_self (natFam 0)) Hn) as Hx.
+  pose proof (IHn rho rho' HE k enat (natFam k) wn xn Dn enat (natFam k) wn' xn' Dn'
+                (iso_self (natFam k)) Hn) as Hx.
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
-  apply (proj1 (kRel_same (natFam 0) _ _ _ _)).
+  apply (proj1 (kRel_same (natFam k) _ _ _ _)).
   apply natEq_iff; split;
     [ unfold natSucc; rewrite !natIdx_natE;
       exact (f_equal S
                (proj1 (proj1 (natEq_iff _ _)
-                         (proj2 (kRel_same (natFam 0) _ _ _ _) Hx))))
+                         (proj2 (kRel_same (natFam k) _ _ _ _) Hx))))
     | exact Hs ].
 Qed.
 
@@ -589,18 +361,23 @@ Proof.
   exact (eqty_at_lvl k _ _ (uf_ty F) (uf_ty F') (Lt rho rho' HE)).
 Qed.
 
-Lemma funtm_prf (G : ctx) (p : tm) (Lp : LTy G (prf p)) (IHp : FunTm G p) :
-  FunTm G (prf p).
+Lemma funtm_prf (G : ctx) (kk : nat) (p : tm)
+  (Lp : LTy G (prf kk p)) (IHp : FunTm G p) :
+  FunTm G (prf kk p).
 Proof.
-  apply (funtm_former_l G (prf p));
+  apply (funtm_former_l G (prf kk p));
     [intros rho k Sy F w x H; exact H | exact Lp |].
   intros rho rho' k w F w' F' HE D D'.
-  pose proof (ity_lvl_dec rho (prf p) k w F D) as El; cbn [LvlDec] in El; subst k.
+  pose proof (ity_lvl_dec rho (prf kk p) k w F D) as El; cbn [LvlDec] in El; subst k.
   pose proof (ers_of_ITy _ _ _ _ _ D) as Ew;
     pose proof (ers_of_ITy _ _ _ _ _ D') as Ew'; subst w w'.
   pose proof (Lp rho rho' HE) as Hty.
-  destruct (ity_prf_inv rho (prf p) 0 (ers rho (prf p)) F D) as [wp [xp [Dp Hiso]]].
-  destruct (ity_prf_inv rho' (prf p) 0 (ers rho' (prf p)) F' D') as [wp' [xp' [Dp' Hiso']]].
+  destruct (ity_prf_inv rho (prf kk p) kk (ers rho (prf kk p)) F D)
+    as [j [wp [xp [Dp Hiso]]]].
+  destruct (ity_prf_inv rho' (prf kk p) kk (ers rho' (prf kk p)) F' D')
+    as [j' [wp' [xp' [Dp' Hiso']]]].
+  pose proof (itm_lvl p rho rho' (lvls_of_EnvRelOf G rho rho' HE) _ _ _ _ _
+                NotPrfR_prop Dp _ _ _ _ _ NotPrfR_prop Dp') as Ej; subst j'.
   assert (Ep : wp = ers rho p) by exact (ers_of_ITm _ _ _ _ _ _ _ Dp).
   assert (Ep' : wp' = ers rho' p) by exact (ers_of_ITm _ _ _ _ _ _ _ Dp').
   subst wp wp'.
@@ -614,28 +391,28 @@ Proof.
   eapply iso_trans; [| apply iso_sym; exact Hiso'].
   apply prfFam_iso; [exact Hty |].
   exact (proj1 (proj1 (propEq_iff xp xp')
-                  (proj2 (kRel_same (propFam 0) _ _ _ _)
-                     (IHp rho rho' HE 0 eprop (propFam 0) _ xp Dp
-                          eprop (propFam 0) _ xp' Dp'
-                          (iso_self (propFam 0)) Hrp)))).
+                  (proj2 (kRel_same (propFam j) _ _ _ _)
+                     (IHp rho rho' HE j eprop (propFam j) _ xp Dp
+                          eprop (propFam j) _ xp' Dp'
+                          (iso_self (propFam j)) Hrp)))).
 Qed.
 
 (* The universe lift.  The realiser is untouched, so nothing moves on the
    layer-1 side; the families move by famLiftK_iso. *)
 Lemma funtm_up (G : ctx) (A : tm) (j : nat)
-  (LA : LTy G A) (IHA : FunTm G A) : FunTm G (up (univ (S j)) A).
+  (LA : LTy G A) (IHA : FunTm G A) : FunTm G (up j A).
 Proof.
-  apply (funtm_former_l G (up (univ (S j)) A));
+  apply (funtm_former_l G (up j A));
     [intros rho k Sy F w x H; exact H
     | intros rho rho' HE; exact (LA rho rho' HE) |].
   intros rho rho' k w F w' F' HE D D'.
-  pose proof (ity_lvl_dec rho (up (univ (S j)) A) k w F D) as El;
+  pose proof (ity_lvl_dec rho (up j A) k w F D) as El;
     cbn [LvlDec] in El; subst k.
   pose proof (ers_of_ITy _ _ _ _ _ D) as Ew;
     pose proof (ers_of_ITy _ _ _ _ _ D') as Ew'; subst w w'.
-  destruct (ity_up_inv rho (up (univ (S j)) A) (S j) _ F D)
+  destruct (ity_up_inv rho (up j A) (S j) _ F D)
     as [F1 [[Ej DA] Hi]].
-  destruct (ity_up_inv rho' (up (univ (S j)) A) (S j) _ F' D')
+  destruct (ity_up_inv rho' (up j A) (S j) _ F' D')
     as [F1' [[Ej' DA'] Hi']].
   eapply iso_trans; [exact Hi |].
   eapply iso_trans; [| apply iso_sym; exact Hi'].
@@ -652,31 +429,39 @@ Qed.
 (* related by EnvRelOf_ext.                                              *)
 (* ------------------------------------------------------------------ *)
 
-Lemma funtm_pi (G : ctx) (A B : tm)
-  (Lpi : LTy G (pi A B)) (LA : LTy G A) (LB : LTy (A :: G) B)
-  (IHA : FunTm G A) (IHB : FunTm (A :: G) B) : FunTm G (pi A B).
+Lemma funtm_pi (G : ctx) (kk : nat) (A B : tm)
+  (Lpi : LTy G (pi kk A B)) (LA : LTy G A) (LB : LTy (A :: G) B)
+  (IHA : FunTm G A) (IHB : FunTm (A :: G) B) : FunTm G (pi kk A B).
 Proof.
-  apply (funtm_former_l G (pi A B));
+  apply (funtm_former_l G (pi kk A B));
     [intros rho k Sy F w x H; exact H | exact Lpi |].
   intros rho rho' k w F w' F' HE D D'.
   pose proof (ers_of_ITy _ _ _ _ _ D) as Ew;
     pose proof (ers_of_ITy _ _ _ _ _ D') as Ew'; subst w w'.
-  destruct (ity_pi_inv rho (pi A B) k _ F D)
-    as [wA [FA [B0 [wB [FB [redB [isoB [gPi [[[DA DB] Hw] Hiso]]]]]]]]].
-  destruct (ity_pi_inv rho' (pi A B) k _ F' D')
-    as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi' [[[DA' DB'] Hw'] Hiso']]]]]]]]].
+  destruct (ity_pi_inv rho (pi kk A B) k _ F D) as [d [j [E Hd]]].
+  destruct E; cbn [lvlCast eq_sym] in Hd.
+  destruct (ity_pi_inv rho' (pi kk A B) (d + j) _ F' D') as [d2 [j2 [E2 Hd2]]].
+  destruct Hd as [wA [FA [B0 [wB [FB [redB [isoB [gPi [[[DA DB] Hw] Hiso]]]]]]]]].
+  destruct Hd2 as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi'
+    [[[DA' DB'] Hw'] Hiso']]]]]]]]].
+  pose proof (ity_lvl rho rho' (lvls_of_EnvRelOf G rho rho' HE) A j _ FA j2 _ FA'
+                DA DA') as Ej.
+  subst j2.
+  assert (Ed : d2 = d) by lia; subst d2.
+  rewrite (lvlCast_irr (eq_sym E2) F') in Hiso'.
   assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
   assert (EA' : wA' = ers rho' A) by exact (ers_of_ITy _ _ _ _ _ DA').
   subst wA wA'.
   eapply iso_trans; [exact Hiso |].
   eapply iso_trans; [| apply iso_sym; exact Hiso'].
+  apply famLiftN_iso.
   apply piFam_iso.
   - eapply tyeq_trans; [apply tyeq_sym; exact Hw |].
     eapply tyeq_trans; [exact (Lpi rho rho' HE) | exact Hw'].
-  - exact (FunTy_of_FunTm G A IHA rho rho' HE k _ FA _ FA' DA DA'
-             (eqty_at_lvl k _ _ (uf_ty FA) (uf_ty FA') (LA rho rho' HE))).
+  - exact (FunTy_of_FunTm G A IHA rho rho' HE j _ FA _ FA' DA DA'
+             (eqty_at_lvl j _ _ (uf_ty FA) (uf_ty FA') (LA rho rho' HE))).
   - intros u x u' x' Hrel.
-    pose proof (EnvRelOf_ext G rho rho' A k FA FA' u x u' x' HE Hrel) as HEx.
+    pose proof (EnvRelOf_ext G rho rho' A j FA FA' u x u' x' HE Hrel) as HEx.
     pose proof (DB u x) as DBx; pose proof (DB' u' x') as DBx'.
     assert (EB : wB u x = ers (ext rho FA u x) B)
       by exact (ers_of_ITy _ _ _ _ _ DBx).
@@ -684,36 +469,44 @@ Proof.
       by exact (ers_of_ITy _ _ _ _ _ DBx').
     assert (Htyb : tyeq (wB u x) (wB' u' x'))
       by (rewrite EB, EB'; exact (LB _ _ HEx)).
-    exact (FunTy_of_FunTm (A :: G) B IHB _ _ HEx k _ (FB u x) _ (FB' u' x')
+    exact (FunTy_of_FunTm (A :: G) B IHB _ _ HEx j _ (FB u x) _ (FB' u' x')
              DBx DBx'
-             (eqty_at_lvl k _ _ (uf_ty (FB u x)) (uf_ty (FB' u' x')) Htyb)).
+             (eqty_at_lvl j _ _ (uf_ty (FB u x)) (uf_ty (FB' u' x')) Htyb)).
 Qed.
 
-Lemma funtm_sig (G : ctx) (A B : tm)
-  (Lsig : LTy G (sig_ A B)) (LA : LTy G A) (LB : LTy (A :: G) B)
-  (IHA : FunTm G A) (IHB : FunTm (A :: G) B) : FunTm G (sig_ A B).
+Lemma funtm_sig (G : ctx) (kk : nat) (A B : tm)
+  (Lsig : LTy G (sig_ kk A B)) (LA : LTy G A) (LB : LTy (A :: G) B)
+  (IHA : FunTm G A) (IHB : FunTm (A :: G) B) : FunTm G (sig_ kk A B).
 Proof.
-  apply (funtm_former_l G (sig_ A B));
+  apply (funtm_former_l G (sig_ kk A B));
     [intros rho k Sy F w x H; exact H | exact Lsig |].
   intros rho rho' k w F w' F' HE D D'.
   pose proof (ers_of_ITy _ _ _ _ _ D) as Ew;
     pose proof (ers_of_ITy _ _ _ _ _ D') as Ew'; subst w w'.
-  destruct (ity_sig_inv rho (sig_ A B) k _ F D)
-    as [wA [FA [B0 [wB [FB [redB [isoB [gSig [[[DA DB] Hw] Hiso]]]]]]]]].
-  destruct (ity_sig_inv rho' (sig_ A B) k _ F' D')
-    as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig' [[[DA' DB'] Hw'] Hiso']]]]]]]]].
+  destruct (ity_sig_inv rho (sig_ kk A B) k _ F D) as [d [j [E Hd]]].
+  destruct E; cbn [lvlCast eq_sym] in Hd.
+  destruct (ity_sig_inv rho' (sig_ kk A B) (d + j) _ F' D') as [d2 [j2 [E2 Hd2]]].
+  destruct Hd as [wA [FA [B0 [wB [FB [redB [isoB [gSig [[[DA DB] Hw] Hiso]]]]]]]]].
+  destruct Hd2 as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
+    [[[DA' DB'] Hw'] Hiso']]]]]]]]].
+  pose proof (ity_lvl rho rho' (lvls_of_EnvRelOf G rho rho' HE) A j _ FA j2 _ FA'
+                DA DA') as Ej.
+  subst j2.
+  assert (Ed : d2 = d) by lia; subst d2.
+  rewrite (lvlCast_irr (eq_sym E2) F') in Hiso'.
   assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
   assert (EA' : wA' = ers rho' A) by exact (ers_of_ITy _ _ _ _ _ DA').
   subst wA wA'.
   eapply iso_trans; [exact Hiso |].
   eapply iso_trans; [| apply iso_sym; exact Hiso'].
+  apply famLiftN_iso.
   apply sigFam_iso.
   - eapply tyeq_trans; [apply tyeq_sym; exact Hw |].
     eapply tyeq_trans; [exact (Lsig rho rho' HE) | exact Hw'].
-  - exact (FunTy_of_FunTm G A IHA rho rho' HE k _ FA _ FA' DA DA'
-             (eqty_at_lvl k _ _ (uf_ty FA) (uf_ty FA') (LA rho rho' HE))).
+  - exact (FunTy_of_FunTm G A IHA rho rho' HE j _ FA _ FA' DA DA'
+             (eqty_at_lvl j _ _ (uf_ty FA) (uf_ty FA') (LA rho rho' HE))).
   - intros u x u' x' Hrel.
-    pose proof (EnvRelOf_ext G rho rho' A k FA FA' u x u' x' HE Hrel) as HEx.
+    pose proof (EnvRelOf_ext G rho rho' A j FA FA' u x u' x' HE Hrel) as HEx.
     pose proof (DB u x) as DBx; pose proof (DB' u' x') as DBx'.
     assert (EB : wB u x = ers (ext rho FA u x) B)
       by exact (ers_of_ITy _ _ _ _ _ DBx).
@@ -721,16 +514,10 @@ Proof.
       by exact (ers_of_ITy _ _ _ _ _ DBx').
     assert (Htyb : tyeq (wB u x) (wB' u' x'))
       by (rewrite EB, EB'; exact (LB _ _ HEx)).
-    exact (FunTy_of_FunTm (A :: G) B IHB _ _ HEx k _ (FB u x) _ (FB' u' x')
+    exact (FunTy_of_FunTm (A :: G) B IHB _ _ HEx j _ (FB u x) _ (FB' u' x')
              DBx DBx'
-             (eqty_at_lvl k _ _ (uf_ty (FB u x)) (uf_ty (FB' u' x')) Htyb)).
+             (eqty_at_lvl j _ _ (uf_ty (FB u x)) (uf_ty (FB' u' x')) Htyb)).
 Qed.
-
-(* ------------------------------------------------------------------ *)
-(* The layer-1 side conditions, as they come out of the layer-1        *)
-(* fundamental theorem: EnvRelOf carries a SubstRel, which is exactly  *)
-(* what SEl consumes.                                                  *)
-(* ------------------------------------------------------------------ *)
 
 Definition LTm (G : ctx) (t A : tm) : Prop :=
   forall rho rho', EnvRelOf G rho rho' -> Rel (ers rho A) (ers rho t) (ers rho' t).
@@ -738,38 +525,25 @@ Definition LTm (G : ctx) (t A : tm) : Prop :=
 Lemma LTm_of_ty G t A (d : ty G t A) : LTm G t A.
 Proof. intros rho rho' [_ [_ [_ HS]]]; exact (fundamental_ty G t A d _ _ HS). Qed.
 
-Lemma LTy_of_ty G A k (d : ty G A (univ k)) : LTy G A.
+Lemma LTy_of_ty G A k (d : ty G A (UU k)) : LTy G A.
 Proof.
   intros rho rho' [_ [_ [_ HS]]]; exists k; exact (fundamental_U G A k d _ _ HS).
 Qed.
 
-(* Related environments have the same levels, so ity_lvl applies to two
-   derivations taken in them.  This is what pins the DOMAIN's level in the
-   impredicative forall, where the subject does not mention it. *)
-Lemma lvls_of_EnvRel : forall rho rho', EnvRel rho rho' -> lvls rho = lvls rho'.
-Proof.
-  induction rho as [| en r IH]; intros [| en' r'] H; cbn in H |- *;
-    try (solve [destruct H]); [reflexivity |].
-  destruct H as [HR HE]; f_equal;
-    [exact (EntryRel_k _ _ HE) | exact (IH r' HR)].
-Qed.
-
-Lemma lvls_of_EnvRelOf G rho rho' : EnvRelOf G rho rho' -> lvls rho = lvls rho'.
-Proof. intros [_ [_ [HR _]]]; exact (lvls_of_EnvRel rho rho' HR). Qed.
 
 (* Impredicative forall: a TERM of prop, so the value is a proposition and
    functionality is an iff.  The domain's level is existential in the
    decoder, and the two readings agree on it by ity_lvl. *)
-Lemma funtm_all (G : ctx) (A p : tm)
-  (LA : LTy G A) (Lp : LTm (A :: G) p prop)
-  (IHA : FunTm G A) (IHp : FunTm (A :: G) p) : FunTm G (all A p).
+Lemma funtm_all (G : ctx) (jj : nat) (A p : tm)
+  (LA : LTy G A) (Lp : LTm (A :: G) p (prop jj))
+  (IHA : FunTm G A) (IHp : FunTm (A :: G) p) : FunTm G (all jj A p).
 Proof.
   intros rho rho' HE k Sy F w x D Sy' F' w' x' D' Piso Hrel.
   funtm_start D D'.
-  destruct k as [| k0]; cbn [TmInv TmShape AllVal] in E, E'; [| destruct E].
-  funtm_proofs F F' Piso w x w' x' Hrel.
-  destruct E as [kA [wA [FA [wp [xp [wv [g [[DA Dp] Hv]]]]]]]].
-  destruct E' as [kA' [wA' [FA' [wp' [xp' [wv' [g' [[DA' Dp'] Hv']]]]]]]].
+  cbn [TmInv TmShape AllVal] in E, E'.
+  funtm_proofs E E' F F' Piso w x w' x' Hrel.
+  destruct E as [kA [wA [FA [wp [xp [wv [g [[[Ejj DA] Dp] Hv]]]]]]]].
+  destruct E' as [kA' [wA' [FA' [wp' [xp' [wv' [g' [[[Ejj' DA'] Dp'] Hv']]]]]]]].
   pose proof (lvls_of_EnvRelOf G rho rho' HE) as HL.
   pose proof (ity_lvl rho rho' HL A kA wA FA kA' wA' FA' DA DA') as Ek; subst kA'.
   assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
@@ -791,17 +565,17 @@ Proof.
     assert (Hr : Rel eprop (wp u y) (wp' u2 y2))
       by (rewrite Ew, Ew'; exact (Lp _ _ HEx)).
     exact (proj1 (proj1 (propEq_iff (xp u y) (xp' u2 y2))
-                    (proj2 (kRel_same (propFam 0) _ _ _ _)
-                       (IHp _ _ HEx 0 eprop (propFam 0) _ (xp u y) (Dp u y)
-                            eprop (propFam 0) _ (xp' u2 y2) (Dp' u2 y2)
-                            (iso_self (propFam 0)) Hr)))). }
+                    (proj2 (kRel_same (propFam k) _ _ _ _)
+                       (IHp _ _ HEx k eprop (propFam k) _ (xp u y) (Dp u y)
+                            eprop (propFam k) _ (xp' u2 y2) (Dp' u2 y2)
+                            (iso_self (propFam k)) Hr)))). }
   destruct Hv as [Q HQ]; destruct Hv' as [Q' HQ'].
   assert (Hw : Rel eprop w wv)
     by exact (proj2 (proj1 (propEq_iff _ _) HQ)).
   assert (Hw' : Rel eprop w' wv')
     by exact (proj2 (proj1 (propEq_iff _ _) HQ')).
   eapply kRel_of_IsVal2; [exists Q; exact HQ | exists Q'; exact HQ' |].
-  apply (proj1 (kRel_same (propFam 0) _ _ _ _)).
+  apply (proj1 (kRel_same (propFam k) _ _ _ _)).
   apply propEq_iff; split.
   - cbn [propVal propElem proj1_sig Datatypes.fst]; split.
     + intros H u2 y2.
@@ -817,7 +591,7 @@ Proof.
                (H u _)).
   - eapply Rel_trans; [apply Rel_sym; exact Hw |].
     eapply Rel_trans;
-      [ exact (Rel_tyeq Sy' eprop w w' (iso_ty F' (propFam 0) Q') Hrel)
+      [ exact (Rel_tyeq Sy' eprop w w' (iso_ty F' (propFam k) Q') Hrel)
       | exact Hw' ].
 Qed.
 
@@ -835,10 +609,9 @@ Lemma funtm_noval (G : ctx) (t : tm)
 Proof.
   intros rho rho' HE k Sy F w x D Sy' F' w' x' D' Piso Hrel.
   funtm_start D D'.
-  destruct k as [| k0]; cbn [TmInv] in E, E'.
-  - funtm_proofs F F' Piso w x w' x' Hrel.
-    destruct (Hsh _ _ _ _ _ _ E).
-  - destruct (Hsh _ _ _ _ _ _ E).
+  cbn [TmInv] in E, E'.
+  funtm_proofs E E' F F' Piso w x w' x' Hrel.
+  destruct (Hsh _ _ _ _ _ _ E).
 Qed.
 
 Lemma funtm_plam (G : ctx) (A p : tm) : FunTm G (plam A p).
@@ -890,13 +663,68 @@ Proof.
                 (ctoK (kAt F) (kAt F') P w x))).
 Qed.
 
+(* And BACK DOWN, which the Pi- and Sigma-eliminations need: the interpretation
+   of a former at an annotated level is the LIFT of the level-j family
+   (Interp/Def.v), so an eliminator unlifts its subject's value, and
+   functionality then has to relate two UNLIFTED values.  Relatedness does not
+   reflect through the lift by itself -- that would be iso-reflection, which is
+   not available -- but it does once the unlifted families' isomorphism is in
+   hand, and at every use site it is: the components' functionality builds it.
+
+   The proof is kRel_lift at a reflexive pair, which is the lift's naturality
+   against the transport, plus the two round trips of Interp/LiftN.v. *)
+Lemma kRel_unlift {k u u'} (F : kUFam k u) (F' : kUFam k u')
+  (Q : iso (kAt F) (kAt F')) w x w' x' :
+  kRel (famLiftK F) (famLiftK F') w x w' x' ->
+  kRel F F' w (elUnlift F w x) w' (elUnlift F' w' x').
+Proof.
+  intros H.
+  pose (y := elUnlift F w x).
+  (* the naturality square, as an instance of kRel_lift *)
+  assert (N : kRel (famLiftK F) (famLiftK F') w (elLift F w y)
+                w (elLift F' w (ctoK (kAt F) (kAt F') Q w y))).
+  { apply kRel_lift; exists Q; apply kEqAt_refl_. }
+  (* the hypothesis, with x replaced by the lift of its unlift *)
+  assert (H' : kRel (famLiftK F) (famLiftK F') w (elLift F w y) w' x')
+    by (eapply hetC_eq_l; [apply elLift_elUnlift | exact H]).
+  assert (HE : kEqAt (famLiftK F') w
+                 (elLift F' w (ctoK (kAt F) (kAt F') Q w y)) w' x').
+  { apply (proj2 (kRel_same (famLiftK F') _ _ _ _)).
+    eapply kRel_trans; [apply kRel_sym; exact N | exact H']. }
+  exists Q.
+  eapply kEqC_trans;
+    [ apply kEqC_sym;
+      apply (elUnlift_elLift F' w (ctoK (kAt F) (kAt F') Q w y)) |].
+  exact (elUnlift_eq F' w _ w' x' HE).
+Qed.
+
+Lemma kRel_liftN d {k u u'} (F : kUFam k u) (F' : kUFam k u') w x w' x' :
+  kRel F F' w x w' x' ->
+  kRel (famLiftN d F) (famLiftN d F') w (elLiftN d F w x) w' (elLiftN d F' w' x').
+Proof.
+  revert w x w' x'; induction d as [| d IH]; intros w x w' x' H; [exact H |].
+  apply kRel_lift; apply IH; exact H.
+Qed.
+
+Lemma kRel_unliftN d {k u u'} (F : kUFam k u) (F' : kUFam k u')
+  (Q : iso (kAt F) (kAt F')) w x w' x' :
+  kRel (famLiftN d F) (famLiftN d F') w x w' x' ->
+  kRel F F' w (elUnliftN d F w x) w' (elUnliftN d F' w' x').
+Proof.
+  revert w x w' x'; induction d as [| d IH]; intros w x w' x' H; [exact H |].
+  apply IH.
+  exact (kRel_unlift (famLiftN d F) (famLiftN d F') (famLiftN_iso d F F' Q)
+           w x w' x' H).
+Qed.
+
 Lemma funtm_uptm (G : ctx) (A t : tm) (LA : LTy G A)
   (IHA : FunTm G A) (IHt : FunTm G t) : FunTm G (uptm A t).
 Proof.
   intros rho rho' HE k Sy F w x D Sy' F' w' x' D' Piso Hrel.
   funtm_start D D'.
-  destruct k as [| k0]; cbn [TmInv TmShape UpTmVal] in E, E';
-    [ funtm_proofs F F' Piso w x w' x' Hrel; destruct E |].
+  cbn [TmInv TmShape UpTmVal] in E, E'.
+  funtm_proofs E E' F F' Piso w x w' x' Hrel.
+  destruct k as [| k0]; [destruct E |].
   destruct E as [Sy1 [F1 [x1 [[DA D1] Hv]]]].
   destruct E' as [Sy1' [F1' [x1' [[DA' D1'] Hv']]]].
   assert (E1 : Sy1 = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
@@ -933,120 +761,202 @@ Lemma funtm_shape (G : ctx) (t : tm)
 Proof.
   intros rho rho' HE k Sy F w x D Sy' F' w' x' D' Piso Hrel.
   funtm_start D D'.
-  destruct k as [| k0]; cbn [TmInv] in E, E'.
-  - funtm_proofs F F' Piso w x w' x' Hrel.
-    exact (H rho rho' 0 Sy F w x Sy' F' w' x' HE E E' Piso Hrel).
-  - exact (H rho rho' (S k0) Sy F w x Sy' F' w' x' HE E E' Piso Hrel).
+  cbn [TmInv] in E, E'.
+  funtm_proofs E E' F F' Piso w x w' x' Hrel.
+  exact (H rho rho' k Sy F w x Sy' F' w' x' HE E E' Piso Hrel).
 Qed.
 
-(* The first projection.  The pin on the subject's Sigma-realiser (Interp/Def.v)
-   is what makes this work: it rebuilds the interpretation of `sig_ A B` with
-   ity_sig, so the two readings' Sigma-families are isomorphic by
-   FunTy_of_FunTm, and the subject's layer-1 relatedness transfers to the
-   second reading's realiser.  Then sigFst_to moves the transport across the
-   projection and sigFst_eq closes the homogeneous half. *)
-Lemma funtm_fst (G : ctx) (A B p : tm)
-  (Lsig : LTy G (sig_ A B)) (IHsig : FunTm G (sig_ A B))
-  (Lp : LTm G p (sig_ A B)) (IHp : FunTm G p) : FunTm G (fst A B p).
+(* The two projections.  The pin on the subject's Sigma-realiser (Interp/Def.v)
+   is what makes these work: it rebuilds the interpretation of `sig_ (d+k) A B`
+   with ity_sig, so the two readings' Sigma-families are isomorphic, and the
+   subject's layer-1 relatedness transfers to the second reading's realiser.
+   Then sigFst_to moves the transport across the projection and sigFst_eq closes
+   the homogeneous half.
+
+   What the annotated levels add is the GAP: the subject's value lives at the
+   d-fold lift of the level-k Sigma-family, and the projection unlifts it, so
+   the two values have to be related DOWN THERE -- which is kRel_unliftN, and
+   it needs the UNLIFTED families' isomorphism, built here from the components'
+   functionality by sigFam_iso.  The gap itself is the same on both sides by
+   level functionality at the subject. *)
+
+(* the isomorphism of two readings' level-k Sigma-families, and the gap's
+   agreement: both projections and the two Sigma-eliminations want them. *)
+Lemma sig_data_iso (G : ctx) (kk : nat) (A B : tm)
+  (Lsig : LTy G (sig_ kk A B)) (LA : LTy G A) (LB : LTy (A :: G) B)
+  (IHA : FunTm G A) (IHB : FunTm (A :: G) B)
+  rho rho' (HE : EnvRelOf G rho rho') k
+  wA (FA : kUFam k wA) B0 wB FB redB isoB gSig
+  wA' (FA' : kUFam k wA') B0' wB' FB' redB' isoB' gSig'
+  (Ep : esig wA B0 = ers rho (sig_ kk A B))
+  (Ep' : esig wA' B0' = ers rho' (sig_ kk A B))
+  (DA : ITy rho A k wA FA) (DA' : ITy rho' A k wA' FA')
+  (DB : forall u x, ITy (ext rho FA u x) B k (wB u x) (FB u x))
+  (DB' : forall u x, ITy (ext rho' FA' u x) B k (wB' u x) (FB' u x)) :
+  iso (kAt (sigFam k wA B0 FA wB FB redB isoB gSig))
+      (kAt (sigFam k wA' B0' FA' wB' FB' redB' isoB' gSig')).
+Proof.
+  assert (Hty : tyeq (esig wA B0) (esig wA' B0'))
+    by (rewrite Ep, Ep'; exact (Lsig rho rho' HE)).
+  assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
+  assert (EA' : wA' = ers rho' A) by exact (ers_of_ITy _ _ _ _ _ DA').
+  subst wA wA'.
+  apply sigFam_iso; [exact Hty | |].
+  - refine (FunTy_of_FunTm G A IHA rho rho' HE k _ FA _ FA' DA DA' _).
+    apply (eqty_at_lvl k _ _ (uf_ty FA) (uf_ty FA')).
+    exact (LA rho rho' HE).
+  - intros u x u' x' Hrel.
+    pose proof (EnvRelOf_ext G rho rho' A k FA FA' u x u' x' HE Hrel) as HEx.
+    assert (EB : wB u x = ers (ext rho FA u x) B)
+      by exact (ers_of_ITy _ _ _ _ _ (DB u x)).
+    assert (EB' : wB' u' x' = ers (ext rho' FA' u' x') B)
+      by exact (ers_of_ITy _ _ _ _ _ (DB' u' x')).
+    refine (FunTy_of_FunTm (A :: G) B IHB _ _ HEx k _ (FB u x) _ (FB' u' x')
+              (DB u x) (DB' u' x') _).
+    apply (eqty_at_lvl k _ _ (uf_ty (FB u x)) (uf_ty (FB' u' x'))).
+    rewrite EB, EB'; exact (LB _ _ HEx).
+Qed.
+
+Lemma funtm_fst (G : ctx) (kk : nat) (A B p : tm)
+  (Lsig : LTy G (sig_ kk A B)) (LA : LTy G A) (LB : LTy (A :: G) B)
+  (IHA : FunTm G A) (IHB : FunTm (A :: G) B)
+  (Lp : LTm G p (sig_ kk A B)) (IHp : FunTm G p) : FunTm G (fst A B p).
 Proof.
   apply funtm_shape.
   intros rho rho' k Sy F w x Sy' F' w' x' HE E E' Piso Hrel.
   cbn [TmShape FstVal] in E, E'.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gSig
-    [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
-    [wp' [xp' [[[[Ep' DA'] DB'] Dp'] Hv']]]]]]]]]]].
+  destruct E as [d [wA [FA [B0 [wB [FB [redB [isoB [gSig
+    [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]]].
+  destruct E' as [d2 [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
+    [wp' [xp' [[[[Ep' DA'] DB'] Dp'] Hv']]]]]]]]]]]].
+  (* the gap is the same on both sides: level functionality at the subject *)
+  pose proof (itm_lvl p rho rho' (lvls_of_EnvRelOf G rho rho' HE) _ _ _ _ _
+                (NotPrfR_sig wA B0) Dp _ _ _ _ _ (NotPrfR_sig wA' B0') Dp') as Ed.
+  assert (Ed2 : d2 = d) by lia; subst d2.
+  pose proof (sig_data_iso G kk A B Lsig LA LB IHA IHB rho rho' HE k
+                wA FA B0 wB FB redB isoB gSig wA' FA' B0' wB' FB' redB' isoB' gSig'
+                Ep Ep' DA DA' DB DB') as Psig.
   assert (Hty : tyeq (esig wA B0) (esig wA' B0'))
     by (rewrite Ep, Ep'; exact (Lsig rho rho' HE)).
-  pose proof (ity_sig rho A B k wA FA B0 wB FB redB isoB gSig Ep DA DB) as Dsig.
-  pose proof (ity_sig rho' A B k wA' FA' B0' wB' FB' redB' isoB' gSig' Ep' DA' DB')
-    as Dsig'.
-  assert (Psig : iso (kAt (sigFam k wA B0 FA wB FB redB isoB gSig))
-                     (kAt (sigFam k wA' B0' FA' wB' FB' redB' isoB' gSig')))
-    by exact (FunTy_of_FunTm G (sig_ A B) IHsig rho rho' HE k _ _ _ _ Dsig Dsig'
-                (eqty_at_lvl k _ _ gSig gSig' Hty)).
   assert (Ewp : wp = ers rho p) by exact (ers_of_ITm _ _ _ _ _ _ _ Dp).
   assert (Ewp' : wp' = ers rho' p) by exact (ers_of_ITm _ _ _ _ _ _ _ Dp').
   assert (Hrp : Rel (esig wA' B0') wp wp').
   { rewrite Ewp, Ewp'.
-    apply (Rel_tyeq (ers rho (sig_ A B)) (esig wA' B0'));
+    apply (Rel_tyeq (ers rho (sig_ (d + k) A B)) (esig wA' B0'));
       [ rewrite <- Ep; exact Hty | exact (Lp rho rho' HE) ]. }
-  pose proof (IHp rho rho' HE k (esig wA B0) _ wp xp Dp
-                (esig wA' B0') _ wp' xp' Dp' Psig Hrp) as Hx.
+  pose proof (IHp rho rho' HE (d + k) (esig wA B0) _ wp xp Dp
+                (esig wA' B0') _ wp' xp' Dp'
+                (famLiftN_iso d _ _ Psig) Hrp) as Hx0.
+  pose proof (kRel_unliftN d _ _ Psig wp xp wp' xp' Hx0) as Hx.
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
   eapply kRel_trans;
     [ apply (sigFst_to k wA B0 FA wB FB redB isoB gSig
-               wA' B0' FA' wB' FB' redB' isoB' gSig' Psig wp xp) |].
+               wA' B0' FA' wB' FB' redB' isoB' gSig' Psig wp _) |].
   apply (proj1 (kRel_same FA' _ _ _ _)).
   apply (sigFst_eq k wA' B0' FA' wB' FB' redB' isoB' gSig').
-  exact (kRel_at _ _ Psig wp xp wp' xp' Hx).
+  exact (kRel_at _ _ Psig wp _ wp' _ Hx).
 Qed.
 
-(* The second projection.  Same shape, with sigSnd_to for the transport and
-   sigSnd_eq -- which is already heterogeneous, the codomain instance moving
-   with the first component -- for the homogeneous half.  No induction
-   hypothesis for B is needed: sigSnd_eq carries the codomain iso itself. *)
-Lemma funtm_snd (G : ctx) (A B p : tm)
-  (Lsig : LTy G (sig_ A B)) (IHsig : FunTm G (sig_ A B))
-  (Lp : LTm G p (sig_ A B)) (IHp : FunTm G p) : FunTm G (snd A B p).
+Lemma funtm_snd (G : ctx) (kk : nat) (A B p : tm)
+  (Lsig : LTy G (sig_ kk A B)) (LA : LTy G A) (LB : LTy (A :: G) B)
+  (IHA : FunTm G A) (IHB : FunTm (A :: G) B)
+  (Lp : LTm G p (sig_ kk A B)) (IHp : FunTm G p) : FunTm G (snd A B p).
 Proof.
   apply funtm_shape.
   intros rho rho' k Sy F w x Sy' F' w' x' HE E E' Piso Hrel.
   cbn [TmShape SndVal] in E, E'.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gSig
-    [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
-    [wp' [xp' [[[[Ep' DA'] DB'] Dp'] Hv']]]]]]]]]]].
+  destruct E as [d [wA [FA [B0 [wB [FB [redB [isoB [gSig
+    [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]]].
+  destruct E' as [d2 [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
+    [wp' [xp' [[[[Ep' DA'] DB'] Dp'] Hv']]]]]]]]]]]].
+  pose proof (itm_lvl p rho rho' (lvls_of_EnvRelOf G rho rho' HE) _ _ _ _ _
+                (NotPrfR_sig wA B0) Dp _ _ _ _ _ (NotPrfR_sig wA' B0') Dp') as Ed.
+  assert (Ed2 : d2 = d) by lia; subst d2.
+  pose proof (sig_data_iso G kk A B Lsig LA LB IHA IHB rho rho' HE k
+                wA FA B0 wB FB redB isoB gSig wA' FA' B0' wB' FB' redB' isoB' gSig'
+                Ep Ep' DA DA' DB DB') as Psig.
   assert (Hty : tyeq (esig wA B0) (esig wA' B0'))
     by (rewrite Ep, Ep'; exact (Lsig rho rho' HE)).
-  pose proof (ity_sig rho A B k wA FA B0 wB FB redB isoB gSig Ep DA DB) as Dsig.
-  pose proof (ity_sig rho' A B k wA' FA' B0' wB' FB' redB' isoB' gSig' Ep' DA' DB')
-    as Dsig'.
-  assert (Psig : iso (kAt (sigFam k wA B0 FA wB FB redB isoB gSig))
-                     (kAt (sigFam k wA' B0' FA' wB' FB' redB' isoB' gSig')))
-    by exact (FunTy_of_FunTm G (sig_ A B) IHsig rho rho' HE k _ _ _ _ Dsig Dsig'
-                (eqty_at_lvl k _ _ gSig gSig' Hty)).
   assert (Ewp : wp = ers rho p) by exact (ers_of_ITm _ _ _ _ _ _ _ Dp).
   assert (Ewp' : wp' = ers rho' p) by exact (ers_of_ITm _ _ _ _ _ _ _ Dp').
   assert (Hrp : Rel (esig wA' B0') wp wp').
   { rewrite Ewp, Ewp'.
-    apply (Rel_tyeq (ers rho (sig_ A B)) (esig wA' B0'));
+    apply (Rel_tyeq (ers rho (sig_ (d + k) A B)) (esig wA' B0'));
       [ rewrite <- Ep; exact Hty | exact (Lp rho rho' HE) ]. }
-  pose proof (IHp rho rho' HE k (esig wA B0) _ wp xp Dp
-                (esig wA' B0') _ wp' xp' Dp' Psig Hrp) as Hx.
+  pose proof (IHp rho rho' HE (d + k) (esig wA B0) _ wp xp Dp
+                (esig wA' B0') _ wp' xp' Dp'
+                (famLiftN_iso d _ _ Psig) Hrp) as Hx0.
+  pose proof (kRel_unliftN d _ _ Psig wp xp wp' xp' Hx0) as Hx.
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
   eapply kRel_trans;
     [ apply (sigSnd_to k wA B0 FA wB FB redB isoB gSig
-               wA' B0' FA' wB' FB' redB' isoB' gSig' Psig wp xp) |].
+               wA' B0' FA' wB' FB' redB' isoB' gSig' Psig wp _) |].
   apply (sigSnd_eq k wA' B0' FA' wB' FB' redB' isoB' gSig').
-  exact (kRel_at _ _ Psig wp xp wp' xp' Hx).
+  exact (kRel_at _ _ Psig wp _ wp' _ Hx).
 Qed.
 
-(* Application.  Two legs: piApp_to moves both transports -- the function's
-   along the Pi-families' iso, the argument's along the domains' -- across the
-   application, and piApp_eq closes the rest inside the second reading's
-   codomain.  The argument's iso is NOT read off the Pi-families' one: it comes
-   from the annotation A, which t_app carries a derivation for. *)
-Lemma funtm_app (G : ctx) (A B f a : tm)
-  (LA : LTy G A) (IHA : FunTm G A)
-  (Lpi : LTy G (pi A B)) (IHpi : FunTm G (pi A B))
-  (Lf : LTm G f (pi A B)) (IHf : FunTm G f)
+(* Application, with the same gap plumbing as the projections: the function's
+   value lives at the d-fold lift of the level-k Pi-family, piApp works down
+   there, and the two unlifted values are related by kRel_unliftN once the
+   level-k Pi-families' isomorphism is in hand -- which piFam_iso builds from
+   the domain's and the codomain's. *)
+Lemma pi_data_iso (G : ctx) (kk : nat) (A B : tm)
+  (Lpi : LTy G (pi kk A B)) (LA : LTy G A) (LB : LTy (A :: G) B)
+  (IHA : FunTm G A) (IHB : FunTm (A :: G) B)
+  rho rho' (HE : EnvRelOf G rho rho') k
+  wA (FA : kUFam k wA) B0 wB FB redB isoB gPi
+  wA' (FA' : kUFam k wA') B0' wB' FB' redB' isoB' gPi'
+  (Ep : epi wA B0 = ers rho (pi kk A B))
+  (Ep' : epi wA' B0' = ers rho' (pi kk A B))
+  (DA : ITy rho A k wA FA) (DA' : ITy rho' A k wA' FA')
+  (DB : forall u x, ITy (ext rho FA u x) B k (wB u x) (FB u x))
+  (DB' : forall u x, ITy (ext rho' FA' u x) B k (wB' u x) (FB' u x)) :
+  iso (kAt (piFam k wA B0 FA wB FB redB isoB gPi))
+      (kAt (piFam k wA' B0' FA' wB' FB' redB' isoB' gPi')).
+Proof.
+  assert (Hty : tyeq (epi wA B0) (epi wA' B0'))
+    by (rewrite Ep, Ep'; exact (Lpi rho rho' HE)).
+  assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
+  assert (EA' : wA' = ers rho' A) by exact (ers_of_ITy _ _ _ _ _ DA').
+  subst wA wA'.
+  apply piFam_iso; [exact Hty | |].
+  - refine (FunTy_of_FunTm G A IHA rho rho' HE k _ FA _ FA' DA DA' _).
+    apply (eqty_at_lvl k _ _ (uf_ty FA) (uf_ty FA')).
+    exact (LA rho rho' HE).
+  - intros u x u' x' Hrel.
+    pose proof (EnvRelOf_ext G rho rho' A k FA FA' u x u' x' HE Hrel) as HEx.
+    assert (EB : wB u x = ers (ext rho FA u x) B)
+      by exact (ers_of_ITy _ _ _ _ _ (DB u x)).
+    assert (EB' : wB' u' x' = ers (ext rho' FA' u' x') B)
+      by exact (ers_of_ITy _ _ _ _ _ (DB' u' x')).
+    refine (FunTy_of_FunTm (A :: G) B IHB _ _ HEx k _ (FB u x) _ (FB' u' x')
+              (DB u x) (DB' u' x') _).
+    apply (eqty_at_lvl k _ _ (uf_ty (FB u x)) (uf_ty (FB' u' x'))).
+    rewrite EB, EB'; exact (LB _ _ HEx).
+Qed.
+
+Lemma funtm_app (G : ctx) (kk : nat) (A B f a : tm)
+  (LA : LTy G A) (LB : LTy (A :: G) B) (IHA : FunTm G A) (IHB : FunTm (A :: G) B)
+  (Lpi : LTy G (pi kk A B))
+  (Lf : LTm G f (pi kk A B)) (IHf : FunTm G f)
   (La : LTm G a A) (IHa : FunTm G a) : FunTm G (app A B f a).
 Proof.
   apply funtm_shape.
   intros rho rho' k Sy F w x Sy' F' w' x' HE E E' Piso Hrel.
   cbn [TmShape AppVal] in E, E'.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gPi [wf [xf [wa [xa [[[[[Ep DA] DB] Df] Da] Hv]]]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi' [wf' [xf' [wa' [xa' [[[[[Ep' DA'] DB'] Df'] Da'] Hv']]]]]]]]]]]]].
+  destruct E as [d [wA [FA [B0 [wB [FB [redB [isoB [gPi
+    [wf [xf [wa [xa [[[[[Ep DA] DB] Df] Da] Hv]]]]]]]]]]]]]].
+  destruct E' as [d2 [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi'
+    [wf' [xf' [wa' [xa' [[[[[Ep' DA'] DB'] Df'] Da'] Hv']]]]]]]]]]]]]].
+  (* the gap agrees: level functionality at the function *)
+  pose proof (itm_lvl f rho rho' (lvls_of_EnvRelOf G rho rho' HE) _ _ _ _ _
+                (NotPrfR_pi wA B0) Df _ _ _ _ _ (NotPrfR_pi wA' B0') Df') as Ed.
+  assert (Ed2 : d2 = d) by lia; subst d2.
+  pose proof (pi_data_iso G kk A B Lpi LA LB IHA IHB rho rho' HE k
+                wA FA B0 wB FB redB isoB gPi wA' FA' B0' wB' FB' redB' isoB' gPi'
+                Ep Ep' DA DA' DB DB') as Ppi.
   assert (Hty : tyeq (epi wA B0) (epi wA' B0'))
     by (rewrite Ep, Ep'; exact (Lpi rho rho' HE)).
-  pose proof (ity_pi rho A B k wA FA B0 wB FB redB isoB gPi Ep DA DB) as Dpi.
-  pose proof (ity_pi rho' A B k wA' FA' B0' wB' FB' redB' isoB' gPi' Ep' DA' DB')
-    as Dpi'.
-  assert (Ppi : iso (kAt (piFam k wA B0 FA wB FB redB isoB gPi))
-                    (kAt (piFam k wA' B0' FA' wB' FB' redB' isoB' gPi')))
-    by exact (FunTy_of_FunTm G (pi A B) IHpi rho rho' HE k _ _ _ _ Dpi Dpi'
-                (eqty_at_lvl k _ _ gPi gPi' Hty)).
   (* the domain, from the annotation *)
   assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
   assert (EA' : wA' = ers rho' A) by exact (ers_of_ITy _ _ _ _ _ DA').
@@ -1060,7 +970,7 @@ Proof.
   assert (Ewf' : wf' = ers rho' f) by exact (ers_of_ITm _ _ _ _ _ _ _ Df').
   assert (Hrf : Rel (epi wA' B0') wf wf').
   { rewrite Ewf, Ewf'.
-    apply (Rel_tyeq (ers rho (pi A B)) (epi wA' B0'));
+    apply (Rel_tyeq (ers rho (pi (d + k) A B)) (epi wA' B0'));
       [ rewrite <- Ep; exact Hty | exact (Lf rho rho' HE) ]. }
   assert (Ewa : wa = ers rho a) by exact (ers_of_ITm _ _ _ _ _ _ _ Da).
   assert (Ewa' : wa' = ers rho' a) by exact (ers_of_ITm _ _ _ _ _ _ _ Da').
@@ -1068,16 +978,17 @@ Proof.
   { rewrite Ewa, Ewa', EA'.
     apply (Rel_tyeq (ers rho A) (ers rho' A));
       [ exact (LA rho rho' HE) | exact (La rho rho' HE) ]. }
-  pose proof (IHf rho rho' HE k (epi wA B0) _ wf xf Df
-                (epi wA' B0') _ wf' xf' Df' Ppi Hrf) as Hxf.
+  pose proof (IHf rho rho' HE (d + k) (epi wA B0) _ wf xf Df
+                (epi wA' B0') _ wf' xf' Df' (famLiftN_iso d _ _ Ppi) Hrf) as Hxf0.
+  pose proof (kRel_unliftN d _ _ Ppi wf xf wf' xf' Hxf0) as Hxf.
   pose proof (IHa rho rho' HE k wA FA wa xa Da wA' FA' wa' xa' Da' QA Hra) as Hxa.
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
   eapply kRel_trans;
     [ apply (piApp_to k wA B0 FA wB FB redB isoB gPi
-               wA' B0' FA' wB' FB' redB' isoB' gPi' Ppi QA wf xf
-               (proj2 (kRel_same _ _ _ _ _) (kRel_refl _ wf xf)) wa xa) |].
+               wA' B0' FA' wB' FB' redB' isoB' gPi' Ppi QA wf _
+               (kEqAt_refl_ _ wf _) wa xa) |].
   apply (piApp_eq k wA' B0' FA' wB' FB' redB' isoB' gPi');
-    [ exact (kRel_at _ _ Ppi wf xf wf' xf' Hxf)
+    [ exact (kRel_at _ _ Ppi wf _ wf' _ Hxf)
     | exact (kRel_at _ _ QA wa xa wa' xa' Hxa) ].
 Qed.
 
@@ -1107,21 +1018,29 @@ Proof.
     eapply Rel_exp; [apply reds_snd_pair | apply reds_refl | exact H2].
 Qed.
 
-Lemma funtm_pair (G : ctx) (A B t a : tm)
+Lemma funtm_pair (G : ctx) (kk : nat) (A B t a : tm)
   (LA : LTy G A) (IHA : FunTm G A)
   (LB : LTy (A :: G) B) (IHB : FunTm (A :: G) B)
-  (Lsig : LTy G (sig_ A B)) (IHsig : FunTm G (sig_ A B))
-  (Lp : LTm G (pair A B t a) (sig_ A B))
+  (Lsig : LTy G (sig_ kk A B))
+  (Lp : LTm G (pair kk A B t a) (sig_ kk A B))
   (Lt : LTm G t A) (IHt : FunTm G t)
-  (La : LTm G a (B [t..])) (IHa : FunTm G a) : FunTm G (pair A B t a).
+  (La : LTm G a (B [t..])) (IHa : FunTm G a) : FunTm G (pair kk A B t a).
 Proof.
   apply funtm_shape.
   intros rho rho' k Sy F w x Sy' F' w' x' HE E E' Piso Hrel.
   cbn [TmShape PairVal] in E, E'.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gSig [wt [xt [wa [xa [g
-    [[[[[Ep DA] DB] Dt] Da] Hv]]]]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig' [wt' [xt' [wa' [xa' [g'
-    [[[[[Ep' DA'] DB'] Dt'] Da'] Hv']]]]]]]]]]]]]].
+  destruct E as [d [j [Ek H1]]]; destruct Ek.
+  cbn [lvlCast eq_sym lvlCastEl] in H1.
+  destruct E' as [d2 [j2 [Ek2 H2]]].
+  destruct H1 as [wA [FA [B0 [wB [FB [redB [isoB [gSig [wt [xt [wa [xa [g
+    [[[[[[Ekk Ep] DA] DB] Dt] Da] Hv]]]]]]]]]]]]]].
+  destruct H2 as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig' [wt' [xt' [wa' [xa' [g'
+    [[[[[[Ekk2 Ep'] DA'] DB'] Dt'] Da'] Hv']]]]]]]]]]]]]].
+  pose proof (ity_lvl rho rho' (lvls_of_EnvRelOf G rho rho' HE) A j _ FA j2 _ FA'
+                DA DA') as Ej2; subst j2.
+  assert (Ed2 : d2 = d) by lia; subst d2.
+  rewrite (Eqdep_dec.UIP_dec Nat.eq_dec Ek2 eq_refl) in Hv'.
+  cbn [lvlCast lvlCastEl eq_sym] in Hv'.
   (* every realiser is the erasure it should be *)
   assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
   assert (EA' : wA' = ers rho' A) by exact (ers_of_ITy _ _ _ _ _ DA').
@@ -1133,24 +1052,22 @@ Proof.
   (* the Sigma-families, through the pin *)
   assert (Hty : tyeq (esig (ers rho A) B0) (esig (ers rho' A) B0'))
     by (rewrite Ep, Ep'; exact (Lsig rho rho' HE)).
-  pose proof (ity_sig rho A B k _ FA B0 wB FB redB isoB gSig Ep DA DB) as Dsig.
-  pose proof (ity_sig rho' A B k _ FA' B0' wB' FB' redB' isoB' gSig' Ep' DA' DB')
-    as Dsig'.
-  assert (Psig : iso (kAt (sigFam k (ers rho A) B0 FA wB FB redB isoB gSig))
-                     (kAt (sigFam k (ers rho' A) B0' FA' wB' FB' redB' isoB' gSig')))
-    by exact (FunTy_of_FunTm G (sig_ A B) IHsig rho rho' HE k _ _ _ _ Dsig Dsig'
-                (eqty_at_lvl k _ _ gSig gSig' Hty)).
+  assert (Psig : iso (kAt (sigFam j (ers rho A) B0 FA wB FB redB isoB gSig))
+                     (kAt (sigFam j (ers rho' A) B0' FA' wB' FB' redB' isoB' gSig')))
+    by exact (sig_data_iso G kk A B Lsig LA LB IHA IHB rho rho' HE j
+                _ FA B0 wB FB redB isoB gSig _ FA' B0' wB' FB' redB' isoB' gSig'
+                Ep Ep' DA DA' DB DB').
   (* the first component *)
   assert (QA : iso (kAt FA) (kAt FA'))
-    by exact (FunTy_of_FunTm G A IHA rho rho' HE k _ FA _ FA' DA DA'
-                (eqty_at_lvl k _ _ (uf_ty FA) (uf_ty FA') (LA rho rho' HE))).
+    by exact (FunTy_of_FunTm G A IHA rho rho' HE j _ FA _ FA' DA DA'
+                (eqty_at_lvl j _ _ (uf_ty FA) (uf_ty FA') (LA rho rho' HE))).
   assert (Hrt : Rel (ers rho' A) (ers rho t) (ers rho' t))
     by (apply (Rel_tyeq (ers rho A) (ers rho' A));
         [ exact (LA rho rho' HE) | exact (Lt rho rho' HE) ]).
   assert (A3 : kRel FA FA' (ers rho t) xt (ers rho' t) xt')
-    by exact (IHt rho rho' HE k _ FA _ xt Dt _ FA' _ xt' Dt' QA Hrt).
+    by exact (IHt rho rho' HE j _ FA _ xt Dt _ FA' _ xt' Dt' QA Hrt).
   (* the second component, in the extended environments *)
-  pose proof (EnvRelOf_ext G rho rho' A k FA FA' _ xt _ xt' HE A3) as HEx.
+  pose proof (EnvRelOf_ext G rho rho' A j FA FA' _ xt _ xt' HE A3) as HEx.
   assert (EB : wB (ers rho t) xt = ers (ext rho FA (ers rho t) xt) B)
     by exact (ers_of_ITy _ _ _ _ _ (DB _ xt)).
   assert (EB' : wB' (ers rho' t) xt' = ers (ext rho' FA' (ers rho' t) xt') B)
@@ -1158,21 +1075,21 @@ Proof.
   assert (Htb : tyeq (wB (ers rho t) xt) (wB' (ers rho' t) xt'))
     by (rewrite EB, EB'; exact (LB _ _ HEx)).
   assert (QB : iso (kAt (FB (ers rho t) xt)) (kAt (FB' (ers rho' t) xt')))
-    by exact (FunTy_of_FunTm (A :: G) B IHB _ _ HEx k _ (FB _ xt) _ (FB' _ xt')
+    by exact (FunTy_of_FunTm (A :: G) B IHB _ _ HEx j _ (FB _ xt) _ (FB' _ xt')
                 (DB _ xt) (DB' _ xt')
-                (eqty_at_lvl k _ _ (uf_ty (FB _ xt)) (uf_ty (FB' _ xt')) Htb)).
+                (eqty_at_lvl j _ _ (uf_ty (FB _ xt)) (uf_ty (FB' _ xt')) Htb)).
   assert (Hra : Rel (wB' (ers rho' t) xt') (ers rho a) (ers rho' a)).
   { apply (Rel_tyeq (wB (ers rho t) xt) (wB' (ers rho' t) xt')); [exact Htb |].
     rewrite EB, <- (ers_sub1 rho B t FA xt); exact (La rho rho' HE). }
   assert (B3 : kRel (FB (ers rho t) xt) (FB' (ers rho' t) xt')
                  (ers rho a) xa (ers rho' a) xa')
-    by exact (IHa rho rho' HE k _ (FB _ xt) _ xa Da _ (FB' _ xt') _ xa' Da' QB Hra).
+    by exact (IHa rho rho' HE j _ (FB _ xt) _ xa Da _ (FB' _ xt') _ xa' Da' QB Hra).
   (* the layer-1 facts about the reconstructed pair *)
   assert (Hrp : Rel (esig (ers rho' A) B0')
                   (epair (ers rho t) (ers rho a)) (epair (ers rho' t) (ers rho' a))).
-  { apply (Rel_tyeq (ers rho (sig_ A B)) (esig (ers rho' A) B0'));
+  { apply (Rel_tyeq (ers rho (sig_ (d + j) A B)) (esig (ers rho' A) B0'));
       [ rewrite <- Ep; exact Hty | exact (Lp rho rho' HE) ]. }
-  assert (gT' : Good_ty (esig (ers rho' A) B0')) by (exists k; exact gSig').
+  assert (gT' : Good_ty (esig (ers rho' A) B0')) by (exists j; exact gSig').
   assert (Hsame : Rel (esig (ers rho' A) B0')
                     (epair (ers rho t) (ers rho a)) (epair (ers rho t) (ers rho a)))
     by (eapply Rel_trans; [exact Hrp | apply Rel_sym; exact Hrp]).
@@ -1184,30 +1101,31 @@ Proof.
   pose proof (sig_eta_rel _ _ _ _ _ gT' (ev_sig _ _) Hrp) as Hc.
   (* and the comparison itself *)
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
+  apply (kRel_liftN d).
   exists Psig.
   eapply kEqAt_trans;
     [ apply kEqAt_sym;
-      exact (sigPair_surj k _ B0' FA' wB' FB' redB' isoB' gSig' _
-               (ctoK _ _ Psig _ (sigPair k _ B0 FA wB FB redB isoB gSig _ _ xt xa g))
+      exact (sigPair_surj j _ B0' FA' wB' FB' redB' isoB' gSig' _
+               (ctoK _ _ Psig _ (sigPair j _ B0 FA wB FB redB isoB gSig _ _ xt xa g))
                g2 gr) |].
-  apply (sigPair_eq k _ B0' FA' wB' FB' redB' isoB' gSig'); [exact Hc | |].
+  apply (sigPair_eq j _ B0' FA' wB' FB' redB' isoB' gSig'); [exact Hc | |].
   - (* the first components *)
     apply (proj2 (kRel_same FA' _ _ _ _)).
     eapply kRel_trans;
       [ apply kRel_sym;
-        apply (sigFst_to k _ B0 FA wB FB redB isoB gSig
+        apply (sigFst_to j _ B0 FA wB FB redB isoB gSig
                  _ B0' FA' wB' FB' redB' isoB' gSig' Psig) |].
     eapply kRel_trans;
       [ apply (proj1 (kRel_same FA _ _ _ _));
-        apply (sigFst_pair k _ B0 FA wB FB redB isoB gSig)
+        apply (sigFst_pair j _ B0 FA wB FB redB isoB gSig)
       | exact A3 ].
   - (* the second components *)
     eapply kRel_trans;
       [ apply kRel_sym;
-        apply (sigSnd_to k _ B0 FA wB FB redB isoB gSig
+        apply (sigSnd_to j _ B0 FA wB FB redB isoB gSig
                  _ B0' FA' wB' FB' redB' isoB' gSig' Psig) |].
     eapply kRel_trans;
-      [ apply (sigSnd_pair k _ B0 FA wB FB redB isoB gSig) | exact B3 ].
+      [ apply (sigSnd_pair j _ B0 FA wB FB redB isoB gSig) | exact B3 ].
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -1302,35 +1220,41 @@ Qed.
    behaviours, and use the body's induction hypothesis in the extended
    environments.  piApp_to carries the two transports across the application
    and piApp_eq re-seats the argument. *)
-Lemma funtm_lam (G : ctx) (A B t : tm)
+Lemma funtm_lam (G : ctx) (kk : nat) (A B t : tm)
   (LA : LTy G A) (IHA : FunTm G A)
   (LB : LTy (A :: G) B) (IHB : FunTm (A :: G) B)
-  (Lpi : LTy G (pi A B)) (IHpi : FunTm G (pi A B))
-  (Lt : LTm (A :: G) t B) (IHt : FunTm (A :: G) t) : FunTm G (lam A B t).
+  (Lpi : LTy G (pi kk A B))
+  (Lt : LTm (A :: G) t B) (IHt : FunTm (A :: G) t) : FunTm G (lam kk A B t).
 Proof.
   apply funtm_shape.
   intros rho rho' k Sy F w x Sy' F' w' x' HE E E' Piso Hrel.
   cbn [TmShape LamVal] in E, E'.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gPi [wv [xv [wt [xt
-    [[[[[Ep DA] DB] Dt] Hb] Hv]]]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi' [wv' [xv' [wt' [xt'
-    [[[[[Ep' DA'] DB'] Dt'] Hb'] Hv']]]]]]]]]]]]].
+  destruct E as [d [j [Ek H1]]]; destruct Ek.
+  cbn [lvlCast eq_sym lvlCastEl] in H1.
+  destruct E' as [d2 [j2 [Ek2 H2]]].
+  destruct H1 as [wA [FA [B0 [wB [FB [redB [isoB [gPi [wv [xv [wt [xt
+    [[[[[[Ekk Ep] DA] DB] Dt] Hb] Hv]]]]]]]]]]]]].
+  destruct H2 as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi' [wv' [xv' [wt' [xt'
+    [[[[[[Ekk2 Ep'] DA'] DB'] Dt'] Hb'] Hv']]]]]]]]]]]]].
+  pose proof (ity_lvl rho rho' (lvls_of_EnvRelOf G rho rho' HE) A j _ FA j2 _ FA'
+                DA DA') as Ej2; subst j2.
+  assert (Ed2 : d2 = d) by lia; subst d2.
+  rewrite (Eqdep_dec.UIP_dec Nat.eq_dec Ek2 eq_refl) in Hv'.
+  cbn [lvlCast lvlCastEl eq_sym] in Hv'.
   assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
   assert (EA' : wA' = ers rho' A) by exact (ers_of_ITy _ _ _ _ _ DA').
   subst wA wA'.
   (* the two Pi-families, through the pin *)
   assert (Hty : tyeq (epi (ers rho A) B0) (epi (ers rho' A) B0'))
     by (rewrite Ep, Ep'; exact (Lpi rho rho' HE)).
-  pose proof (ity_pi rho A B k _ FA B0 wB FB redB isoB gPi Ep DA DB) as Dpi.
-  pose proof (ity_pi rho' A B k _ FA' B0' wB' FB' redB' isoB' gPi' Ep' DA' DB')
-    as Dpi'.
-  assert (Ppi : iso (kAt (piFam k (ers rho A) B0 FA wB FB redB isoB gPi))
-                    (kAt (piFam k (ers rho' A) B0' FA' wB' FB' redB' isoB' gPi')))
-    by exact (FunTy_of_FunTm G (pi A B) IHpi rho rho' HE k _ _ _ _ Dpi Dpi'
-                (eqty_at_lvl k _ _ gPi gPi' Hty)).
+  assert (Ppi : iso (kAt (piFam j (ers rho A) B0 FA wB FB redB isoB gPi))
+                    (kAt (piFam j (ers rho' A) B0' FA' wB' FB' redB' isoB' gPi')))
+    by exact (pi_data_iso G kk A B Lpi LA LB IHA IHB rho rho' HE j
+                _ FA B0 wB FB redB isoB gPi _ FA' B0' wB' FB' redB' isoB' gPi'
+                Ep Ep' DA DA' DB DB').
   assert (QA : iso (kAt FA) (kAt FA'))
-    by exact (FunTy_of_FunTm G A IHA rho rho' HE k _ FA _ FA' DA DA'
-                (eqty_at_lvl k _ _ (uf_ty FA) (uf_ty FA') (LA rho rho' HE))).
+    by exact (FunTy_of_FunTm G A IHA rho rho' HE j _ FA _ FA' DA DA'
+                (eqty_at_lvl j _ _ (uf_ty FA) (uf_ty FA') (LA rho rho' HE))).
   (* the two values' realisers are layer-1 related: each is related to its
      reading's own realiser by the value equation, and those two by Hrel *)
   destruct Hv as [Q HQ]; destruct Hv' as [Q' HQ'].
@@ -1341,12 +1265,18 @@ Proof.
                  (kRel_rel _ _ _ _ _ _ (proj1 (kRel_same _ _ _ _ _) HQ))) |].
     eapply Rel_trans;
       [ exact (Rel_tyeq Sy' (epi (ers rho' A) B0') w w'
-                 (iso_ty F' (piFam k (ers rho' A) B0' FA' wB' FB' redB' isoB' gPi')
+                 (iso_ty F'
+                    (famLiftN d
+                       (piFam j (ers rho' A) B0' FA' wB' FB' redB' isoB' gPi'))
                     Q') Hrel)
       | exact (kRel_rel _ _ _ _ _ _ (proj1 (kRel_same _ _ _ _ _) HQ')) ]. }
   eapply kRel_of_IsVal2; [exists Q; exact HQ | exists Q'; exact HQ' |].
+  (* both values live at the d-fold lift; compare their unlifts down at j *)
+  eapply hetC_eq_l; [apply kEqC_sym; apply elLiftN_elUnliftN |].
+  eapply hetC_eq_r; [| apply elLiftN_elUnliftN].
+  apply (kRel_liftN d).
   exists Ppi.
-  apply (piEq_of k _ B0' FA' wB' FB' redB' isoB' gPi'); [exact Hrv |].
+  apply (piEq_of j _ B0' FA' wB' FB' redB' isoB' gPi'); [exact Hrv |].
   intros v y v' y' Hyy.
   (* the argument, pulled back to the first reading's domain *)
   set (y0 := moveTo FA' FA (iso_sym _ _ QA) v y v (reds_refl v)).
@@ -1356,7 +1286,7 @@ Proof.
   { eapply kRel_trans; [exact Hy0 |].
     apply (proj1 (kRel_same FA' _ _ _ _)); exact Hyy. }
   (* the body, in the two extended environments *)
-  pose proof (EnvRelOf_ext G rho rho' A k FA FA' v y0 v' y' HE Hy0') as HEx.
+  pose proof (EnvRelOf_ext G rho rho' A j FA FA' v y0 v' y' HE Hy0') as HEx.
   assert (EB : wB v y0 = ers (ext rho FA v y0) B)
     by exact (ers_of_ITy _ _ _ _ _ (DB v y0)).
   assert (EB' : wB' v' y' = ers (ext rho' FA' v' y') B)
@@ -1364,9 +1294,9 @@ Proof.
   assert (Htb : tyeq (wB v y0) (wB' v' y'))
     by (rewrite EB, EB'; exact (LB _ _ HEx)).
   assert (QB : iso (kAt (FB v y0)) (kAt (FB' v' y')))
-    by exact (FunTy_of_FunTm (A :: G) B IHB _ _ HEx k _ (FB v y0) _ (FB' v' y')
+    by exact (FunTy_of_FunTm (A :: G) B IHB _ _ HEx j _ (FB v y0) _ (FB' v' y')
                 (DB v y0) (DB' v' y')
-                (eqty_at_lvl k _ _ (uf_ty (FB v y0)) (uf_ty (FB' v' y')) Htb)).
+                (eqty_at_lvl j _ _ (uf_ty (FB v y0)) (uf_ty (FB' v' y')) Htb)).
   assert (EBt : wt v y0 = ers (ext rho FA v y0) t)
     by exact (ers_of_ITm _ _ _ _ _ _ _ (Dt v y0)).
   assert (EBt' : wt' v' y' = ers (ext rho' FA' v' y') t)
@@ -1375,21 +1305,26 @@ Proof.
   { rewrite EB', EBt, EBt'.
     apply (Rel_tyeq (ers (ext rho FA v y0) B) (ers (ext rho' FA' v' y') B));
       [ exact (LB _ _ HEx) | exact (Lt _ _ HEx) ]. }
-  pose proof (IHt _ _ HEx k _ (FB v y0) _ (xt v y0) (Dt v y0)
+  pose proof (IHt _ _ HEx j _ (FB v y0) _ (xt v y0) (Dt v y0)
                 _ (FB' v' y') _ (xt' v' y') (Dt' v' y') QB Hrb) as Hbody.
   (* and the five legs *)
   eapply kRel_trans;
     [ apply kRel_sym;
-      apply (piApp_eq k _ B0' FA' wB' FB' redB' isoB' gPi' wv
-               (ctoK _ _ Ppi wv xv) wv (ctoK _ _ Ppi wv xv) v
-               (ctoK _ _ QA v y0) v y);
-      [ apply (proj2 (kRel_same _ _ _ _ _)); apply kRel_refl
+      apply (piApp_eq j _ B0' FA' wB' FB' redB' isoB' gPi' wv
+               (ctoK _ _ Ppi wv
+                  (elUnliftN d (piFam j (ers rho A) B0 FA wB FB redB isoB gPi) wv xv))
+               wv
+               (ctoK _ _ Ppi wv
+                  (elUnliftN d (piFam j (ers rho A) B0 FA wB FB redB isoB gPi) wv xv))
+               v (ctoK _ _ QA v y0) v y);
+      [ apply kEqAt_refl_
       | exact (kRel_at _ _ QA v y0 v y Hy0) ] |].
   eapply kRel_trans;
     [ apply kRel_sym;
-      apply (piApp_to k _ B0 FA wB FB redB isoB gPi
-               _ B0' FA' wB' FB' redB' isoB' gPi' Ppi QA wv xv
-               (proj2 (kRel_same _ _ _ _ _) (kRel_refl _ wv xv)) v y0) |].
+      apply (piApp_to j _ B0 FA wB FB redB isoB gPi
+               _ B0' FA' wB' FB' redB' isoB' gPi' Ppi QA wv
+               (elUnliftN d (piFam j (ers rho A) B0 FA wB FB redB isoB gPi) wv xv)
+               (kEqAt_refl_ _ wv _) v y0) |].
   eapply kRel_trans;
     [ apply (proj1 (kRel_same (FB v y0) _ _ _ _)); exact (Hb v y0) |].
   eapply kRel_trans; [ exact Hbody |].
@@ -1426,38 +1361,38 @@ Proof.
   exact (NatAt_NatPer _ _ _ e2 (NatAt_succ _ _ (natSpec x'))).
 Qed.
 
-Lemma semrec_rel_el (k : nat)
-  (SC : etm -> etm) (FC : forall m (x : kElAt (natFam 0) m), kUFam k (SC m))
-  (isoC : forall m x m' x', kEqAt (natFam 0) m x m' x' ->
+Lemma semrec_rel_el (k k0 : nat)
+  (SC : etm -> etm) (FC : forall m (x : kElAt (natFam k0) m), kUFam k (SC m))
+  (isoC : forall m x m' x', kEqAt (natFam k0) m x m' x' ->
             iso (kAt (FC m x)) (kAt (FC m' x')))
   (zr sr : etm) (xz : kElAt (FC ezero (natE 0 NatAt_zero)) zr)
   (step : forall m x w (y : kElAt (FC m x) w),
             kElAt (FC (esucc m) (natSucc x)) (eapp (eapp sr m) w))
-  (SC' : etm -> etm) (FC' : forall m (x : kElAt (natFam 0) m), kUFam k (SC' m))
-  (isoC' : forall m x m' x', kEqAt (natFam 0) m x m' x' ->
+  (SC' : etm -> etm) (FC' : forall m (x : kElAt (natFam k0) m), kUFam k (SC' m))
+  (isoC' : forall m x m' x', kEqAt (natFam k0) m x m' x' ->
              iso (kAt (FC' m x)) (kAt (FC' m' x')))
   (zr' sr' : etm) (xz' : kElAt (FC' ezero (natE 0 NatAt_zero)) zr')
   (step' : forall m x w (y : kElAt (FC' m x) w),
              kElAt (FC' (esucc m) (natSucc x)) (eapp (eapp sr' m) w))
   (Hz : kRel (FC ezero (natE 0 NatAt_zero)) (FC' ezero (natE 0 NatAt_zero))
           zr xz zr' xz')
-  (Hstep : forall m x m' x', kEqAt (natFam 0) m x m' x' ->
+  (Hstep : forall m x m' x', kEqAt (natFam k0) m x m' x' ->
              forall w y w' y', kRel (FC m x) (FC' m' x') w y w' y' ->
              kRel (FC (esucc m) (natSucc x)) (FC' (esucc m') (natSucc x'))
                   (eapp (eapp sr m) w) (step m x w y)
                   (eapp (eapp sr' m') w') (step' m' x' w' y'))
-  m (x : kElAt (natFam 0) m) m' (x' : kElAt (natFam 0) m')
-  (Hx : kEqAt (natFam 0) m x m' x') :
+  m (x : kElAt (natFam k0) m) m' (x' : kElAt (natFam k0) m')
+  (Hx : kEqAt (natFam k0) m x m' x') :
   kRel (FC m (natE (natIdx x) (natSpec x))) (FC' m' (natE (natIdx x') (natSpec x')))
-       (enatrec zr sr m) (semrec k 0 SC FC isoC zr sr xz step (natIdx x) m (natSpec x))
+       (enatrec zr sr m) (semrec k k0 SC FC isoC zr sr xz step (natIdx x) m (natSpec x))
        (enatrec zr' sr' m')
-       (semrec k 0 SC' FC' isoC' zr' sr' xz' step' (natIdx x') m' (natSpec x')).
+       (semrec k k0 SC' FC' isoC' zr' sr' xz' step' (natIdx x') m' (natSpec x')).
 Proof.
   destruct (proj1 (natEq_iff x x') Hx) as [Ej _]; clear Hx.
   revert Ej; destruct x as [[[j e] gd] pp]; destruct x' as [[[j' e'] gd'] pp'];
     cbn [natIdx natSpec proj1_sig Datatypes.fst projT1 projT2];
     intros Ej; subst j'.
-  exact (semrec_rel k 0 SC FC isoC zr sr xz step SC' FC' isoC' zr' sr' xz' step'
+  exact (semrec_rel k k0 SC FC isoC zr sr xz step SC' FC' isoC' zr' sr' xz' step'
            Hz Hstep j m e m' e').
 Qed.
 
@@ -1467,65 +1402,76 @@ Qed.
    own two binders), and the fact that the two scrutinees have the same index.
    The motive's families are related at every related pair of naturals, which
    is IHC in the singly extended environment. *)
-Lemma funtm_natrec (G : ctx) (C z s n : tm)
-  (LC : LTy (nat_ :: G) C) (IHC : FunTm (nat_ :: G) C)
-  (Lz : LTm G z (C [zero..])) (IHz : FunTm G z)
-  (Ls : LTm (C :: nat_ :: G) s (nrec_succ C)) (IHs : FunTm (C :: nat_ :: G) s)
-  (Ln : LTm G n nat_) (IHn : FunTm G n) : FunTm G (natrec C z s n).
+(* The recursor.  Its scrutinee's level is existential in the decoder -- the
+   subject does not record it -- and the two readings agree on it by level
+   functionality at the scrutinee.  The typing level j of `nat_ j` need not be
+   that level: every use of the context type here goes through EnvOf, EnvRel and
+   SubstRel, and all three see only ERASURES, where `nat_ j` is enat at every
+   j. *)
+Lemma funtm_natrec (G : ctx) (j : nat) (C z s n : tm)
+  (LC : LTy (nat_ j :: G) C) (IHC : FunTm (nat_ j :: G) C)
+  (Lz : LTm G z (C [(zero j)..])) (IHz : FunTm G z)
+  (Ls : LTm (C :: nat_ j :: G) s (nrec_succ C)) (IHs : FunTm (C :: nat_ j :: G) s)
+  (Ln : LTm G n (nat_ j)) (IHn : FunTm G n) : FunTm G (natrec C z s n).
 Proof.
   apply funtm_shape.
   intros rho rho' k Sy F w x Sy' F' w' x' HE E E' Piso Hrel.
   cbn [TmShape RecVal] in E, E'.
-  destruct E as [SC [FC [isoC [S0 [wz [xz [ws [xs [redS [wn [xn [[[[[ES DC] Dz] Ds] Dn] Hv]]]]]]]]]]]].
-  destruct E' as [SC' [FC' [isoC' [S0' [wz' [xz' [ws' [xs' [redS' [wn' [xn' [[[[[ES' DC'] Dz'] Ds'] Dn'] Hv']]]]]]]]]]]].
+  destruct E as [jb [SC [FC [isoC [S0 [wz [xz [ws [xs [redS [wn [xn
+    [[[[[ES DC] Dz] Ds] Dn] Hv]]]]]]]]]]]]].
+  destruct E' as [jb2 [SC' [FC' [isoC' [S0' [wz' [xz' [ws' [xs' [redS' [wn' [xn'
+    [[[[[ES' DC'] Dz'] Ds'] Dn'] Hv']]]]]]]]]]]]].
+  (* the scrutinee's level agrees on both sides *)
+  pose proof (itm_lvl n rho rho' (lvls_of_EnvRelOf G rho rho' HE) _ _ _ _ _
+                NotPrfR_nat Dn _ _ _ _ _ NotPrfR_nat Dn') as Ejb; subst jb2.
   (* the motive: related environments and related families at related naturals *)
-  assert (HEm : forall m (xm : kElAt (natFam 0) m) m' (xm' : kElAt (natFam 0) m'),
-             kEqAt (natFam 0) m xm m' xm' ->
-             EnvRelOf (nat_ :: G) (ext rho (natFam 0) m xm)
-                                  (ext rho' (natFam 0) m' xm')).
+  assert (HEm : forall m (xm : kElAt (natFam jb) m) m' (xm' : kElAt (natFam jb) m'),
+             kEqAt (natFam jb) m xm m' xm' ->
+             EnvRelOf (nat_ j :: G) (ext rho (natFam jb) m xm)
+                                  (ext rho' (natFam jb) m' xm')).
   { intros m xm m' xm' Hm.
-    apply (EnvRelOf_ext' G rho rho' nat_ 0 enat enat);
+    apply (EnvRelOf_ext' G rho rho' (nat_ j) jb enat enat);
       [ exact HE | reflexivity | reflexivity
-      | apply (proj1 (kRel_same (natFam 0) _ _ _ _)); exact Hm ]. }
-  assert (HCm : forall m (xm : kElAt (natFam 0) m) m' (xm' : kElAt (natFam 0) m'),
-             kEqAt (natFam 0) m xm m' xm' ->
+      | apply (proj1 (kRel_same (natFam jb) _ _ _ _)); exact Hm ]. }
+  assert (HCm : forall m (xm : kElAt (natFam jb) m) m' (xm' : kElAt (natFam jb) m'),
+             kEqAt (natFam jb) m xm m' xm' ->
              iso (kAt (FC m xm)) (kAt (FC' m' xm'))).
   { intros m xm m' xm' Hm.
-    assert (ECm : SC m = ers (ext rho (natFam 0) m xm) C)
+    assert (ECm : SC m = ers (ext rho (natFam jb) m xm) C)
       by exact (ers_of_ITy _ _ _ _ _ (DC m xm)).
-    assert (ECm' : SC' m' = ers (ext rho' (natFam 0) m' xm') C)
+    assert (ECm' : SC' m' = ers (ext rho' (natFam jb) m' xm') C)
       by exact (ers_of_ITy _ _ _ _ _ (DC' m' xm')).
     assert (Htc : tyeq (SC m) (SC' m'))
       by (rewrite ECm, ECm'; exact (LC _ _ (HEm m xm m' xm' Hm))).
-    exact (FunTy_of_FunTm (nat_ :: G) C IHC _ _ (HEm m xm m' xm' Hm) k
+    exact (FunTy_of_FunTm (nat_ j :: G) C IHC _ _ (HEm m xm m' xm' Hm) k
              _ (FC m xm) _ (FC' m' xm') (DC m xm) (DC' m' xm')
              (eqty_at_lvl k _ _ (uf_ty (FC m xm)) (uf_ty (FC' m' xm')) Htc)). }
   (* the scrutinee *)
   assert (Ewn : wn = ers rho n) by exact (ers_of_ITm _ _ _ _ _ _ _ Dn).
   assert (Ewn' : wn' = ers rho' n) by exact (ers_of_ITm _ _ _ _ _ _ _ Dn').
   assert (Hrn : Rel enat wn wn') by (rewrite Ewn, Ewn'; exact (Ln rho rho' HE)).
-  assert (Hxn : kEqAt (natFam 0) wn xn wn' xn')
-    by (apply (proj2 (kRel_same (natFam 0) _ _ _ _));
-        exact (IHn rho rho' HE 0 enat (natFam 0) wn xn Dn
-                 enat (natFam 0) wn' xn' Dn' (iso_self (natFam 0)) Hrn)).
+  assert (Hxn : kEqAt (natFam jb) wn xn wn' xn')
+    by (apply (proj2 (kRel_same (natFam jb) _ _ _ _));
+        exact (IHn rho rho' HE jb enat (natFam jb) wn xn Dn
+                 enat (natFam jb) wn' xn' Dn' (iso_self (natFam jb)) Hrn)).
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
-  apply (semrec_rel_el k SC FC isoC wz S0 xz _ SC' FC' isoC' wz' S0' xz' _);
+  apply (semrec_rel_el k jb SC FC isoC wz S0 xz _ SC' FC' isoC' wz' S0' xz' _);
     [ | | exact Hxn ].
   - (* the base value *)
-    assert (Hz0 : kEqAt (natFam 0) ezero (natE 0 NatAt_zero)
+    assert (Hz0 : kEqAt (natFam jb) ezero (natE 0 NatAt_zero)
                     ezero (natE 0 NatAt_zero))
       by apply (natE_eq 0 NatAt_zero NatAt_zero).
-    assert (EC0 : SC ezero = ers (ext rho (natFam 0) ezero (natE 0 NatAt_zero)) C)
+    assert (EC0 : SC ezero = ers (ext rho (natFam jb) ezero (natE 0 NatAt_zero)) C)
       by exact (ers_of_ITy _ _ _ _ _ (DC ezero (natE 0 NatAt_zero))).
     assert (EC0' : SC' ezero
-                   = ers (ext rho' (natFam 0) ezero (natE 0 NatAt_zero)) C)
+                   = ers (ext rho' (natFam jb) ezero (natE 0 NatAt_zero)) C)
       by exact (ers_of_ITy _ _ _ _ _ (DC' ezero (natE 0 NatAt_zero))).
     assert (Htc0 : tyeq (SC ezero) (SC' ezero))
       by (rewrite EC0, EC0'; exact (LC _ _ (HEm _ _ _ _ Hz0))).
     assert (Ewz : wz = ers rho z) by exact (ers_of_ITm _ _ _ _ _ _ _ Dz).
     assert (Ewz' : wz' = ers rho' z) by exact (ers_of_ITm _ _ _ _ _ _ _ Dz').
-    assert (Esub : ers rho (C [zero..]) = SC ezero).
-    { rewrite EC0; exact (ers_sub1 rho C zero (natFam 0) (natE 0 NatAt_zero)). }
+    assert (Esub : ers rho (C [(zero j)..]) = SC ezero).
+    { rewrite EC0; exact (ers_sub1 rho C (zero j) (natFam jb) (natE 0 NatAt_zero)). }
     assert (Hrz : Rel (SC' ezero) wz wz').
     { rewrite Ewz, Ewz'.
       apply (Rel_tyeq (SC ezero) (SC' ezero)); [exact Htc0 |].
@@ -1537,30 +1483,30 @@ Proof.
     intros m xm m' xm' Hm w0 y0 w0' y0' Hy.
     eapply kRel_trans; [ apply kRel_sym; apply moveTo_rel |].
     eapply kRel_trans; [| apply moveTo_rel ].
-    assert (ECm : SC m = ers (ext rho (natFam 0) m xm) C)
+    assert (ECm : SC m = ers (ext rho (natFam jb) m xm) C)
       by exact (ers_of_ITy _ _ _ _ _ (DC m xm)).
-    assert (ECm' : SC' m' = ers (ext rho' (natFam 0) m' xm') C)
+    assert (ECm' : SC' m' = ers (ext rho' (natFam jb) m' xm') C)
       by exact (ers_of_ITy _ _ _ _ _ (DC' m' xm')).
-    pose proof (EnvRelOf_ext' (nat_ :: G) (ext rho (natFam 0) m xm)
-                  (ext rho' (natFam 0) m' xm') C k _ _ (FC m xm) (FC' m' xm')
+    pose proof (EnvRelOf_ext' (nat_ j :: G) (ext rho (natFam jb) m xm)
+                  (ext rho' (natFam jb) m' xm') C k _ _ (FC m xm) (FC' m' xm')
                   w0 y0 w0' y0' (HEm m xm m' xm' Hm) ECm ECm' Hy) as HEs.
-    assert (Hsucc : kEqAt (natFam 0) (esucc m) (natSucc xm) (esucc m') (natSucc xm'))
+    assert (Hsucc : kEqAt (natFam jb) (esucc m) (natSucc xm) (esucc m') (natSucc xm'))
       by (apply natSucc_eq; exact Hm).
     assert (ECs : SC (esucc m)
-                  = ers (ext rho (natFam 0) (esucc m) (natSucc xm)) C)
+                  = ers (ext rho (natFam jb) (esucc m) (natSucc xm)) C)
       by exact (ers_of_ITy _ _ _ _ _ (DC (esucc m) (natSucc xm))).
     assert (ECs' : SC' (esucc m')
-                   = ers (ext rho' (natFam 0) (esucc m') (natSucc xm')) C)
+                   = ers (ext rho' (natFam jb) (esucc m') (natSucc xm')) C)
       by exact (ers_of_ITy _ _ _ _ _ (DC' (esucc m') (natSucc xm'))).
     assert (Htcs : tyeq (SC (esucc m)) (SC' (esucc m')))
       by (rewrite ECs, ECs'; exact (LC _ _ (HEm _ _ _ _ Hsucc))).
     assert (Ews : ws m xm w0 y0
-                  = ers (ext (ext rho (natFam 0) m xm) (FC m xm) w0 y0) s)
+                  = ers (ext (ext rho (natFam jb) m xm) (FC m xm) w0 y0) s)
       by exact (ers_of_ITm _ _ _ _ _ _ _ (Ds m xm w0 y0)).
     assert (Ews' : ws' m' xm' w0' y0'
-                   = ers (ext (ext rho' (natFam 0) m' xm') (FC' m' xm') w0' y0') s)
+                   = ers (ext (ext rho' (natFam jb) m' xm') (FC' m' xm') w0' y0') s)
       by exact (ers_of_ITm _ _ _ _ _ _ _ (Ds' m' xm' w0' y0')).
-    assert (Esub2 : ers (ext (ext rho (natFam 0) m xm) (FC m xm) w0 y0) (nrec_succ C)
+    assert (Esub2 : ers (ext (ext rho (natFam jb) m xm) (FC m xm) w0 y0) (nrec_succ C)
                     = SC (esucc m)).
     { rewrite ECs; exact (er_nrec_succ C (rsub rho) m w0). }
     assert (Hrs : Rel (SC' (esucc m')) (ws m xm w0 y0) (ws' m' xm' w0' y0')).
@@ -1594,85 +1540,78 @@ Proof.
     try (intros; exact I).
   - (* t_var *) intros G i A W IHW Hl; apply funtm_var.
   - (* t_conv *) intros G t A B k dt IHt dA IHA dB IHB c IHc; exact IHt.
-  - (* t_univ *) intros G k W IHW; apply funtm_univ.
-  - (* t_up *) intros G A k dA IHA.
-    apply funtm_up; [exact (LTy_of_ty G A k dA) | exact IHA].
-  - (* t_up_tm *) intros G A t k dA IHA dt IHt.
-    apply funtm_uptm; [exact (LTy_of_ty G A k dA) | exact IHA | exact IHt].
-  - (* t_pi *) intros G A B k dA IHA dB IHB.
-    apply (funtm_pi G A B);
-      [ exact (LTy_of_ty G (pi A B) k (t_pi G A B k dA dB))
-      | exact (LTy_of_ty G A k dA) | exact (LTy_of_ty (A :: G) B k dB)
+  - (* t_univ *) intros G k j Hjk W IHW.
+    replace k with ((k - S j) + S j) by lia; apply funtm_univ.
+  - (* t_up *) intros G j A dA IHA.
+    apply funtm_up; [exact (LTy_of_ty G A j dA) | exact IHA].
+  - (* t_up_tm *) intros G j A t dA IHA dt IHt.
+    apply funtm_uptm; [exact (LTy_of_ty G A j dA) | exact IHA | exact IHt].
+  - (* t_pi *) intros G k j A B Hjk dA IHA dB IHB.
+    apply (funtm_pi G k A B);
+      [ exact (LTy_of_ty G (pi k A B) k (t_pi G k j A B Hjk dA dB))
+      | exact (LTy_of_ty G A j dA) | exact (LTy_of_ty (A :: G) B j dB)
       | exact IHA | exact IHB ].
-  - (* t_lam *) intros G A B t k dA IHA dB IHB dt IHt.
-    pose proof (LTy_of_ty G A k dA) as LA.
-    pose proof (LTy_of_ty (A :: G) B k dB) as LB.
-    pose proof (LTy_of_ty G (pi A B) k (t_pi G A B k dA dB)) as Lpi.
-    apply (funtm_lam G A B t);
-      [ exact LA | exact IHA | exact LB | exact IHB | exact Lpi
-      | exact (funtm_pi G A B Lpi LA LB IHA IHB)
+  - (* t_lam *) intros G k j A B t Hjk dA IHA dB IHB dt IHt.
+    apply (funtm_lam G k A B t);
+      [ exact (LTy_of_ty G A j dA) | exact IHA
+      | exact (LTy_of_ty (A :: G) B j dB) | exact IHB
+      | exact (LTy_of_ty G (pi k A B) k (t_pi G k j A B Hjk dA dB))
       | exact (LTm_of_ty (A :: G) t B dt) | exact IHt ].
-  - (* t_app *) intros G A B f u k dA IHA dB IHB df IHf du IHu.
-    pose proof (LTy_of_ty G A k dA) as LA.
-    pose proof (LTy_of_ty (A :: G) B k dB) as LB.
-    pose proof (LTy_of_ty G (pi A B) k (t_pi G A B k dA dB)) as Lpi.
-    apply (funtm_app G A B f u);
-      [ exact LA | exact IHA | exact Lpi
-      | exact (funtm_pi G A B Lpi LA LB IHA IHB)
-      | exact (LTm_of_ty G f (pi A B) df) | exact IHf
+  - (* t_app *) intros G k j A B f u Hjk dA IHA dB IHB df IHf du IHu.
+    apply (funtm_app G k A B f u);
+      [ exact (LTy_of_ty G A j dA) | exact (LTy_of_ty (A :: G) B j dB)
+      | exact IHA | exact IHB
+      | exact (LTy_of_ty G (pi k A B) k (t_pi G k j A B Hjk dA dB))
+      | exact (LTm_of_ty G f (pi k A B) df) | exact IHf
       | exact (LTm_of_ty G u A du) | exact IHu ].
-  - (* t_sig *) intros G A B k dA IHA dB IHB.
-    apply (funtm_sig G A B);
-      [ exact (LTy_of_ty G (sig_ A B) k (t_sig G A B k dA dB))
-      | exact (LTy_of_ty G A k dA) | exact (LTy_of_ty (A :: G) B k dB)
+  - (* t_sig *) intros G k j A B Hjk dA IHA dB IHB.
+    apply (funtm_sig G k A B);
+      [ exact (LTy_of_ty G (sig_ k A B) k (t_sig G k j A B Hjk dA dB))
+      | exact (LTy_of_ty G A j dA) | exact (LTy_of_ty (A :: G) B j dB)
       | exact IHA | exact IHB ].
-  - (* t_pair *) intros G A B t u k dA IHA dB IHB dt IHt du IHu.
-    pose proof (LTy_of_ty G A k dA) as LA.
-    pose proof (LTy_of_ty (A :: G) B k dB) as LB.
-    pose proof (LTy_of_ty G (sig_ A B) k (t_sig G A B k dA dB)) as Lsig.
-    apply (funtm_pair G A B t u);
-      [ exact LA | exact IHA | exact LB | exact IHB | exact Lsig
-      | exact (funtm_sig G A B Lsig LA LB IHA IHB)
-      | exact (LTm_of_ty G (pair A B t u) (sig_ A B)
-                 (t_pair G A B t u k dA dB dt du))
+  - (* t_pair *) intros G k j A B t u Hjk dA IHA dB IHB dt IHt du IHu.
+    apply (funtm_pair G k A B t u);
+      [ exact (LTy_of_ty G A j dA) | exact IHA
+      | exact (LTy_of_ty (A :: G) B j dB) | exact IHB
+      | exact (LTy_of_ty G (sig_ k A B) k (t_sig G k j A B Hjk dA dB))
+      | exact (LTm_of_ty G (pair k A B t u) (sig_ k A B)
+                 (t_pair G k j A B t u Hjk dA dB dt du))
       | exact (LTm_of_ty G t A dt) | exact IHt
       | exact (LTm_of_ty G u (B [t..]) du) | exact IHu ].
-  - (* t_fst *) intros G A B p k dA IHA dB IHB dp IHp.
-    pose proof (LTy_of_ty G (sig_ A B) k (t_sig G A B k dA dB)) as Lsig.
-    apply (funtm_fst G A B p);
-      [ exact Lsig
-      | exact (funtm_sig G A B Lsig (LTy_of_ty G A k dA)
-                 (LTy_of_ty (A :: G) B k dB) IHA IHB)
-      | exact (LTm_of_ty G p (sig_ A B) dp) | exact IHp ].
-  - (* t_snd *) intros G A B p k dA IHA dB IHB dp IHp.
-    pose proof (LTy_of_ty G (sig_ A B) k (t_sig G A B k dA dB)) as Lsig.
-    apply (funtm_snd G A B p);
-      [ exact Lsig
-      | exact (funtm_sig G A B Lsig (LTy_of_ty G A k dA)
-                 (LTy_of_ty (A :: G) B k dB) IHA IHB)
-      | exact (LTm_of_ty G p (sig_ A B) dp) | exact IHp ].
-  - (* t_nat *) intros G W IHW; apply funtm_nat.
-  - (* t_zero *) intros G W IHW; apply funtm_zero.
-  - (* t_succ *) intros G n dn IHn; apply funtm_succ; exact IHn.
-  - (* t_natrec *) intros G C z s n k dC IHC dz IHz ds IHs dn IHn.
-    apply (funtm_natrec G C z s n);
-      [ exact (LTy_of_ty (nat_ :: G) C k dC) | exact IHC
-      | exact (LTm_of_ty G z (C [zero..]) dz) | exact IHz
-      | exact (LTm_of_ty (C :: nat_ :: G) s (nrec_succ C) ds) | exact IHs
-      | exact (LTm_of_ty G n nat_ dn) | exact IHn ].
-  - (* t_prop *) intros G W IHW; apply funtm_prop.
-  - (* t_prf *) intros G p dp IHp.
+  - (* t_fst *) intros G k j A B p Hjk dA IHA dB IHB dp IHp.
+    apply (funtm_fst G k A B p);
+      [ exact (LTy_of_ty G (sig_ k A B) k (t_sig G k j A B Hjk dA dB))
+      | exact (LTy_of_ty G A j dA) | exact (LTy_of_ty (A :: G) B j dB)
+      | exact IHA | exact IHB
+      | exact (LTm_of_ty G p (sig_ k A B) dp) | exact IHp ].
+  - (* t_snd *) intros G k j A B p Hjk dA IHA dB IHB dp IHp.
+    apply (funtm_snd G k A B p);
+      [ exact (LTy_of_ty G (sig_ k A B) k (t_sig G k j A B Hjk dA dB))
+      | exact (LTy_of_ty G A j dA) | exact (LTy_of_ty (A :: G) B j dB)
+      | exact IHA | exact IHB
+      | exact (LTm_of_ty G p (sig_ k A B) dp) | exact IHp ].
+  - (* t_nat *) intros G k W IHW; apply funtm_nat.
+  - (* t_zero *) intros G k W IHW; apply funtm_zero.
+  - (* t_succ *) intros G k n dn IHn; apply funtm_succ; exact IHn.
+  - (* t_natrec *) intros G C z s n k j dC IHC dz IHz ds IHs dn IHn.
+    apply (funtm_natrec G j C z s n);
+      [ exact (LTy_of_ty (nat_ j :: G) C k dC) | exact IHC
+      | exact (LTm_of_ty G z (C [(zero j)..]) dz) | exact IHz
+      | exact (LTm_of_ty (C :: nat_ j :: G) s (nrec_succ C) ds) | exact IHs
+      | exact (LTm_of_ty G n (nat_ j) dn) | exact IHn ].
+  - (* t_prop *) intros G k W IHW; apply funtm_prop.
+  - (* t_prf *) intros G k j p Hjk dp IHp.
     apply funtm_prf;
-      [ exact (LTy_of_ty G (prf p) 0 (t_prf G p dp)) | exact IHp ].
-  - (* t_all *) intros G A p k dA IHA dp IHp.
-    apply (funtm_all G A p);
-      [ exact (LTy_of_ty G A k dA) | exact (LTm_of_ty (A :: G) p prop dp)
+      [ exact (LTy_of_ty G (prf k p) k (t_prf G k j p Hjk dp)) | exact IHp ].
+  - (* t_all *) intros G A p j k dA IHA dp IHp.
+    apply (funtm_all G j A p);
+      [ exact (LTy_of_ty G A k dA) | exact (LTm_of_ty (A :: G) p (prop j) dp)
       | exact IHA | exact IHp ].
-  - (* t_all_intro *) intros G A p t k dA IHA dp IHp dt IHt; apply funtm_plam.
-  - (* t_all_elim *) intros G A p f u k dA IHA dp IHp df IHf du IHu;
+  - (* t_all_intro *) intros G A p t j k dA IHA dp IHp dt IHt; apply funtm_plam.
+  - (* t_all_elim *) intros G A p f u j k dA IHA dp IHp df IHf du IHu;
       apply funtm_papp.
-  - (* t_false *) intros G W IHW; apply funtm_false.
-  - (* t_absurd *) intros G T e k dT IHT de IHe; apply funtm_absurd.
+  - (* t_false *) intros G k W IHW; apply funtm_false.
+  - (* t_absurd *) intros G T e k j dT IHT de IHe; apply funtm_absurd.
 Qed.
 
 (* ================================================================== *)
@@ -1761,7 +1700,7 @@ Qed.
 Definition LTyK (G : ctx) (A : tm) (k : nat) : Prop :=
   forall rho rho', EnvRelOf G rho rho' -> eqty k (ers rho A) (ers rho' A).
 
-Lemma LTyK_of_ty G A k (d : ty G A (univ k)) : LTyK G A k.
+Lemma LTyK_of_ty G A k (d : ty G A (UU k)) : LTyK G A k.
 Proof. intros rho rho' [_ [_ [_ HS]]]; exact (fundamental_U G A k d _ _ HS). Qed.
 
 (* Two interpretations of one well-typed type in one environment are
@@ -1781,11 +1720,11 @@ Qed.
    conclusion is a Prop -- so it may be supplied wrapped, which is what the
    variable case needs: `lookup` is Prop-valued and cannot be eliminated into
    Type. *)
-Lemma FunTm_of_inh G A : inhabited { k : nat & ty G A (univ k) } -> FunTm G A.
-Proof. intros [[k d]]; exact (funtm G A (univ k) d). Qed.
+Lemma FunTm_of_inh G A : inhabited { k : nat & ty G A (UU k) } -> FunTm G A.
+Proof. intros [[k d]]; exact (funtm G A (UU k) d). Qed.
 
-Lemma FunTm_of_ty G A k (d : ty G A (univ k)) : FunTm G A.
-Proof. exact (funtm G A (univ k) d). Qed.
+Lemma FunTm_of_ty G A k (d : ty G A (UU k)) : FunTm G A.
+Proof. exact (funtm G A (UU k) d). Qed.
 
 (* The statement, split into TOTALITY and RELATEDNESS.  The split is what
    makes c_trans work -- composing two conversions needs a value for the
@@ -1836,66 +1775,82 @@ Qed.
      element of the universe, moved to whatever interpretation of that
      universe the statement was handed. ---- *)
 
-Lemma itot_univ G (W : wfc G) m : ITot G (univ m) (univ (S m)).
+(* A universe.  `univ (d + S m) m` is the level-m universe read at level
+   d + S m, and its value is the d-fold lift of the universe that level S m
+   adds; at d = 0 that is univFam m itself.  The universe it INHABITS is the
+   next one up, UU (d + S m), whose own value is univFam (d + S m). *)
+Lemma itot_univ G (W : wfc G) d m (H : m < d + S m) :
+  ITot G (univ (d + S m) m) (UU (d + S m)).
 Proof.
   intros rho Hrho k F DA.
-  pose proof (ity_lvl_dec rho (univ (S m)) k (ers rho (univ (S m))) F DA) as El;
+  pose proof (ity_lvl_dec rho (UU (d + S m)) k (ers rho (UU (d + S m))) F DA) as El;
     cbn [LvlDec] in El; subst k.
-  refine (itot_move G (univ m) (univ (S m)) (FunTm_of_ty G (univ (S m)) (S (S m)) (t_univ G (S m) W)) W rho Hrho
-            (S (S m)) F (univFam (S m)) DA
-            (ity_univ rho (S m) (ers rho (univ (S m))) eq_refl) _ _).
-  exact (i_ty rho (univ m) (S m) (euniv m) (univFam m)
-           (ity_univ rho m (ers rho (univ m)) eq_refl)).
+  refine (itot_move G (univ (d + S m) m) (UU (d + S m))
+            (FunTm_of_ty G (UU (d + S m)) (S (d + S m)) (t_univ G (S (d + S m)) (d + S m) (Nat.lt_succ_diag_r _) W)) W rho Hrho
+            (S (d + S m)) F (univFam (d + S m)) DA
+            (ity_univ rho 0 (d + S m) (ers rho (UU (d + S m))) eq_refl) _ _).
+  exact (i_ty rho (univ (d + S m) m) (d + S m) (euniv m) (famLiftN d (univFam m))
+           (ity_univ rho d m (ers rho (univ (d + S m) m)) eq_refl)).
 Qed.
 
-Lemma itot_nat G (W : wfc G) : ITot G nat_ (univ 0).
+Lemma itot_nat G (W : wfc G) j : ITot G (nat_ j) (UU j).
 Proof.
   intros rho Hrho k F DA.
-  pose proof (ity_lvl_dec rho (univ 0) k (ers rho (univ 0)) F DA) as El;
+  pose proof (ity_lvl_dec rho (UU j) k (ers rho (UU j)) F DA) as El;
     cbn [LvlDec] in El; subst k.
-  refine (itot_move G nat_ (univ 0) (FunTm_of_ty G (univ 0) 1 (t_univ G 0 W)) W rho Hrho 1 F (univFam 0) DA
-            (ity_univ rho 0 (ers rho (univ 0)) eq_refl) _ _).
-  exact (i_ty rho nat_ 0 enat (natFam 0) (ity_nat rho (ers rho nat_) eq_refl)).
+  refine (itot_move G (nat_ j) (UU j)
+            (FunTm_of_ty G (UU j) (S j) (t_univ G (S j) j (Nat.lt_succ_diag_r j) W))
+            W rho Hrho (S j) F (univFam j) DA
+            (ity_univ rho 0 j (ers rho (UU j)) eq_refl) _ _).
+  exact (i_ty rho (nat_ j) j enat (natFam j) (ity_nat rho j (ers rho (nat_ j)) eq_refl)).
 Qed.
 
-Lemma itot_prop G (W : wfc G) : ITot G prop (univ 0).
+Lemma itot_prop G (W : wfc G) j : ITot G (prop j) (UU j).
 Proof.
   intros rho Hrho k F DA.
-  pose proof (ity_lvl_dec rho (univ 0) k (ers rho (univ 0)) F DA) as El;
+  pose proof (ity_lvl_dec rho (UU j) k (ers rho (UU j)) F DA) as El;
     cbn [LvlDec] in El; subst k.
-  refine (itot_move G prop (univ 0) (FunTm_of_ty G (univ 0) 1 (t_univ G 0 W)) W rho Hrho 1 F (univFam 0) DA
-            (ity_univ rho 0 (ers rho (univ 0)) eq_refl) _ _).
-  exact (i_ty rho prop 0 eprop (propFam 0) (ity_prop rho (ers rho prop) eq_refl)).
+  refine (itot_move G (prop j) (UU j)
+            (FunTm_of_ty G (UU j) (S j) (t_univ G (S j) j (Nat.lt_succ_diag_r j) W))
+            W rho Hrho (S j) F (univFam j) DA
+            (ity_univ rho 0 j (ers rho (UU j)) eq_refl) _ _).
+  exact (i_ty rho (prop j) j eprop (propFam j)
+           (ity_prop rho j (ers rho (prop j)) eq_refl)).
 Qed.
 
-Lemma itot_zero G (W : wfc G) : ITot G zero nat_.
+Lemma itot_zero G (W : wfc G) j : ITot G (zero j) (nat_ j).
 Proof.
   intros rho Hrho k F DA.
-  pose proof (ity_lvl_dec rho nat_ k (ers rho nat_) F DA) as El;
+  pose proof (ity_lvl_dec rho (nat_ j) k (ers rho (nat_ j)) F DA) as El;
     cbn [LvlDec] in El; subst k.
-  refine (itot_move G zero nat_ (FunTm_of_ty G nat_ 0 (t_nat G W)) W rho Hrho 0 F (natFam 0) DA
-            (ity_nat rho (ers rho nat_) eq_refl) _ (i_zero rho)).
+  refine (itot_move G (zero j) (nat_ j) (FunTm_of_ty G (nat_ j) j (t_nat G j W)) W
+            rho Hrho j F (natFam j) DA
+            (ity_nat rho j (ers rho (nat_ j)) eq_refl) _ (i_zero rho j)).
 Qed.
 
-Lemma itot_succ G (W : wfc G) (n : tm) (IHn : ITot G n nat_) : ITot G (succ n) nat_.
+Lemma itot_succ G (W : wfc G) j (n : tm) (IHn : ITot G n (nat_ j)) :
+  ITot G (succ n) (nat_ j).
 Proof.
   intros rho Hrho k F DA.
-  pose proof (ity_lvl_dec rho nat_ k (ers rho nat_) F DA) as El;
+  pose proof (ity_lvl_dec rho (nat_ j) k (ers rho (nat_ j)) F DA) as El;
     cbn [LvlDec] in El; subst k.
-  destruct (IHn rho Hrho 0 (natFam 0) (ity_nat rho (ers rho nat_) eq_refl)) as [xn Dn].
-  refine (itot_move G (succ n) nat_ (FunTm_of_ty G nat_ 0 (t_nat G W)) W rho Hrho 0 F (natFam 0) DA
-            (ity_nat rho (ers rho nat_) eq_refl) _
-            (i_succ rho n (ers rho n) xn Dn)).
+  destruct (IHn rho Hrho j (natFam j) (ity_nat rho j (ers rho (nat_ j)) eq_refl))
+    as [xn Dn].
+  refine (itot_move G (succ n) (nat_ j) (FunTm_of_ty G (nat_ j) j (t_nat G j W)) W
+            rho Hrho j F (natFam j) DA
+            (ity_nat rho j (ers rho (nat_ j)) eq_refl) _
+            (i_succ rho j n (ers rho n) xn Dn)).
 Qed.
 
-Lemma itot_false G (W : wfc G) : ITot G false_ prop.
+Lemma itot_false G (W : wfc G) j : ITot G (false_ j) (prop j).
 Proof.
   intros rho Hrho k F DA.
-  pose proof (ity_lvl_dec rho prop k (ers rho prop) F DA) as El;
+  pose proof (ity_lvl_dec rho (prop j) k (ers rho (prop j)) F DA) as El;
     cbn [LvlDec] in El; subst k.
-  refine (itot_move G false_ prop (FunTm_of_ty G prop 0 (t_prop G W)) W rho Hrho 0 F (propFam 0) DA
-            (ity_prop rho (ers rho prop) eq_refl) _ _).
-  refine (i_false rho (ers rho false_) _ eq_refl).
+  refine (itot_move G (false_ j) (prop j)
+            (FunTm_of_ty G (prop j) j (t_prop G j W)) W rho Hrho j F (propFam j) DA
+            (ity_prop rho j (ers rho (prop j)) eq_refl) _ _).
+  refine (i_false rho j (ers rho (false_ j)) _ eq_refl).
   apply Rel_prop_intro;
     [ exact good_ty_prop | apply eval_whnf, whnf_prop
     | apply PR_false; apply ev_false ].
@@ -1962,10 +1917,10 @@ Definition ITyT (G : ctx) (A : tm) (k : nat) : Type :=
   forall rho (H : EnvITy G rho),
     { F : kUFam k (ers rho A) & ITy rho A k (ers rho A) F }.
 
-Lemma ityT_of_ITot G A k (H : ITot G A (univ k)) : ITyT G A k.
+Lemma ityT_of_ITot G A k (H : ITot G A (UU k)) : ITyT G A k.
 Proof.
   intros rho Hrho.
-  destruct (H rho Hrho (S k) (univFam k) (ity_univ rho k (ers rho (univ k)) eq_refl))
+  destruct (H rho Hrho (S k) (univFam k) (ity_univ rho 0 k (ers rho (UU k)) eq_refl))
     as [x Dx].
   destruct (itm_univ_ty rho A k (euniv k) (univFam k) (ers rho A) x
               (iso_self (univFam k)) Dx) as [F0 [D0 _]].
@@ -1975,19 +1930,19 @@ Qed.
 (* and a CONVERSION of types gives the isomorphism of any two of their
    interpretations. *)
 Lemma iso_of_IRel G A B k (W : wfc G)
-  (HA : ITot G A (univ k)) (HB : ITot G B (univ k)) (HR : IRel G A B (univ k))
+  (HA : ITot G A (UU k)) (HB : ITot G B (UU k)) (HR : IRel G A B (UU k))
   (fA : FunTm G A) (fB : FunTm G B)
   rho (Hrho : EnvITy G rho)
   (FA : kUFam k (ers rho A)) (DA : ITy rho A k (ers rho A) FA)
   (FB : kUFam k (ers rho B)) (DB : ITy rho B k (ers rho B) FB) :
   iso (kAt FA) (kAt FB).
 Proof.
-  destruct (HA rho Hrho (S k) (univFam k) (ity_univ rho k (ers rho (univ k)) eq_refl))
+  destruct (HA rho Hrho (S k) (univFam k) (ity_univ rho 0 k (ers rho (UU k)) eq_refl))
     as [x Dx].
-  destruct (HB rho Hrho (S k) (univFam k) (ity_univ rho k (ers rho (univ k)) eq_refl))
+  destruct (HB rho Hrho (S k) (univFam k) (ity_univ rho 0 k (ers rho (UU k)) eq_refl))
     as [y Dy].
   pose proof (HR rho Hrho (S k) (univFam k)
-                (ity_univ rho k (ers rho (univ k)) eq_refl) x y Dx Dy) as Heq.
+                (ity_univ rho 0 k (ers rho (UU k)) eq_refl) x y Dx Dy) as Heq.
   destruct (itm_univ_ty rho A k (euniv k) (univFam k) (ers rho A) x
               (iso_self (univFam k)) Dx) as [F1 [D1 H1]].
   destruct (itm_univ_ty rho B k (euniv k) (univFam k) (ers rho B) y
@@ -2007,9 +1962,9 @@ Qed.
 
 (* ---- conversion of the type ---- *)
 Lemma itot_conv G t A B k (W : wfc G)
-  (dA : ty G A (univ k)) (dB : ty G B (univ k))
-  (IHt : ITot G t A) (IHA : ITot G A (univ k)) (IHB : ITot G B (univ k))
-  (IHc : IRel G A B (univ k)) : ITot G t B.
+  (dA : ty G A (UU k)) (dB : ty G B (UU k))
+  (IHt : ITot G t A) (IHA : ITot G A (UU k)) (IHB : ITot G B (UU k))
+  (IHc : IRel G A B (UU k)) : ITot G t B.
 Proof.
   intros rho Hrho k' F DB'.
   destruct (ityT_of_ITot G B k IHB rho Hrho) as [FB DB].
@@ -2025,47 +1980,52 @@ Proof.
 Qed.
 
 (* ---- Prf ---- *)
-Lemma itot_prf G p (W : wfc G) (dp : ty G p prop) (IHp : ITot G p prop) :
-  ITot G (prf p) (univ 0).
+Lemma itot_prf G kk j p (Hjk : j <= kk) (W : wfc G) (dp : ty G p (prop j))
+  (IHp : ITot G p (prop j)) :
+  ITot G (prf kk p) (UU kk).
 Proof.
   intros rho Hrho k F DA.
-  pose proof (ity_lvl_dec rho (univ 0) k (ers rho (univ 0)) F DA) as El;
+  pose proof (ity_lvl_dec rho (UU kk) k (ers rho (UU kk)) F DA) as El;
     cbn [LvlDec] in El; subst k.
-  destruct (IHp rho Hrho 0 (propFam 0) (ity_prop rho (ers rho prop) eq_refl)) as [xp Dp].
-  refine (itot_move G (prf p) (univ 0) (FunTm_of_ty G (univ 0) 1 (t_univ G 0 W)) W
-            rho Hrho 1 F (univFam 0) DA (ity_univ rho 0 (ers rho (univ 0)) eq_refl) _ _).
-  exact (i_ty rho (prf p) 0 (eprf (ers rho p)) (prfF 0 xp)
-           (ity_prf rho p (ers rho p) xp Dp)).
+  destruct (IHp rho Hrho j (propFam j) (ity_prop rho _ _ eq_refl)) as [xp Dp].
+  refine (itot_move G (prf kk p) (UU kk)
+            (FunTm_of_ty G (UU kk) (S kk)
+               (t_univ G (S kk) kk (Nat.lt_succ_diag_r kk) W)) W
+            rho Hrho (S kk) F (univFam kk) DA
+            (ity_univ rho 0 kk (ers rho (UU kk)) eq_refl) _ _).
+  exact (i_ty rho (prf kk p) kk (eprf (ers rho p)) (prfF kk xp)
+           (ity_prf rho kk j p (ers rho p) xp Dp)).
 Qed.
 
 (* ---- the type lift ---- *)
-Lemma itot_up G A k (W : wfc G) (dA : ty G A (univ k)) (IHA : ITot G A (univ k)) :
-  ITot G (up (univ (S k)) A) (univ (S k)).
+Lemma itot_up G A k (W : wfc G) (dA : ty G A (UU k)) (IHA : ITot G A (UU k)) :
+  ITot G (up k A) (UU (S k)).
 Proof.
   intros rho Hrho k' F DA'.
-  pose proof (ity_lvl_dec rho (univ (S k)) k' (ers rho (univ (S k))) F DA') as El;
+  pose proof (ity_lvl_dec rho (UU (S k)) k' (ers rho (UU (S k))) F DA') as El;
     cbn [LvlDec] in El; subst k'.
   destruct (ityT_of_ITot G A k IHA rho Hrho) as [FA DFA].
-  refine (itot_move G (up (univ (S k)) A) (univ (S k))
-            (FunTm_of_ty G (univ (S k)) (S (S k)) (t_univ G (S k) W)) W rho Hrho
+  refine (itot_move G (up k A) (UU (S k))
+            (FunTm_of_ty G (UU (S k)) (S (S k))
+               (t_univ G (S (S k)) (S k) (Nat.lt_succ_diag_r (S k)) W)) W rho Hrho
             (S (S k)) F (univFam (S k)) DA'
-            (ity_univ rho (S k) (ers rho (univ (S k))) eq_refl) _ _).
-  exact (i_ty rho (up (univ (S k)) A) (S k) (ers rho A) (famLiftK FA)
+            (ity_univ rho 0 (S k) (ers rho (UU (S k))) eq_refl) _ _).
+  exact (i_ty rho (up k A) (S k) (ers rho A) (famLiftK FA)
            (ity_up rho A k (ers rho A) FA DFA)).
 Qed.
 
 (* ---- the term lift ---- *)
-Lemma itot_uptm G A t k (W : wfc G) (dA : ty G A (univ k)) (dt : ty G t A)
-  (IHA : ITot G A (univ k)) (IHt : ITot G t A) :
-  ITot G (uptm A t) (up (univ (S k)) A).
+Lemma itot_uptm G A t k (W : wfc G) (dA : ty G A (UU k)) (dt : ty G t A)
+  (IHA : ITot G A (UU k)) (IHt : ITot G t A) :
+  ITot G (uptm A t) (up k A).
 Proof.
   intros rho Hrho k' F DU.
-  pose proof (ity_lvl_dec rho (up (univ (S k)) A) k' (ers rho (up (univ (S k)) A)) F DU)
+  pose proof (ity_lvl_dec rho (up k A) k' (ers rho (up k A)) F DU)
     as El; cbn [LvlDec] in El; subst k'.
   destruct (ityT_of_ITot G A k IHA rho Hrho) as [FA DFA].
   destruct (IHt rho Hrho k FA DFA) as [x Dx].
-  refine (itot_move G (uptm A t) (up (univ (S k)) A)
-            (FunTm_of_ty G (up (univ (S k)) A) (S k) (t_up G A k dA)) W rho Hrho
+  refine (itot_move G (uptm A t) (up k A)
+            (FunTm_of_ty G (up k A) (S k) (t_up G k A dA)) W rho Hrho
             (S k) F (famLiftK FA) DU (ity_up rho A k (ers rho A) FA DFA) _ _).
   exact (i_up_tm rho A t k (ers rho A) FA (ers rho t) x DFA Dx).
 Qed.
@@ -2078,12 +2038,14 @@ Proof.
     | apply PR_false; apply ev_false ].
 Qed.
 
-Lemma itot_absurd G T e (IHe : ITot G e (prf false_)) : ITot G (absurd T e) T.
+Lemma itot_absurd G T j e (IHe : ITot G e (prf j (false_ j))) :
+  ITot G (absurd T e) T.
 Proof.
   intros rho Hrho k' F DT.
-  pose proof (i_false rho (ers rho false_) good_false eq_refl) as Df.
-  pose proof (ity_prf rho false_ efalse (propElem efalse False good_false) Df) as DP.
-  destruct (IHe rho Hrho 0 (prfF 0 (propElem efalse False good_false)) DP) as [x _].
+  pose proof (i_false rho j (ers rho (false_ j)) good_false eq_refl) as Df.
+  pose proof (ity_prf rho j j (false_ j) efalse
+                (propElem efalse False good_false) Df) as DP.
+  destruct (IHe rho Hrho j (prfF j (propElem efalse False good_false)) DP) as [x _].
   destruct (prfVal x).
 Qed.
 
@@ -2092,80 +2054,89 @@ Qed.
      i_all records; the builder is shared with the forall-introduction, whose
      truth-component has to be that very proposition, not one merely
      equivalent to it. ---- *)
-Lemma build_all G A p k (W : wfc G) (dA : ty G A (univ k)) (dp : ty (A :: G) p prop)
-  (IHA : ITot G A (univ k)) (IHp : ITot (A :: G) p prop)
+Lemma build_all G A p j k (W : wfc G) (dA : ty G A (UU k))
+  (dp : ty (A :: G) p (prop j))
+  (IHA : ITot G A (UU k)) (IHp : ITot (A :: G) p (prop j))
   rho (Hrho : EnvITy G rho) :
   { FA : kUFam k (ers rho A) &
-  { xp : forall u (y : kElAt FA u), kElAt (propFam 0) (ers (ext rho FA u y) p) &
+  { xp : forall u (y : kElAt FA u), kElAt (propFam j) (ers (ext rho FA u y) p) &
     (ITy rho A k (ers rho A) FA *
-     (forall u y, ITm (ext rho FA u y) p 0 eprop (propFam 0)
+     (forall u y, ITm (ext rho FA u y) p j eprop (propFam j)
                     (ers (ext rho FA u y) p) (xp u y)))%type } }.
 Proof.
   destruct (ityT_of_ITot G A k IHA rho Hrho) as [FA DFA].
   exists FA.
   refine (existT _ (fun u y =>
             projT1 (IHp (ext rho FA u y) (EnvITy_ext G rho A k FA DFA u y Hrho)
-                      0 (propFam 0)
-                      (ity_prop (ext rho FA u y) (ers (ext rho FA u y) prop) eq_refl)))
+                      j (propFam j)
+                      (ity_prop (ext rho FA u y) j
+                         (ers (ext rho FA u y) (prop j)) eq_refl)))
             _).
   split; [exact DFA |].
   intros u y.
   exact (projT2 (IHp (ext rho FA u y) (EnvITy_ext G rho A k FA DFA u y Hrho)
-                   0 (propFam 0)
-                   (ity_prop (ext rho FA u y) (ers (ext rho FA u y) prop) eq_refl))).
+                   j (propFam j)
+                   (ity_prop (ext rho FA u y) j
+                      (ers (ext rho FA u y) (prop j)) eq_refl))).
 Qed.
 
-Lemma itot_all G A p k (W : wfc G) (dA : ty G A (univ k)) (dp : ty (A :: G) p prop)
-  (IHA : ITot G A (univ k)) (IHp : ITot (A :: G) p prop) : ITot G (all A p) prop.
+Lemma itot_all G A p j k (W : wfc G) (dA : ty G A (UU k))
+  (dp : ty (A :: G) p (prop j))
+  (IHA : ITot G A (UU k)) (IHp : ITot (A :: G) p (prop j)) :
+  ITot G (all j A p) (prop j).
 Proof.
   intros rho Hrho k' F DP.
-  pose proof (ity_lvl_dec rho prop k' (ers rho prop) F DP) as El;
+  pose proof (ity_lvl_dec rho (prop j) k' (ers rho (prop j)) F DP) as El;
     cbn [LvlDec] in El; subst k'.
-  destruct (build_all G A p k W dA dp IHA IHp rho Hrho) as [FA [xp [DFA Dp]]].
-  assert (g : Good eprop (ers rho (all A p)))
-    by exact (LTm_of_ty G (all A p) prop (t_all G A p k dA dp) rho rho
+  destruct (build_all G A p j k W dA dp IHA IHp rho Hrho) as [FA [xp [DFA Dp]]].
+  assert (g : Good eprop (ers rho (all j A p)))
+    by exact (LTm_of_ty G (all j A p) (prop j) (t_all G A p j k dA dp) rho rho
                 (EnvRelOf_selfE G rho W Hrho)).
-  refine (itot_move G (all A p) prop (FunTm_of_ty G prop 0 (t_prop G W)) W rho Hrho
-            0 F (propFam 0) DP (ity_prop rho (ers rho prop) eq_refl) _ _).
-  exact (i_all rho A p k (ers rho A) FA (fun u y => ers (ext rho FA u y) p) xp
-           (ers rho (all A p)) g eq_refl DFA Dp).
+  refine (itot_move G (all j A p) (prop j)
+            (FunTm_of_ty G (prop j) j (t_prop G j W)) W rho Hrho
+            j F (propFam j) DP (ity_prop rho _ _ eq_refl) _ _).
+  exact (i_all rho j A p k (ers rho A) FA (fun u y => ers (ext rho FA u y) p) xp
+           (ers rho (all j A p)) g eq_refl DFA Dp).
 Qed.
 
 (* ---- forall-introduction.  plam has no clause of its own: i_proof gives a
      value to ANY subject at a Prf type, provided the proposition is TRUE, and
      the truth is the body's value at every argument. ---- *)
-Lemma itot_plam G A p t k (W : wfc G) (dA : ty G A (univ k)) (dp : ty (A :: G) p prop)
-  (dt : ty (A :: G) t (prf p))
-  (IHA : ITot G A (univ k)) (IHp : ITot (A :: G) p prop) (IHt : ITot (A :: G) t (prf p)) :
-  ITot G (plam A t) (prf (all A p)).
+Lemma itot_plam G A p t j k (W : wfc G) (dA : ty G A (UU k))
+  (dp : ty (A :: G) p (prop j)) (dt : ty (A :: G) t (prf j p))
+  (IHA : ITot G A (UU k)) (IHp : ITot (A :: G) p (prop j))
+  (IHt : ITot (A :: G) t (prf j p)) :
+  ITot G (plam A t) (prf j (all j A p)).
 Proof.
   intros rho Hrho k' F DP.
-  pose proof (ity_lvl_dec rho (prf (all A p)) k' (ers rho (prf (all A p))) F DP) as El;
+  pose proof (ity_lvl_dec rho (prf j (all j A p)) k'
+                (ers rho (prf j (all j A p))) F DP) as El;
     cbn [LvlDec] in El; subst k'.
-  destruct (build_all G A p k W dA dp IHA IHp rho Hrho) as [FA [xp [DFA Dp]]].
-  assert (g : Good eprop (ers rho (all A p)))
-    by exact (LTm_of_ty G (all A p) prop (t_all G A p k dA dp) rho rho
+  destruct (build_all G A p j k W dA dp IHA IHp rho Hrho) as [FA [xp [DFA Dp]]].
+  assert (g : Good eprop (ers rho (all j A p)))
+    by exact (LTm_of_ty G (all j A p) (prop j) (t_all G A p j k dA dp) rho rho
                 (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (i_all rho A p k (ers rho A) FA (fun u y => ers (ext rho FA u y) p) xp
-                (ers rho (all A p)) g eq_refl DFA Dp) as DAll.
+  pose proof (i_all rho j A p k (ers rho A) FA (fun u y => ers (ext rho FA u y) p) xp
+                (ers rho (all j A p)) g eq_refl DFA Dp) as DAll.
   (* the proposition is true: the body has a value at every argument *)
   assert (h : forall u (y : kElAt FA u), propVal (xp u y)).
   { intros u y.
     refine (prfVal (projT1 (IHt (ext rho FA u y) (EnvITy_ext G rho A k FA DFA u y Hrho)
-                              0 (prfF 0 (xp u y)) _))).
-    exact (ity_prf (ext rho FA u y) p (ers (ext rho FA u y) p) (xp u y) (Dp u y)). }
-  assert (gp : Good (eprf (ers rho (all A p))) (ers rho (plam A t)))
-    by exact (LTm_of_ty G (plam A t) (prf (all A p))
-                (t_all_intro G A p t k dA dp dt) rho rho
+                              j (prfF j (xp u y)) _))).
+    exact (ity_prf (ext rho FA u y) j j p (ers (ext rho FA u y) p) (xp u y) (Dp u y)). }
+  assert (gp : Good (eprf (ers rho (all j A p))) (ers rho (plam A t)))
+    by exact (LTm_of_ty G (plam A t) (prf j (all j A p))
+                (t_all_intro G A p t j k dA dp dt) rho rho
                 (EnvRelOf_selfE G rho W Hrho)).
-  refine (itot_move G (plam A t) (prf (all A p))
-            (FunTm_of_ty G (prf (all A p)) 0 (t_prf G (all A p) (t_all G A p k dA dp)))
-            W rho Hrho 0 F
-            (prfF 0 (propElem (ers rho (all A p))
+  refine (itot_move G (plam A t) (prf j (all j A p))
+            (FunTm_of_ty G (prf j (all j A p)) j
+               (t_prf G j j (all j A p) (le_n j) (t_all G A p j k dA dp)))
+            W rho Hrho j F
+            (prfF j (propElem (ers rho (all j A p))
                        (forall u (y : kElAt FA u), propVal (xp u y)) g))
-            DP (ity_prf rho (all A p) (ers rho (all A p)) _ DAll) _ _).
-  exact (i_proof rho (plam A t) (all A p) (ers rho (all A p))
-           (propElem (ers rho (all A p))
+            DP (ity_prf rho j j (all j A p) (ers rho (all j A p)) _ DAll) _ _).
+  exact (i_proof rho (plam A t) (all j A p) j j (ers rho (all j A p))
+           (propElem (ers rho (all j A p))
               (forall u (y : kElAt FA u), propVal (xp u y)) g)
            h (ers rho (plam A t)) gp eq_refl DAll).
 Qed.
@@ -2184,9 +2155,9 @@ Proof.
   apply reds_refl.
 Qed.
 
-Lemma build_fam_data G A B k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
+Lemma build_fam_data G A B k (W : wfc G) (dA : ty G A (UU k))
+  (dB : ty (A :: G) B (UU k))
+  (IHA : ITot G A (UU k)) (IHB : ITot (A :: G) B (UU k))
   rho (Hrho : EnvITy G rho) :
   { FA : kUFam k (ers rho A) &
   { FB : forall u (x : kElAt FA u), kUFam k (ers (ext rho FA u x) B) &
@@ -2209,103 +2180,119 @@ Proof.
   assert (HEx : EnvRelOf (A :: G) (ext rho FA u' x') (ext rho FA u x)).
   { apply (EnvRelOf_ext G rho rho A k FA FA u' x' u x (EnvRelOf_selfE G rho W Hrho)).
     apply (proj1 (kRel_same FA _ _ _ _)); apply kEqAt_sym; exact Hxx. }
-  exact (FunTy_of_FunTm (A :: G) B (funtm (A :: G) B (univ k) dB)
+  exact (FunTy_of_FunTm (A :: G) B (funtm (A :: G) B (UU k) dB)
            (ext rho FA u' x') (ext rho FA u x) HEx k _ (FB u' x') _ (FB u x)
            (DB u' x') (DB u x) (LTyK_of_ty (A :: G) B k dB _ _ HEx)).
 Qed.
 
-Lemma build_pi G A B k (W : wfc G) (dA : ty G A (univ k)) (dB : ty (A :: G) B (univ k))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k)) : ITyT G (pi A B) k.
+(* The Pi- and Sigma-families, at the annotation `d + j` the syntax gives: the
+   components live at j, so the family is the d-fold lift of the level-j one
+   (Interp/LiftN.v's famLiftN, and Interp/Def.v's header for why).  The layer-1
+   goodness the level-j family asks for comes from the HOMOGENEOUS formation
+   derivation `t_pi G j j` -- the same premises give it, and the erasure does not
+   see the annotation, so it is a statement about the very same realiser. *)
+Lemma build_pi G A B d j (W : wfc G) (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j)) :
+  ITyT G (pi (d + j) A B) (d + j).
 Proof.
   intros rho Hrho.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
-  refine (existT _ (piFam k (ers rho A) (elam (subst_etm (up_etm_etm (rsub rho)) (er B)))
-                     FA (fun u x => ers (ext rho FA u x) B) FB
-                     (fun u x => reds_beta_sub (rsub rho) (er B) u) isoB
-                     (LTyK_of_ty G (pi A B) k (t_pi G A B k dA dB) rho rho
-                        (EnvRelOf_selfE G rho W Hrho))) _).
-  exact (ity_pi rho A B k (ers rho A) FA
+  refine (existT _
+            (famLiftN d
+               (piFam j (ers rho A) (elam (subst_etm (up_etm_etm (rsub rho)) (er B)))
+                  FA (fun u x => ers (ext rho FA u x) B) FB
+                  (fun u x => reds_beta_sub (rsub rho) (er B) u) isoB
+                  (LTyK_of_ty G (pi j A B) j (t_pi G j j A B (le_n j) dA dB) rho rho
+                     (EnvRelOf_selfE G rho W Hrho)))) _).
+  exact (ity_pi rho A B d j (ers rho A) FA
            (elam (subst_etm (up_etm_etm (rsub rho)) (er B)))
            (fun u x => ers (ext rho FA u x) B) FB
            (fun u x => reds_beta_sub (rsub rho) (er B) u) isoB
-           (LTyK_of_ty G (pi A B) k (t_pi G A B k dA dB) rho rho
+           (LTyK_of_ty G (pi j A B) j (t_pi G j j A B (le_n j) dA dB) rho rho
               (EnvRelOf_selfE G rho W Hrho))
            eq_refl DFA DB).
 Qed.
 
-Lemma build_sig G A B k (W : wfc G) (dA : ty G A (univ k)) (dB : ty (A :: G) B (univ k))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k)) : ITyT G (sig_ A B) k.
+Lemma build_sig G A B d j (W : wfc G) (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j)) :
+  ITyT G (sig_ (d + j) A B) (d + j).
 Proof.
   intros rho Hrho.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
-  refine (existT _ (sigFam k (ers rho A) (elam (subst_etm (up_etm_etm (rsub rho)) (er B)))
-                     FA (fun u x => ers (ext rho FA u x) B) FB
-                     (fun u x => reds_beta_sub (rsub rho) (er B) u) isoB
-                     (LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho
-                        (EnvRelOf_selfE G rho W Hrho))) _).
-  exact (ity_sig rho A B k (ers rho A) FA
+  refine (existT _
+            (famLiftN d
+               (sigFam j (ers rho A) (elam (subst_etm (up_etm_etm (rsub rho)) (er B)))
+                  FA (fun u x => ers (ext rho FA u x) B) FB
+                  (fun u x => reds_beta_sub (rsub rho) (er B) u) isoB
+                  (LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho
+                     (EnvRelOf_selfE G rho W Hrho)))) _).
+  exact (ity_sig rho A B d j (ers rho A) FA
            (elam (subst_etm (up_etm_etm (rsub rho)) (er B)))
            (fun u x => ers (ext rho FA u x) B) FB
            (fun u x => reds_beta_sub (rsub rho) (er B) u) isoB
-           (LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho
+           (LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho
               (EnvRelOf_selfE G rho W Hrho))
            eq_refl DFA DB).
 Qed.
 
-Lemma itot_pi G A B k (W : wfc G) (dA : ty G A (univ k)) (dB : ty (A :: G) B (univ k))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k)) : ITot G (pi A B) (univ k).
+Lemma itot_pi G A B d j (W : wfc G) (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j)) :
+  ITot G (pi (d + j) A B) (UU (d + j)).
 Proof.
   intros rho Hrho k' F DU.
-  pose proof (ity_lvl_dec rho (univ k) k' (ers rho (univ k)) F DU) as El;
+  pose proof (ity_lvl_dec rho (UU (d + j)) k' (ers rho (UU (d + j))) F DU) as El;
     cbn [LvlDec] in El; subst k'.
-  destruct (build_pi G A B k W dA dB IHA IHB rho Hrho) as [FP DP].
-  refine (itot_move G (pi A B) (univ k)
-            (FunTm_of_ty G (univ k) (S k) (t_univ G k W)) W rho Hrho
-            (S k) F (univFam k) DU (ity_univ rho k (ers rho (univ k)) eq_refl) _ _).
-  exact (i_ty rho (pi A B) k (ers rho (pi A B)) FP DP).
+  destruct (build_pi G A B d j W dA dB IHA IHB rho Hrho) as [FP DP].
+  refine (itot_move G (pi (d + j) A B) (UU (d + j))
+            (FunTm_of_ty G (UU (d + j)) (S (d + j))
+               (t_univ G (S (d + j)) (d + j) (Nat.lt_succ_diag_r _) W)) W rho Hrho
+            (S (d + j)) F (univFam (d + j)) DU
+            (ity_univ rho 0 (d + j) (ers rho (UU (d + j))) eq_refl) _ _).
+  exact (i_ty rho (pi (d + j) A B) (d + j) (ers rho (pi (d + j) A B)) FP DP).
 Qed.
 
-Lemma itot_sig G A B k (W : wfc G) (dA : ty G A (univ k)) (dB : ty (A :: G) B (univ k))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k)) : ITot G (sig_ A B) (univ k).
+Lemma itot_sig G A B d j (W : wfc G) (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j)) :
+  ITot G (sig_ (d + j) A B) (UU (d + j)).
 Proof.
   intros rho Hrho k' F DU.
-  pose proof (ity_lvl_dec rho (univ k) k' (ers rho (univ k)) F DU) as El;
+  pose proof (ity_lvl_dec rho (UU (d + j)) k' (ers rho (UU (d + j))) F DU) as El;
     cbn [LvlDec] in El; subst k'.
-  destruct (build_sig G A B k W dA dB IHA IHB rho Hrho) as [FP DP].
-  refine (itot_move G (sig_ A B) (univ k)
-            (FunTm_of_ty G (univ k) (S k) (t_univ G k W)) W rho Hrho
-            (S k) F (univFam k) DU (ity_univ rho k (ers rho (univ k)) eq_refl) _ _).
-  exact (i_ty rho (sig_ A B) k (ers rho (sig_ A B)) FP DP).
+  destruct (build_sig G A B d j W dA dB IHA IHB rho Hrho) as [FP DP].
+  refine (itot_move G (sig_ (d + j) A B) (UU (d + j))
+            (FunTm_of_ty G (UU (d + j)) (S (d + j))
+               (t_univ G (S (d + j)) (d + j) (Nat.lt_succ_diag_r _) W)) W rho Hrho
+            (S (d + j)) F (univFam (d + j)) DU
+            (ity_univ rho 0 (d + j) (ers rho (UU (d + j))) eq_refl) _ _).
+  exact (i_ty rho (sig_ (d + j) A B) (d + j) (ers rho (sig_ (d + j) A B)) FP DP).
 Qed.
 
-(* ---- the first projection.  Its type is the annotation A, so no
-     substitution is involved: the value is sigFst of the subject's value at
-     the Sigma-family built from the two type premises. ---- *)
-Lemma itot_fst G A B p k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dp : ty G p (sig_ A B))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHp : ITot G p (sig_ A B)) : ITot G (fst A B p) A.
+Lemma itot_fst G A B p d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dp : ty G p (sig_ (d + j) A B))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHp : ITot G p (sig_ (d + j) A B)) : ITot G (fst A B p) A.
 Proof.
   intros rho Hrho k' F DA'.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
-  pose proof (ity_lvl rho rho eq_refl A k (ers rho A) FA k' (ers rho A) F DFA DA')
+  pose proof (ity_lvl rho rho eq_refl A j (ers rho A) FA k' (ers rho A) F DFA DA')
     as Ek; subst k'.
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u (x : kElAt FA u) => reds_beta_sub (rsub rho) (er B) u).
-  pose (gSig := LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho
+  pose (gSig := LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho
                   (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (ity_sig rho A B k (ers rho A) FA B0
+  pose proof (ity_sig rho A B d j (ers rho A) FA B0
                 (fun u x => ers (ext rho FA u x) B) FB redB isoB gSig
                 eq_refl DFA DB) as Dsig.
-  destruct (IHp rho Hrho k
-              (sigFam k (ers rho A) B0 FA (fun u x => ers (ext rho FA u x) B) FB
-                 redB isoB gSig) Dsig) as [xp Dp].
-  refine (itot_move G (fst A B p) A (FunTm_of_ty G A k dA) W rho Hrho k F FA DA' DFA
+  destruct (IHp rho Hrho (d + j)
+              (famLiftN d
+                 (sigFam j (ers rho A) B0 FA (fun u x => ers (ext rho FA u x) B) FB
+                    redB isoB gSig)) Dsig) as [xp Dp].
+  refine (itot_move G (fst A B p) A (FunTm_of_ty G A j dA) W rho Hrho j F FA DA' DFA
             _ _).
-  exact (i_fst rho A B p k (ers rho A) FA B0 (fun u x => ers (ext rho FA u x) B) FB
+  exact (i_fst rho A B p d j (ers rho A) FA B0 (fun u x => ers (ext rho FA u x) B) FB
            redB isoB gSig (ers rho p) xp eq_refl DFA DB Dp).
 Qed.
 
@@ -2376,44 +2363,45 @@ Proof. destruct E; exact (fun D => D). Qed.
      typed type, so functionality applies to it, and isubst_ITy -- whose side
      condition ity_conv discharged -- turns the codomain's interpretation in
      the extended environment into one of `B [u..]` in rho. ---- *)
-Lemma itot_app G A B f u k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (df : ty G f (pi A B)) (du : ty G u A)
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHf : ITot G f (pi A B)) (IHu : ITot G u A) :
+Lemma itot_app G A B f u d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (df : ty G f (pi (d + j) A B)) (du : ty G u A)
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHf : ITot G f (pi (d + j) A B)) (IHu : ITot G u A) :
   ITot G (app A B f u) (B [u..]).
 Proof.
   intros rho Hrho k' F DBu.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (x : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gPi := LTyK_of_ty G (pi A B) k (t_pi G A B k dA dB) rho rho
+  pose (gPi := LTyK_of_ty G (pi j A B) j (t_pi G j j A B (le_n j) dA dB) rho rho
                  (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (ity_pi rho A B k (ers rho A) FA B0
+  pose proof (ity_pi rho A B d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
                 eq_refl DFA DB) as Dpi.
-  destruct (IHf rho Hrho k
-              (piFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-                 redB isoB gPi) Dpi) as [xf Df].
-  destruct (IHu rho Hrho k FA DFA) as [xu Du].
+  destruct (IHf rho Hrho (d + j)
+              (famLiftN d
+                 (piFam j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+                    redB isoB gPi)) Dpi) as [xf Df].
+  destruct (IHu rho Hrho j FA DFA) as [xu Du].
   (* the codomain instance interprets B [u..] in rho, at a realiser that is
      equal -- not convertible -- to ers rho (B [u..]) *)
-  pose proof (isubst_ITy rho u k (ers rho A) FA (ers rho u) xu eq_refl Du
-                B k (ers (ext rho FA (ers rho u) xu) B) (FB (ers rho u) xu)
+  pose proof (isubst_ITy rho u j (ers rho A) FA (ers rho u) xu eq_refl Du
+                B j (ers (ext rho FA (ers rho u) xu) B) (FB (ers rho u) xu)
                 (DB (ers rho u) xu)) as DBsub.
   assert (E : ers (ext rho FA (ers rho u) xu) B = ers rho (B [u..]))
     by exact (eq_sym (ers_sub1 rho B u FA xu)).
-  pose proof (ITy_cast rho (B [u..]) k _ _ E (FB (ers rho u) xu) DBsub) as DBc.
+  pose proof (ITy_cast rho (B [u..]) j _ _ E (FB (ers rho u) xu) DBsub) as DBc.
   assert (Hfun : FunTm G (B [u..])).
-  { destruct (ty_subst1 G A B (univ k) u dB du) as [d].
-    exact (FunTm_of_ty G (B [u..]) k d). }
-  pose proof (ity_lvl rho rho eq_refl (B [u..]) k (ers rho (B [u..]))
+  { destruct (ty_subst1 G A B (UU j) u dB du) as [dsub].
+    exact (FunTm_of_ty G (B [u..]) j dsub). }
+  pose proof (ity_lvl rho rho eq_refl (B [u..]) j (ers rho (B [u..]))
                 (famCast E (FB (ers rho u) xu)) k' (ers rho (B [u..])) F DBc DBu)
     as Ek; subst k'.
-  refine (itot_move G (app A B f u) (B [u..]) Hfun W rho Hrho k F
+  refine (itot_move G (app A B f u) (B [u..]) Hfun W rho Hrho j F
             (famCast E (FB (ers rho u) xu)) DBu DBc _ _).
-  refine (ITm_cast rho (app A B f u) k _ _ E (FB (ers rho u) xu) _ _ _).
-  exact (i_app rho A B f u k (ers rho A) FA B0
+  refine (ITm_cast rho (app A B f u) j _ _ E (FB (ers rho u) xu) _ _ _).
+  exact (i_app rho A B f u d j (ers rho A) FA B0
            (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
            (ers rho f) xf (ers rho u) xu eq_refl DFA DB Df Du).
 Qed.
@@ -2429,47 +2417,52 @@ Proof. destruct E; intros D; exists y; exact D. Qed.
      type is a substitution instance: its interpretation is the codomain
      instance at the first component's value, cast to the realiser of
      `B [t..]`. ---- *)
-Lemma itot_pair G A B t u k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty G t A) (du : ty G u (B [t..]))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
+Lemma itot_pair G A B t u d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dt : ty G t A) (du : ty G u (B [t..]))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
   (IHt : ITot G t A) (IHu : ITot G u (B [t..])) :
-  ITot G (pair A B t u) (sig_ A B).
+  ITot G (pair (d + j) A B t u) (sig_ (d + j) A B).
 Proof.
   intros rho Hrho k' F Dsg.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (x : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gSig := LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho
+  pose (gSig := LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho
                   (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (ity_sig rho A B k (ers rho A) FA B0
+  pose proof (ity_sig rho A B d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
                 eq_refl DFA DB) as Dsig.
-  destruct (IHt rho Hrho k FA DFA) as [xt Dt].
+  destruct (IHt rho Hrho j FA DFA) as [xt Dt].
   (* the second component, at the codomain instance the first one picks *)
   assert (E : ers (ext rho FA (ers rho t) xt) B = ers rho (B [t..]))
     by exact (eq_sym (ers_sub1 rho B t FA xt)).
-  pose proof (isubst_ITy rho t k (ers rho A) FA (ers rho t) xt eq_refl Dt
-                B k (ers (ext rho FA (ers rho t) xt) B) (FB (ers rho t) xt)
+  pose proof (isubst_ITy rho t j (ers rho A) FA (ers rho t) xt eq_refl Dt
+                B j (ers (ext rho FA (ers rho t) xt) B) (FB (ers rho t) xt)
                 (DB (ers rho t) xt)) as DBsub.
-  destruct (IHu rho Hrho k (famCast E (FB (ers rho t) xt))
-              (ITy_cast rho (B [t..]) k _ _ E (FB (ers rho t) xt) DBsub))
+  destruct (IHu rho Hrho j (famCast E (FB (ers rho t) xt))
+              (ITy_cast rho (B [t..]) j _ _ E (FB (ers rho t) xt) DBsub))
     as [xu' Du'].
-  destruct (ITm_uncast rho u k _ _ E (FB (ers rho t) xt) _ _ Du') as [xu Du].
+  destruct (ITm_uncast rho u j _ _ E (FB (ers rho t) xt) _ _ Du') as [xu Du].
   assert (g : Good (esig (ers rho A) B0)
                 (epair (ers rho t) (ers rho u)))
-    by exact (LTm_of_ty G (pair A B t u) (sig_ A B)
-                (t_pair G A B t u k dA dB dt du) rho rho
+    by exact (LTm_of_ty G (pair (d + j) A B t u) (sig_ (d + j) A B)
+                (t_pair G (d + j) j A B t u (Nat.le_add_l j d) dA dB dt du) rho rho
                 (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (ity_lvl rho rho eq_refl (sig_ A B) k (ers rho (sig_ A B))
-                (sigFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-                   redB isoB gSig) k' (ers rho (sig_ A B)) F Dsig Dsg) as Ek;
+  pose proof (ity_lvl rho rho eq_refl (sig_ (d + j) A B) (d + j)
+                (ers rho (sig_ (d + j) A B))
+                (famLiftN d
+                   (sigFam j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
+                      FB redB isoB gSig))
+                k' (ers rho (sig_ (d + j) A B)) F Dsig Dsg) as Ek;
     subst k'.
-  refine (itot_move G (pair A B t u) (sig_ A B)
-            (FunTm_of_ty G (sig_ A B) k (t_sig G A B k dA dB)) W rho Hrho k F
-            (sigFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-               redB isoB gSig) Dsg Dsig _ _).
-  exact (i_pair rho A B t u k (ers rho A) FA B0
+  refine (itot_move G (pair (d + j) A B t u) (sig_ (d + j) A B)
+            (FunTm_of_ty G (sig_ (d + j) A B) (d + j)
+               (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB)) W rho Hrho (d + j) F
+            (famLiftN d
+               (sigFam j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+                  redB isoB gSig)) Dsg Dsig _ _).
+  exact (i_pair rho A B t u d j (ers rho A) FA B0
            (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
            (ers rho t) xt (ers rho u) xu g eq_refl DFA DB Dt Du).
 Qed.
@@ -2477,51 +2470,56 @@ Qed.
 (* ---- the second projection.  Its type is a substitution instance whose
      substituted term is the FIRST projection, so the codomain instance is
      taken at that projection's own value. ---- *)
-Lemma itot_snd G A B p k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dp : ty G p (sig_ A B))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHp : ITot G p (sig_ A B)) : ITot G (snd A B p) (B [(fst A B p)..]).
+Lemma itot_snd G A B p d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dp : ty G p (sig_ (d + j) A B))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHp : ITot G p (sig_ (d + j) A B)) : ITot G (snd A B p) (B [(fst A B p)..]).
 Proof.
   intros rho Hrho k' F DBs.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (x : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gSig := LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho
+  pose (gSig := LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho
                   (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (ity_sig rho A B k (ers rho A) FA B0
+  pose proof (ity_sig rho A B d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
                 eq_refl DFA DB) as Dsig.
-  destruct (IHp rho Hrho k
-              (sigFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-                 redB isoB gSig) Dsig) as [xp Dp].
-  pose proof (i_fst rho A B p k (ers rho A) FA B0
+  destruct (IHp rho Hrho (d + j)
+              (famLiftN d
+                 (sigFam j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+                    redB isoB gSig)) Dsig) as [xp Dp].
+  pose proof (i_fst rho A B p d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
                 (ers rho p) xp eq_refl DFA DB Dp) as Dfst.
+  (* the projection's value, at the UNLIFTED Sigma-family the clause works at *)
+  pose (xp0 := elUnliftN d
+                 (sigFam j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
+                    FB redB isoB gSig) (ers rho p) xp).
   assert (E : ers (ext rho FA (efst (ers rho p))
-                     (sigFst k (ers rho A) B0 FA
+                     (sigFst j (ers rho A) B0 FA
                         (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
-                        (ers rho p) xp)) B
+                        (ers rho p) xp0)) B
               = ers rho (B [(fst A B p)..]))
     by exact (eq_sym (ers_sub1 rho B (fst A B p) FA _)).
-  pose proof (isubst_ITy rho (fst A B p) k (ers rho A) FA (efst (ers rho p)) _
-                eq_refl Dfst B k _ _
+  pose proof (isubst_ITy rho (fst A B p) j (ers rho A) FA (efst (ers rho p)) _
+                eq_refl Dfst B j _ _
                 (DB (efst (ers rho p))
-                   (sigFst k (ers rho A) B0 FA
+                   (sigFst j (ers rho A) B0 FA
                       (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
-                      (ers rho p) xp))) as DBsub.
-  pose proof (ITy_cast rho (B [(fst A B p)..]) k _ _ E _ DBsub) as DBc.
+                      (ers rho p) xp0))) as DBsub.
+  pose proof (ITy_cast rho (B [(fst A B p)..]) j _ _ E _ DBsub) as DBc.
   assert (Hfun : FunTm G (B [(fst A B p)..])).
-  { destruct (ty_subst1 G A B (univ k) (fst A B p) dB
-                (t_fst G A B p k dA dB dp)) as [d].
-    exact (FunTm_of_ty G (B [(fst A B p)..]) k d). }
-  pose proof (ity_lvl rho rho eq_refl (B [(fst A B p)..]) k (ers rho (B [(fst A B p)..]))
+  { destruct (ty_subst1 G A B (UU j) (fst A B p) dB
+                (t_fst G (d + j) j A B p (Nat.le_add_l j d) dA dB dp)) as [dsub].
+    exact (FunTm_of_ty G (B [(fst A B p)..]) j dsub). }
+  pose proof (ity_lvl rho rho eq_refl (B [(fst A B p)..]) j (ers rho (B [(fst A B p)..]))
                 (famCast E _) k' (ers rho (B [(fst A B p)..])) F DBc DBs) as Ek;
     subst k'.
-  refine (itot_move G (snd A B p) (B [(fst A B p)..]) Hfun W rho Hrho k F
+  refine (itot_move G (snd A B p) (B [(fst A B p)..]) Hfun W rho Hrho j F
             (famCast E _) DBs DBc _ _).
-  refine (ITm_cast rho (snd A B p) k _ _ E _ _ _ _).
-  exact (i_snd rho A B p k (ers rho A) FA B0
+  refine (ITm_cast rho (snd A B p) j _ _ E _ _ _ _).
+  exact (i_snd rho A B p d j (ers rho A) FA B0
            (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
            (ers rho p) xp eq_refl DFA DB Dp).
 Qed.
@@ -2529,51 +2527,53 @@ Qed.
 (* ---- forall-elimination.  papp has no clause of its own either: the value is
      i_proof's, and the truth it carries is the function's truth instantiated at
      the argument's value.  The proposition itself travels by isubst_ITm. ---- *)
-Lemma itot_papp G A p f u k (W : wfc G) (dA : ty G A (univ k))
-  (dp : ty (A :: G) p prop) (df : ty G f (prf (all A p))) (du : ty G u A)
-  (IHA : ITot G A (univ k)) (IHp : ITot (A :: G) p prop)
-  (IHf : ITot G f (prf (all A p))) (IHu : ITot G u A) :
-  ITot G (papp f u) (prf (p [u..])).
+Lemma itot_papp G A p f u j k (W : wfc G) (dA : ty G A (UU k))
+  (dp : ty (A :: G) p (prop j)) (df : ty G f (prf j (all j A p))) (du : ty G u A)
+  (IHA : ITot G A (UU k)) (IHp : ITot (A :: G) p (prop j))
+  (IHf : ITot G f (prf j (all j A p))) (IHu : ITot G u A) :
+  ITot G (papp f u) (prf j (p [u..])).
 Proof.
   intros rho Hrho k' F DP.
-  pose proof (ity_lvl_dec rho (prf (p [u..])) k' (ers rho (prf (p [u..]))) F DP) as El;
+  pose proof (ity_lvl_dec rho (prf j (p [u..])) k'
+                (ers rho (prf j (p [u..]))) F DP) as El;
     cbn [LvlDec] in El; subst k'.
-  destruct (build_all G A p k W dA dp IHA IHp rho Hrho) as [FA [xp [DFA Dp]]].
-  assert (g : Good eprop (ers rho (all A p)))
-    by exact (LTm_of_ty G (all A p) prop (t_all G A p k dA dp) rho rho
+  destruct (build_all G A p j k W dA dp IHA IHp rho Hrho) as [FA [xp [DFA Dp]]].
+  assert (g : Good eprop (ers rho (all j A p)))
+    by exact (LTm_of_ty G (all j A p) (prop j) (t_all G A p j k dA dp) rho rho
                 (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (i_all rho A p k (ers rho A) FA (fun u0 y => ers (ext rho FA u0 y) p) xp
-                (ers rho (all A p)) g eq_refl DFA Dp) as DAll.
+  pose proof (i_all rho j A p k (ers rho A) FA (fun u0 y => ers (ext rho FA u0 y) p) xp
+                (ers rho (all j A p)) g eq_refl DFA Dp) as DAll.
   (* the function's value carries the truth of the universally quantified body *)
-  destruct (IHf rho Hrho 0
-              (prfF 0 (propElem (ers rho (all A p))
+  destruct (IHf rho Hrho j
+              (prfF j (propElem (ers rho (all j A p))
                          (forall u0 (y : kElAt FA u0), propVal (xp u0 y)) g))
-              (ity_prf rho (all A p) (ers rho (all A p)) _ DAll)) as [xf _].
+              (ity_prf rho j j (all j A p) (ers rho (all j A p)) _ DAll)) as [xf _].
   pose proof (prfVal xf) as htruth.
   destruct (IHu rho Hrho k FA DFA) as [xu Du].
   (* the substituted proposition, and its value *)
   pose proof (isubst_ITm rho u k (ers rho A) FA (ers rho u) xu eq_refl Du
-                p 0 eprop (propFam 0) (ers (ext rho FA (ers rho u) xu) p)
+                p j eprop (propFam j) (ers (ext rho FA (ers rho u) xu) p)
                 (xp (ers rho u) xu) (Dp (ers rho u) xu)) as Dpu.
   assert (E : eprf (ers (ext rho FA (ers rho u) xu) p) = eprf (ers rho (p [u..])))
     by exact (f_equal eprf (eq_sym (ers_sub1 rho p u FA xu))).
   assert (gp : Good (eprf (ers (ext rho FA (ers rho u) xu) p)) (ers rho (papp f u))).
   { rewrite E.
-    exact (LTm_of_ty G (papp f u) (prf (p [u..]))
-             (t_all_elim G A p f u k dA dp df du) rho rho
+    exact (LTm_of_ty G (papp f u) (prf j (p [u..]))
+             (t_all_elim G A p f u j k dA dp df du) rho rho
              (EnvRelOf_selfE G rho W Hrho)). }
-  pose proof (i_proof rho (papp f u) (p [u..])
+  pose proof (i_proof rho (papp f u) (p [u..]) j j
                 (ers (ext rho FA (ers rho u) xu) p) (xp (ers rho u) xu)
                 (htruth (ers rho u) xu) (ers rho (papp f u)) gp eq_refl Dpu) as Dpapp.
-  pose proof (ITy_cast rho (prf (p [u..])) 0 _ _ E _
-                (ity_prf rho (p [u..]) (ers (ext rho FA (ers rho u) xu) p)
+  pose proof (ITy_cast rho (prf j (p [u..])) j _ _ E _
+                (ity_prf rho j j (p [u..]) (ers (ext rho FA (ers rho u) xu) p)
                    (xp (ers rho u) xu) Dpu)) as DPc.
-  assert (Hfun : FunTm G (prf (p [u..]))).
-  { destruct (ty_subst1 G A p prop u dp du) as [d].
-    exact (FunTm_of_ty G (prf (p [u..])) 0 (t_prf G (p [u..]) d)). }
-  refine (itot_move G (papp f u) (prf (p [u..])) Hfun W rho Hrho 0 F
+  assert (Hfun : FunTm G (prf j (p [u..]))).
+  { destruct (ty_subst1 G A p (prop j) u dp du) as [dsub].
+    exact (FunTm_of_ty G (prf j (p [u..])) j
+             (t_prf G j j (p [u..]) (le_n j) dsub)). }
+  refine (itot_move G (papp f u) (prf j (p [u..])) Hfun W rho Hrho j F
             (famCast E _) DP DPc _ _).
-  exact (ITm_cast rho (papp f u) 0 _ _ E _ _ _ Dpapp).
+  exact (ITm_cast rho (papp f u) j _ _ E _ _ _ Dpapp).
 Qed.
 
 (* ---- natrec.  The one case whose step term lives two entries deep, and whose
@@ -2586,118 +2586,119 @@ Lemma nrec_succ_as (C : tm) :
   nrec_succ C = ((C ⟨upRen_tm_tm shift⟩) [(succ (var_tm 0))..]) ⟨↑⟩.
 Proof. unfold nrec_succ; asimpl; reflexivity. Qed.
 
-Lemma ity_nrec_succ rho (C : tm) k m (x : kElAt (natFam 0) m)
-  (FCs : kUFam k (ers (ext rho (natFam 0) (esucc m) (natSucc x)) C))
-  (DCs : ITy (ext rho (natFam 0) (esucc m) (natSucc x)) C k
-           (ers (ext rho (natFam 0) (esucc m) (natSucc x)) C) FCs)
+Lemma ity_nrec_succ rho (C : tm) k j m (x : kElAt (natFam j) m)
+  (FCs : kUFam k (ers (ext rho (natFam j) (esucc m) (natSucc x)) C))
+  (DCs : ITy (ext rho (natFam j) (esucc m) (natSucc x)) C k
+           (ers (ext rho (natFam j) (esucc m) (natSucc x)) C) FCs)
   kc Sc (FCm : kUFam kc Sc) w (y : kElAt FCm w) :
-  ITy (ext (ext rho (natFam 0) m x) FCm w y) (nrec_succ C) k
-      (ers (ext rho (natFam 0) (esucc m) (natSucc x)) C) FCs.
+  ITy (ext (ext rho (natFam j) m x) FCm w y) (nrec_succ C) k
+      (ers (ext rho (natFam j) (esucc m) (natSucc x)) C) FCs.
 Proof.
   rewrite nrec_succ_as.
-  apply (weaken1_ITy (ext rho (natFam 0) m x)
+  apply (weaken1_ITy (ext rho (natFam j) m x)
            ((C ⟨upRen_tm_tm shift⟩) [(succ (var_tm 0))..]) k _ FCs
            (Build_Entry kc Sc FCm w y)).
-  refine (subst_ITy (ext rho (natFam 0) m x) (succ (var_tm 0))
-            (Build_Entry 0 enat (natFam 0) (esucc m) (natSucc x)) eq_refl
-            (i_succ (ext rho (natFam 0) m x) (var_tm 0) m x
-               (i_var0 rho 0 enat (natFam 0) m x))
-            (subUniv_all (ext rho (natFam 0) m x) (succ (var_tm 0)))
+  refine (subst_ITy (ext rho (natFam j) m x) (succ (var_tm 0))
+            (Build_Entry j enat (natFam j) (esucc m) (natSucc x)) eq_refl
+            (i_succ (ext rho (natFam j) m x) j (var_tm 0) m x
+               (i_var0 rho j enat (natFam j) m x))
+            (subUniv_all (ext rho (natFam j) m x) (succ (var_tm 0)))
             _ (C ⟨upRen_tm_tm shift⟩) k _ FCs _ nil eq_refl).
-  exact (weaken_ITy (ext rho (natFam 0) (esucc m) (natSucc x)) C k _ FCs DCs
-           (Build_Entry 0 enat (natFam 0) (esucc m) (natSucc x) :: nil) rho
-           (Build_Entry 0 enat (natFam 0) m x) eq_refl).
+  exact (weaken_ITy (ext rho (natFam j) (esucc m) (natSucc x)) C k _ FCs DCs
+           (Build_Entry j enat (natFam j) (esucc m) (natSucc x) :: nil) rho
+           (Build_Entry j enat (natFam j) m x) eq_refl).
 Qed.
 
-Lemma itot_natrec G C z s n k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dz : ty G z (C [zero..]))
-  (ds : ty (C :: nat_ :: G) s (nrec_succ C)) (dn : ty G n nat_)
-  (IHC : ITot (nat_ :: G) C (univ k)) (IHz : ITot G z (C [zero..]))
-  (IHs : ITot (C :: nat_ :: G) s (nrec_succ C)) (IHn : ITot G n nat_) :
+Lemma itot_natrec G C z s n k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dz : ty G z (C [(zero j)..]))
+  (ds : ty (C :: nat_ j :: G) s (nrec_succ C)) (dn : ty G n (nat_ j))
+  (IHC : ITot (nat_ j :: G) C (UU k)) (IHz : ITot G z (C [(zero j)..]))
+  (IHs : ITot (C :: nat_ j :: G) s (nrec_succ C)) (IHn : ITot G n (nat_ j)) :
   ITot G (natrec C z s n) (C [n..]).
 Proof.
   intros rho Hrho k' F DCn.
   pose (SC := fun m : etm => subst_etm (scons m (rsub rho)) (er C)).
-  assert (HEm : forall m (x : kElAt (natFam 0) m),
-             EnvITy (nat_ :: G) (ext rho (natFam 0) m x)).
+  assert (HEm : forall m (x : kElAt (natFam j) m),
+             EnvITy (nat_ j :: G) (ext rho (natFam j) m x)).
   { intros m x.
-    exact (EnvITy_ext G rho nat_ 0 (natFam 0)
-             (ity_nat rho (ers rho nat_) eq_refl) m x Hrho). }
-  pose (FC := fun m (x : kElAt (natFam 0) m) =>
-                projT1 (ityT_of_ITot (nat_ :: G) C k IHC
-                          (ext rho (natFam 0) m x) (HEm m x))).
-  assert (DC : forall m x, ITy (ext rho (natFam 0) m x) C k (SC m) (FC m x))
+    exact (EnvITy_ext G rho (nat_ j) j (natFam j)
+             (ity_nat rho _ _ eq_refl) m x Hrho). }
+  pose (FC := fun m (x : kElAt (natFam j) m) =>
+                projT1 (ityT_of_ITot (nat_ j :: G) C k IHC
+                          (ext rho (natFam j) m x) (HEm m x))).
+  assert (DC : forall m x, ITy (ext rho (natFam j) m x) C k (SC m) (FC m x))
     by (intros m x;
-        exact (projT2 (ityT_of_ITot (nat_ :: G) C k IHC
-                         (ext rho (natFam 0) m x) (HEm m x)))).
-  assert (isoC : forall m x m' x', kEqAt (natFam 0) m x m' x' ->
+        exact (projT2 (ityT_of_ITot (nat_ j :: G) C k IHC
+                         (ext rho (natFam j) m x) (HEm m x)))).
+  assert (isoC : forall m x m' x', kEqAt (natFam j) m x m' x' ->
              iso (kAt (FC m x)) (kAt (FC m' x'))).
   { intros m x m' x' Hm.
-    assert (HEx : EnvRelOf (nat_ :: G) (ext rho (natFam 0) m x)
-                    (ext rho (natFam 0) m' x')).
-    { apply (EnvRelOf_ext G rho rho nat_ 0 (natFam 0) (natFam 0) m x m' x'
+    assert (HEx : EnvRelOf (nat_ j :: G) (ext rho (natFam j) m x)
+                    (ext rho (natFam j) m' x')).
+    { apply (EnvRelOf_ext G rho rho (nat_ j) j (natFam j) (natFam j) m x m' x'
                (EnvRelOf_selfE G rho W Hrho)).
-      apply (proj1 (kRel_same (natFam 0) _ _ _ _)); exact Hm. }
-    exact (FunTy_of_FunTm (nat_ :: G) C (funtm (nat_ :: G) C (univ k) dC)
+      apply (proj1 (kRel_same (natFam j) _ _ _ _)); exact Hm. }
+    exact (FunTy_of_FunTm (nat_ j :: G) C (funtm (nat_ j :: G) C (UU k) dC)
              _ _ HEx k _ (FC m x) _ (FC m' x') (DC m x) (DC m' x')
-             (LTyK_of_ty (nat_ :: G) C k dC _ _ HEx)). }
+             (LTyK_of_ty (nat_ j :: G) C k dC _ _ HEx)). }
   (* the base value *)
-  assert (E0 : SC ezero = ers rho (C [zero..]))
-    by exact (eq_sym (ers_sub1 rho C zero (natFam 0) (natE 0 NatAt_zero))).
-  pose proof (isubst_ITy rho zero 0 enat (natFam 0) ezero (natE 0 NatAt_zero)
-                eq_refl (i_zero rho) C k (SC ezero) (FC ezero (natE 0 NatAt_zero))
+  assert (E0 : SC ezero = ers rho (C [(zero j)..]))
+    by exact (eq_sym (ers_sub1 rho C (zero j) (natFam j) (natE 0 NatAt_zero))).
+  pose proof (isubst_ITy rho (zero j) j enat (natFam j) ezero (natE 0 NatAt_zero)
+                eq_refl (i_zero rho j) C k (SC ezero)
+                (FC ezero (natE 0 NatAt_zero))
                 (DC ezero (natE 0 NatAt_zero))) as DCz.
   destruct (IHz rho Hrho k (famCast E0 (FC ezero (natE 0 NatAt_zero)))
-              (ITy_cast rho (C [zero..]) k _ _ E0 _ DCz)) as [xz' Dz'].
+              (ITy_cast rho (C [(zero j)..]) k _ _ E0 _ DCz)) as [xz' Dz'].
   destruct (ITm_uncast rho z k _ _ E0 (FC ezero (natE 0 NatAt_zero)) _ _ Dz')
     as [xz Dz].
   (* the step value, at every predecessor and recursive result *)
-  assert (Hstep : forall m (x : kElAt (natFam 0) m) w (y : kElAt (FC m x) w),
+  assert (Hstep : forall m (x : kElAt (natFam j) m) w (y : kElAt (FC m x) w),
              { xs : kElAt (FC (esucc m) (natSucc x))
-                      (ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s) &
-               ITm (ext (ext rho (natFam 0) m x) (FC m x) w y) s k
+                      (ers (ext (ext rho (natFam j) m x) (FC m x) w y) s) &
+               ITm (ext (ext rho (natFam j) m x) (FC m x) w y) s k
                    (SC (esucc m)) (FC (esucc m) (natSucc x))
-                   (ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s) xs }).
+                   (ers (ext (ext rho (natFam j) m x) (FC m x) w y) s) xs }).
   { intros m x w y.
-    pose proof (ity_nrec_succ rho C k m x (FC (esucc m) (natSucc x))
+    pose proof (ity_nrec_succ rho C k j m x (FC (esucc m) (natSucc x))
                   (DC (esucc m) (natSucc x)) k (SC m) (FC m x) w y) as DS.
     assert (Es : SC (esucc m)
-                 = ers (ext (ext rho (natFam 0) m x) (FC m x) w y) (nrec_succ C))
+                 = ers (ext (ext rho (natFam j) m x) (FC m x) w y) (nrec_succ C))
       by exact (eq_sym (er_nrec_succ C (rsub rho) m w)).
-    destruct (IHs (ext (ext rho (natFam 0) m x) (FC m x) w y)
-                (EnvITy_ext (nat_ :: G) (ext rho (natFam 0) m x) C k (FC m x)
+    destruct (IHs (ext (ext rho (natFam j) m x) (FC m x) w y)
+                (EnvITy_ext (nat_ j :: G) (ext rho (natFam j) m x) C k (FC m x)
                    (DC m x) w y (HEm m x))
                 k (famCast Es (FC (esucc m) (natSucc x)))
                 (ITy_cast _ (nrec_succ C) k _ _ Es _ DS)) as [xs' Ds'].
     destruct (ITm_uncast _ s k _ _ Es (FC (esucc m) (natSucc x)) _ _ Ds')
       as [xs Ds].
     exists xs; exact Ds. }
-  pose (ws := fun m (x : kElAt (natFam 0) m) w (y : kElAt (FC m x) w) =>
-                ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s).
+  pose (ws := fun m (x : kElAt (natFam j) m) w (y : kElAt (FC m x) w) =>
+                ers (ext (ext rho (natFam j) m x) (FC m x) w y) s).
   pose (xs := fun m x w y => projT1 (Hstep m x w y)).
   assert (Ds : forall m x w y,
-             ITm (ext (ext rho (natFam 0) m x) (FC m x) w y) s k
+             ITm (ext (ext rho (natFam j) m x) (FC m x) w y) s k
                  (SC (esucc m)) (FC (esucc m) (natSucc x)) (ws m x w y)
                  (xs m x w y))
     by (intros m x w y; exact (projT2 (Hstep m x w y))).
-  pose (redS := fun m (x : kElAt (natFam 0) m) w (y : kElAt (FC m x) w) =>
+  pose (redS := fun m (x : kElAt (natFam j) m) w (y : kElAt (FC m x) w) =>
                   reds_lam2_app (er s) (rsub rho) m w).
   (* the scrutinee *)
-  destruct (IHn rho Hrho 0 (natFam 0) (ity_nat rho (ers rho nat_) eq_refl))
+  destruct (IHn rho Hrho j (natFam j) (ity_nat rho _ _ eq_refl))
     as [xn Dn].
-  pose proof (i_natrec rho C z s n k SC FC isoC (ers rho (stepWrap s))
+  pose proof (i_natrec rho C z s n k j SC FC isoC (ers rho (stepWrap s))
                 (ers rho z) xz ws xs redS (ers rho n) xn
                 eq_refl DC Dz Ds Dn) as Dnr.
   (* the conclusion type *)
   assert (En : SC (ers rho n) = ers rho (C [n..]))
-    by exact (eq_sym (ers_sub1 rho C n (natFam 0) xn)).
-  pose proof (isubst_ITy rho n 0 enat (natFam 0) (ers rho n) xn eq_refl Dn
+    by exact (eq_sym (ers_sub1 rho C n (natFam j) xn)).
+  pose proof (isubst_ITy rho n j enat (natFam j) (ers rho n) xn eq_refl Dn
                 C k (SC (ers rho n)) (FC (ers rho n) xn)
                 (DC (ers rho n) xn)) as DCsub.
   pose proof (ITy_cast rho (C [n..]) k _ _ En _ DCsub) as DCc.
   assert (Hfun : FunTm G (C [n..])).
-  { destruct (ty_subst1 G nat_ C (univ k) n dC dn) as [d].
-    exact (FunTm_of_ty G (C [n..]) k d). }
+  { destruct (ty_subst1 G (nat_ j) C (UU k) n dC dn) as [dsub].
+    exact (FunTm_of_ty G (C [n..]) k dsub). }
   pose proof (ity_lvl rho rho eq_refl (C [n..]) k (ers rho (C [n..]))
                 (famCast En (FC (ers rho n) xn)) k' (ers rho (C [n..])) F
                 DCc DCn) as Ek; subst k'.
@@ -2808,32 +2809,33 @@ Qed.
      the behaviour equation piEl_of returns is exactly i_lam's last premise.
      The body's functionality -- which piEl_of needs to see that the value is
      self-related -- is funtm at the two extended environments. ---- *)
-Lemma itot_lam G A B t k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty (A :: G) t B)
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHt : ITot (A :: G) t B) : ITot G (lam A B t) (pi A B).
+Lemma itot_lam G A B t d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dt : ty (A :: G) t B)
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHt : ITot (A :: G) t B) :
+  ITot G (lam (d + j) A B t) (pi (d + j) A B).
 Proof.
   intros rho Hrho k' F Dpi'.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (x : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gPi := LTyK_of_ty G (pi A B) k (t_pi G A B k dA dB) rho rho
+  pose (gPi := LTyK_of_ty G (pi j A B) j (t_pi G j j A B (le_n j) dA dB) rho rho
                  (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (ity_pi rho A B k (ers rho A) FA B0
+  pose proof (ity_pi rho A B d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
                 eq_refl DFA DB) as Dpi.
   (* the body's value at every argument *)
   pose (xt := fun u0 (y : kElAt FA u0) =>
                 projT1 (IHt (ext rho FA u0 y)
-                          (EnvITy_ext G rho A k FA DFA u0 y Hrho)
-                          k (FB u0 y) (DB u0 y))).
-  assert (Dt : forall u0 y, ITm (ext rho FA u0 y) t k (ers (ext rho FA u0 y) B)
+                          (EnvITy_ext G rho A j FA DFA u0 y Hrho)
+                          j (FB u0 y) (DB u0 y))).
+  assert (Dt : forall u0 y, ITm (ext rho FA u0 y) t j (ers (ext rho FA u0 y) B)
                               (FB u0 y) (ers (ext rho FA u0 y) t) (xt u0 y))
     by (intros u0 y;
         exact (projT2 (IHt (ext rho FA u0 y)
-                         (EnvITy_ext G rho A k FA DFA u0 y Hrho)
-                         k (FB u0 y) (DB u0 y)))).
+                         (EnvITy_ext G rho A j FA DFA u0 y Hrho)
+                         j (FB u0 y) (DB u0 y)))).
   (* the body is functional across the two extended environments *)
   assert (Hfun : forall u0 y u0' y', kEqAt FA u0 y u0' y' ->
              kRel (FB u0 y) (FB u0' y')
@@ -2841,38 +2843,57 @@ Proof.
                   (ers (ext rho FA u0' y') t) (xt u0' y')).
   { intros u0 y u0' y' Hyy.
     assert (HEx : EnvRelOf (A :: G) (ext rho FA u0 y) (ext rho FA u0' y')).
-    { apply (EnvRelOf_ext G rho rho A k FA FA u0 y u0' y'
+    { apply (EnvRelOf_ext G rho rho A j FA FA u0 y u0' y'
                (EnvRelOf_selfE G rho W Hrho)).
       apply (proj1 (kRel_same FA _ _ _ _)); exact Hyy. }
-    refine (funtm (A :: G) t B dt _ _ HEx k _ (FB u0 y) _ (xt u0 y) (Dt u0 y)
+    refine (funtm (A :: G) t B dt _ _ HEx j _ (FB u0 y) _ (xt u0 y) (Dt u0 y)
               _ (FB u0' y') _ (xt u0' y') (Dt u0' y')
-              (FunTy_of_FunTm (A :: G) B (funtm (A :: G) B (univ k) dB) _ _ HEx
-                 k _ (FB u0 y) _ (FB u0' y') (DB u0 y) (DB u0' y')
-                 (LTyK_of_ty (A :: G) B k dB _ _ HEx)) _).
+              (FunTy_of_FunTm (A :: G) B (funtm (A :: G) B (UU j) dB) _ _ HEx
+                 j _ (FB u0 y) _ (FB u0' y') (DB u0 y) (DB u0' y')
+                 (LTyK_of_ty (A :: G) B j dB _ _ HEx)) _).
     apply (Rel_tyeq (ers (ext rho FA u0 y) B) (ers (ext rho FA u0' y') B));
-      [ exact (LTy_of_ty (A :: G) B k dB _ _ HEx)
+      [ exact (LTy_of_ty (A :: G) B j dB _ _ HEx)
       | exact (LTm_of_ty (A :: G) t B dt _ _ HEx) ]. }
   (* the lambda's own realiser is good, and beta-reduces to the body's *)
-  assert (gw : Good (epi (ers rho A) B0) (ers rho (lam A B t)))
-    by exact (LTm_of_ty G (lam A B t) (pi A B) (t_lam G A B t k dA dB dt) rho rho
+  assert (gw : Good (epi (ers rho A) B0) (ers rho (lam (d + j) A B t)))
+    by exact (LTm_of_ty G (lam (d + j) A B t) (pi (d + j) A B)
+                (t_lam G (d + j) j A B t (Nat.le_add_l j d) dA dB dt) rho rho
                 (EnvRelOf_selfE G rho W Hrho)).
-  destruct (piEl_of k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-              redB isoB gPi (ers rho (lam A B t)) gw
+  destruct (piEl_of j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+              redB isoB gPi (ers rho (lam (d + j) A B t)) gw
               (fun u0 y => ers (ext rho FA u0 y) t) xt
               (fun u0 y => reds_beta_sub (rsub rho) (er t) u0) Hfun)
     as [x Hbeh].
-  pose proof (ity_lvl rho rho eq_refl (pi A B) k (ers rho (pi A B))
-                (piFam k (ers rho A) B0 FA (fun u0 x0 => ers (ext rho FA u0 x0) B) FB
-                   redB isoB gPi) k' (ers rho (pi A B)) F Dpi Dpi') as Ek;
+  pose proof (ity_lvl rho rho eq_refl (pi (d + j) A B) (d + j)
+                (ers rho (pi (d + j) A B))
+                (famLiftN d
+                   (piFam j (ers rho A) B0 FA
+                      (fun u0 x0 => ers (ext rho FA u0 x0) B) FB redB isoB gPi))
+                k' (ers rho (pi (d + j) A B)) F Dpi Dpi') as Ek;
     subst k'.
-  refine (itot_move G (lam A B t) (pi A B)
-            (FunTm_of_ty G (pi A B) k (t_pi G A B k dA dB)) W rho Hrho k F
-            (piFam k (ers rho A) B0 FA (fun u0 x0 => ers (ext rho FA u0 x0) B) FB
-               redB isoB gPi) Dpi' Dpi _ _).
-  exact (i_lam rho A B t k (ers rho A) FA B0
+  refine (itot_move G (lam (d + j) A B t) (pi (d + j) A B)
+            (FunTm_of_ty G (pi (d + j) A B) (d + j)
+               (t_pi G (d + j) j A B (Nat.le_add_l j d) dA dB)) W rho Hrho (d + j) F
+            (famLiftN d
+               (piFam j (ers rho A) B0 FA (fun u0 x0 => ers (ext rho FA u0 x0) B) FB
+                  redB isoB gPi)) Dpi' Dpi _ _).
+  (* the lambda's value at the ANNOTATED level is the lift of the level-j one,
+     and the behaviour premise is stated through the unlift, which undoes it *)
+  refine (i_lam rho A B t d j (ers rho A) FA B0
            (fun u0 x0 => ers (ext rho FA u0 x0) B) FB redB isoB gPi
-           (ers rho (lam A B t)) x (fun u0 y => ers (ext rho FA u0 y) t) xt
-           eq_refl eq_refl DFA DB Dt Hbeh).
+           (ers rho (lam (d + j) A B t))
+           (elLiftN d
+              (piFam j (ers rho A) B0 FA (fun u0 x0 => ers (ext rho FA u0 x0) B) FB
+                 redB isoB gPi) (ers rho (lam (d + j) A B t)) x)
+           (fun u0 y => ers (ext rho FA u0 y) t) xt
+           eq_refl eq_refl DFA DB Dt _).
+  intros u0 y.
+  eapply kEqC_trans; [| exact (Hbeh u0 y)].
+  apply (proj2 (kRel_same (FB u0 y) (eapp (ers rho (lam (d + j) A B t)) u0) _
+                  (eapp (ers rho (lam (d + j) A B t)) u0) _)).
+  apply (piApp_eq j (ers rho A) B0 FA (fun u1 x1 => ers (ext rho FA u1 x1) B) FB
+           redB isoB gPi _ _ _ _ u0 y u0 y);
+    [ apply elUnliftN_elLiftN | apply kEqAt_refl_ ].
 Qed.
 
 (* ================================================================== *)
@@ -2925,9 +2946,9 @@ Proof.
 Qed.
 
 Lemma isem_conv G t u A B k (W : wfc G)
-  (dA : ty G A (univ k)) (dB : ty G B (univ k))
-  (H : ISem G t u A) (IHA : ITot G A (univ k)) (IHB : ITot G B (univ k))
-  (IHc : IRel G A B (univ k)) : ISem G t u B.
+  (dA : ty G A (UU k)) (dB : ty G B (UU k))
+  (H : ISem G t u A) (IHA : ITot G A (UU k)) (IHB : ITot G B (UU k))
+  (IHc : IRel G A B (UU k)) : ISem G t u B.
 Proof.
   destruct H as [[Ht Hu] HR].
   split; [split |].
@@ -2951,20 +2972,21 @@ Qed.
 
 (* ---- proof irrelevance: a Prf-family relates all of its elements, and at
      layer 1 all realisers of a Prf type are related. ---- *)
-Lemma isem_prf_irr G p e e' (de : ty G e (prf p)) (de' : ty G e' (prf p))
-  (IHe : ITot G e (prf p)) (IHe' : ITot G e' (prf p)) : ISem G e e' (prf p).
+Lemma isem_prf_irr G kk p e e' (de : ty G e (prf kk p)) (de' : ty G e' (prf kk p))
+  (IHe : ITot G e (prf kk p)) (IHe' : ITot G e' (prf kk p)) :
+  ISem G e e' (prf kk p).
 Proof.
   split; [split; [exact IHe | exact IHe'] |].
   intros rho Hrho k F DP x y Dx Dy.
-  pose proof (ity_lvl_dec rho (prf p) k (ers rho (prf p)) F DP) as El;
+  pose proof (ity_lvl_dec rho (prf kk p) k (ers rho (prf kk p)) F DP) as El;
     cbn [LvlDec] in El; subst k.
-  destruct (ity_prf_inv rho (prf p) 0 (ers rho (prf p)) F DP)
-    as [wp [xp [Dp Hiso]]].
-  pose proof (TotalFam_iso (prfF 0 xp) F (iso_sym _ _ Hiso)
-                (prf_total 0 wp xp)) as HT.
+  destruct (ity_prf_inv rho (prf kk p) kk (ers rho (prf kk p)) F DP)
+    as [jp [wp [xp [Dp Hiso]]]].
+  pose proof (TotalFam_iso (prfF kk xp) F (iso_sym _ _ Hiso)
+                (prf_total kk jp wp xp)) as HT.
   apply HT.
-  apply (Rel_prf_intro (ers rho (prf p)) (ers rho p));
-    [ exists 0; exact (uf_ty F) | apply eval_whnf, whnf_prf ].
+  apply (Rel_prf_intro (ers rho (prf kk p)) (ers rho p));
+    [ exists kk; exact (uf_ty F) | apply eval_whnf, whnf_prf ].
 Qed.
 
 (* The layer-1 side condition for a conversion, as fundamental_cv gives it. *)
@@ -2981,7 +3003,7 @@ Qed.
      shown is that the two families are isomorphic and their realisers layer-1
      equal -- which is the universe's own equality (uEq_of). ---- *)
 Lemma isem_former_cv G (t u : tm) (k : nat) (W : wfc G)
-  (Htot : ITot G t (univ k)) (Hutot : ITot G u (univ k))
+  (Htot : ITot G t (UU k)) (Hutot : ITot G u (UU k))
   (Hsht : forall rho k' Sy (F : kUFam k' Sy) w (x : kElAt F w),
             TmShape rho t k' Sy F w x -> TyVal rho t k' Sy F w x)
   (Hshu : forall rho k' Sy (F : kUFam k' Sy) w (x : kElAt F w),
@@ -2989,15 +3011,22 @@ Lemma isem_former_cv G (t u : tm) (k : nat) (W : wfc G)
   (Hfam : forall rho (Hrho : EnvITy G rho) F1 F2,
             ITy rho t k (ers rho t) F1 -> ITy rho u k (ers rho u) F2 ->
             (eqty k (ers rho t) (ers rho u) * iso (kAt F1) (kAt F2))%type)
-  (Lc : LCv G t u (univ k)) : ISem G t u (univ k).
+  (Lc : LCv G t u (UU k)) : ISem G t u (UU k).
 Proof.
   split; [split; [exact Htot | exact Hutot] |].
   intros rho Hrho k' F DU x y Dx Dy.
-  pose proof (ity_lvl_dec rho (univ k) k' (ers rho (univ k)) F DU) as El;
+  pose proof (ity_lvl_dec rho (UU k) k' (ers rho (UU k)) F DU) as El;
     cbn [LvlDec] in El; subst k'.
-  pose proof (itm_inv rho t (S k) (ers rho (univ k)) F (ers rho t) x Dx) as E.
-  pose proof (itm_inv rho u (S k) (ers rho (univ k)) F (ers rho u) y Dy) as E'.
+  pose proof (itm_inv rho t (S k) (ers rho (UU k)) F (ers rho t) x Dx) as E.
+  pose proof (itm_inv rho u (S k) (ers rho (UU k)) F (ers rho u) y Dy) as E'.
   cbn [TmInv] in E, E'.
+  (* a universe is not a Prf, so the proof alternative is out on both sides *)
+  destruct E as [[_ [q0 Hq0]] | E];
+    [ solve [exfalso; refine (NotPrfR_univ k q0 _);
+             eapply tyeq_trans; [| exact Hq0]; exists (S k); exact (uf_ty F)] |].
+  destruct E' as [[_ [q0 Hq0]] | E'];
+    [ solve [exfalso; refine (NotPrfR_univ k q0 _);
+             eapply tyeq_trans; [| exact Hq0]; exists (S k); exact (uf_ty F)] |].
   apply Hsht in E; apply Hshu in E'; cbn [TyVal] in E, E'.
   destruct E as [F1 [D1 Hv]]; destruct E' as [F2 [D2 Hv']].
   destruct (Hfam rho Hrho F1 F2 D1 D2) as [Hty Hi].
@@ -3011,14 +3040,14 @@ Qed.
 
 (* The isomorphism a conversion of types gives, at interpretations SUPPLIED by
    the caller: simpler than iso_of_IRel, which has to build them. *)
-Lemma iso_of_IRel_at G t u k (HR : IRel G t u (univ k))
+Lemma iso_of_IRel_at G t u k (HR : IRel G t u (UU k))
   rho (Hrho : EnvITy G rho)
   (F1 : kUFam k (ers rho t)) (D1 : ITy rho t k (ers rho t) F1)
   (F2 : kUFam k (ers rho u)) (D2 : ITy rho u k (ers rho u) F2) :
   iso (kAt F1) (kAt F2).
 Proof.
   pose proof (HR rho Hrho (S k) (univFam k)
-                (ity_univ rho k (ers rho (univ k)) eq_refl)
+                (ity_univ rho 0 k (ers rho (UU k)) eq_refl)
                 (famEl F1) (famEl F2)
                 (i_ty rho t k (ers rho t) F1 D1)
                 (i_ty rho u k (ers rho u) F2 D2)) as Heq.
@@ -3030,7 +3059,7 @@ Qed.
 
 (* the same with the realisers left general: an inversion hands back a family
    at a realiser that is only PROVABLY the erasure. *)
-Lemma iso_of_IRel_at' G t u k (HR : IRel G t u (univ k))
+Lemma iso_of_IRel_at' G t u k (HR : IRel G t u (UU k))
   rho (Hrho : EnvITy G rho)
   w1 (F1 : kUFam k w1) (D1 : ITy rho t k w1 F1)
   w2 (F2 : kUFam k w2) (D2 : ITy rho u k w2 F2) :
@@ -3046,7 +3075,7 @@ Qed.
 Definition LCvK (G : ctx) (A A' : tm) (k : nat) : Prop :=
   forall rho rho', EnvRelOf G rho rho' -> eqty k (ers rho A) (ers rho' A').
 
-Lemma LCvK_of_cv G A A' k (c : cv G A A' (univ k)) : LCvK G A A' k.
+Lemma LCvK_of_cv G A A' k (c : cv G A A' (UU k)) : LCvK G A A' k.
 Proof.
   intros rho rho' [_ [_ [_ HS]]]; exact (fundamental_cv_U G A A' k c _ _ HS).
 Qed.
@@ -3057,33 +3086,49 @@ Qed.
      extended by the isomorphic domains (functionality).  The second step is
      what needed EnvOf to be closed under conversion. ---- *)
 
-Lemma isem_pi G A A' B B' k (W : wfc G)
-  (dA : ty G A (univ k)) (dB : ty (A :: G) B (univ k))
-  (dA' : ty G A' (univ k)) (dB' : ty (A' :: G) B' (univ k))
-  (cA : cv G A A' (univ k)) (cB : cv (A :: G) B B' (univ k))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHA' : ITot G A' (univ k)) (IHB' : ITot (A' :: G) B' (univ k))
-  (IHcA : IRel G A A' (univ k)) (IHcB : IRel (A :: G) B B' (univ k)) :
-  ISem G (pi A B) (pi A' B') (univ k).
+Lemma isem_pi G A A' B B' d j (W : wfc G)
+  (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (dA' : ty G A' (UU j)) (dB' : ty (A' :: G) B' (UU j))
+  (cA : cv G A A' (UU j)) (cB : cv (A :: G) B B' (UU j))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHA' : ITot G A' (UU j)) (IHB' : ITot (A' :: G) B' (UU j))
+  (IHcA : IRel G A A' (UU j)) (IHcB : IRel (A :: G) B B' (UU j)) :
+  ISem G (pi (d + j) A B) (pi (d + j) A' B') (UU (d + j)).
 Proof.
-  apply (isem_former_cv G (pi A B) (pi A' B') k W
-           (itot_pi G A B k W dA dB IHA IHB)
-           (itot_pi G A' B' k W dA' dB' IHA' IHB')
+  apply (isem_former_cv G (pi (d + j) A B) (pi (d + j) A' B') (d + j) W
+           (itot_pi G A B d j W dA dB IHA IHB)
+           (itot_pi G A' B' d j W dA' dB' IHA' IHB')
            (fun rho k' Sy F w x H => H) (fun rho k' Sy F w x H => H));
-    [| exact (LCv_of_cv G (pi A B) (pi A' B') (univ k)
-                (c_pi G A A' B B' k dA dB dA' dB' cA cB)) ].
+    [| exact (LCv_of_cv G (pi (d + j) A B) (pi (d + j) A' B') (UU (d + j))
+                (c_pi G (d + j) j A A' B B' (Nat.le_add_l j d) dA dB dA' dB' cA cB)) ].
   intros rho Hrho F1 F2 D1 D2.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
   assert (HtyA : tyeq (ers rho A) (ers rho A'))
-    by (exists k; exact (LCvK_of_cv G A A' k cA rho rho HEself)).
+    by (exists j; exact (LCvK_of_cv G A A' j cA rho rho HEself)).
   split.
-  - exact (LCvK_of_cv G (pi A B) (pi A' B') k
-             (c_pi G A A' B B' k dA dB dA' dB' cA cB) rho rho HEself).
+  - exact (LCvK_of_cv G (pi (d + j) A B) (pi (d + j) A' B') (d + j)
+             (c_pi G (d + j) j A A' B B' (Nat.le_add_l j d) dA dB dA' dB' cA cB) rho rho HEself).
   - (* decompose both Pi-families *)
-    destruct (ity_pi_inv rho (pi A B) k (ers rho (pi A B)) F1 D1)
+    destruct (ity_pi_inv rho (pi (d + j) A B) (d + j)
+                (ers rho (pi (d + j) A B)) F1 D1) as [d1 [j1 [E1 H1]]].
+    destruct (ity_pi_inv rho (pi (d + j) A' B') (d + j)
+                (ers rho (pi (d + j) A' B')) F2 D2) as [d2 [j2 [E2 H2]]].
+    destruct H1
       as [wA [FA [B0 [wB [FB [redB [isoB [gPi [[[DA DB] Hw] Hiso]]]]]]]]].
-    destruct (ity_pi_inv rho (pi A' B') k (ers rho (pi A' B')) F2 D2)
+    destruct H2
       as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi' [[[DA' DB'] Hw'] Hiso']]]]]]]]].
+    (* both readings are of a former at the SAME annotation, and the components'
+       level is pinned by the domain, so the two gaps agree *)
+    pose proof (ity_lvl rho rho eq_refl A j1 _ FA j _
+                  (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA
+                  (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ej1; subst j1.
+    pose proof (ity_lvl rho rho eq_refl A' j2 _ FA' j _
+                  (projT1 (ityT_of_ITot G A' j IHA' rho Hrho)) DA'
+                  (projT2 (ityT_of_ITot G A' j IHA' rho Hrho))) as Ej2; subst j2.
+    assert (Ed1 : d1 = d) by lia; subst d1.
+    assert (Ed2 : d2 = d) by lia; subst d2.
+    rewrite (lvlCast_irr (eq_sym E1) F1) in Hiso.
+    rewrite (lvlCast_irr (eq_sym E2) F2) in Hiso'.
     assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
     assert (EA' : wA' = ers rho A') by exact (ers_of_ITy _ _ _ _ _ DA').
     subst wA wA'.
@@ -3091,64 +3136,79 @@ Proof.
     eapply iso_trans; [| apply iso_sym; exact Hiso'].
     (* the domains *)
     assert (QA : iso (kAt FA) (kAt FA'))
-      by exact (iso_of_IRel_at' G A A' k IHcA rho Hrho _ FA DA _ FA' DA').
+      by exact (iso_of_IRel_at' G A A' j IHcA rho Hrho _ FA DA _ FA' DA').
+    apply famLiftN_iso.
     apply piFam_iso.
     + eapply tyeq_trans; [apply tyeq_sym; exact Hw |].
       eapply tyeq_trans;
-        [ exists k; exact (LCvK_of_cv G (pi A B) (pi A' B') k
-                             (c_pi G A A' B B' k dA dB dA' dB' cA cB) rho rho HEself)
+        [ exists (d + j); exact (LCvK_of_cv G (pi (d + j) A B) (pi (d + j) A' B') (d + j)
+                             (c_pi G (d + j) j A A' B B' (Nat.le_add_l j d) dA dB dA' dB' cA cB) rho rho HEself)
         | exact Hw' ].
     + exact QA.
     + (* the codomains *)
       intros u x u' x' Hxx.
       (* B' interpreted in the A-extended environment *)
-      pose proof (EnvITy_ext G rho A k FA DA u x Hrho) as HExA.
-      pose proof (EnvITy_ext_iso G rho A' k (ers rho A) FA FA' DA' QA u x Hrho)
+      pose proof (EnvITy_ext G rho A j FA DA u x Hrho) as HExA.
+      pose proof (EnvITy_ext_iso G rho A' j (ers rho A) FA FA' DA' QA u x Hrho)
         as HExA'.
-      destruct (ityT_of_ITot (A' :: G) B' k IHB' (ext rho FA u x) HExA')
+      destruct (ityT_of_ITot (A' :: G) B' j IHB' (ext rho FA u x) HExA')
         as [FBm DBm].
       eapply iso_trans;
-        [ exact (iso_of_IRel_at' (A :: G) B B' k IHcB (ext rho FA u x) HExA
+        [ exact (iso_of_IRel_at' (A :: G) B B' j IHcB (ext rho FA u x) HExA
                    _ (FB u x) (DB u x) _ FBm DBm) |].
       (* and B' across the two environments *)
       assert (HEr : EnvRelOf (A' :: G) (ext rho FA u x) (ext rho FA' u' x')).
-      { apply (EnvRelOf_ext_ty G rho rho A' k (ers rho A) (ers rho A')
+      { apply (EnvRelOf_ext_ty G rho rho A' j (ers rho A) (ers rho A')
                  FA FA' u x u' x' HEself HtyA);
-          [ exists k; exact (uf_ty FA') | exact Hxx ]. }
+          [ exists j; exact (uf_ty FA') | exact Hxx ]. }
       assert (Eb' : wB' u' x' = ers (ext rho FA' u' x') B')
         by exact (ers_of_ITy _ _ _ _ _ (DB' u' x')).
-      refine (FunTy_of_FunTm (A' :: G) B' (funtm (A' :: G) B' (univ k) dB')
-                _ _ HEr k _ FBm _ (FB' u' x') DBm (DB' u' x') _).
-      rewrite Eb'; exact (LTyK_of_ty (A' :: G) B' k dB' _ _ HEr).
+      refine (FunTy_of_FunTm (A' :: G) B' (funtm (A' :: G) B' (UU j) dB')
+                _ _ HEr j _ FBm _ (FB' u' x') DBm (DB' u' x') _).
+      rewrite Eb'; exact (LTyK_of_ty (A' :: G) B' j dB' _ _ HEr).
 Qed.
 
-Lemma isem_sig G A A' B B' k (W : wfc G)
-  (dA : ty G A (univ k)) (dB : ty (A :: G) B (univ k))
-  (dA' : ty G A' (univ k)) (dB' : ty (A' :: G) B' (univ k))
-  (cA : cv G A A' (univ k)) (cB : cv (A :: G) B B' (univ k))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHA' : ITot G A' (univ k)) (IHB' : ITot (A' :: G) B' (univ k))
-  (IHcA : IRel G A A' (univ k)) (IHcB : IRel (A :: G) B B' (univ k)) :
-  ISem G (sig_ A B) (sig_ A' B') (univ k).
+Lemma isem_sig G A A' B B' d j (W : wfc G)
+  (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (dA' : ty G A' (UU j)) (dB' : ty (A' :: G) B' (UU j))
+  (cA : cv G A A' (UU j)) (cB : cv (A :: G) B B' (UU j))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHA' : ITot G A' (UU j)) (IHB' : ITot (A' :: G) B' (UU j))
+  (IHcA : IRel G A A' (UU j)) (IHcB : IRel (A :: G) B B' (UU j)) :
+  ISem G (sig_ (d + j) A B) (sig_ (d + j) A' B') (UU (d + j)).
 Proof.
-  apply (isem_former_cv G (sig_ A B) (sig_ A' B') k W
-           (itot_sig G A B k W dA dB IHA IHB)
-           (itot_sig G A' B' k W dA' dB' IHA' IHB')
+  apply (isem_former_cv G (sig_ (d + j) A B) (sig_ (d + j) A' B') (d + j) W
+           (itot_sig G A B d j W dA dB IHA IHB)
+           (itot_sig G A' B' d j W dA' dB' IHA' IHB')
            (fun rho k' Sy F w x H => H) (fun rho k' Sy F w x H => H));
-    [| exact (LCv_of_cv G (sig_ A B) (sig_ A' B') (univ k)
-                (c_sig G A A' B B' k dA dB dA' dB' cA cB)) ].
+    [| exact (LCv_of_cv G (sig_ (d + j) A B) (sig_ (d + j) A' B') (UU (d + j))
+                (c_sig G (d + j) j A A' B B' (Nat.le_add_l j d) dA dB dA' dB' cA cB)) ].
   intros rho Hrho F1 F2 D1 D2.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
   assert (HtyA : tyeq (ers rho A) (ers rho A'))
-    by (exists k; exact (LCvK_of_cv G A A' k cA rho rho HEself)).
+    by (exists j; exact (LCvK_of_cv G A A' j cA rho rho HEself)).
   split.
-  - exact (LCvK_of_cv G (sig_ A B) (sig_ A' B') k
-             (c_sig G A A' B B' k dA dB dA' dB' cA cB) rho rho HEself).
+  - exact (LCvK_of_cv G (sig_ (d + j) A B) (sig_ (d + j) A' B') (d + j)
+             (c_sig G (d + j) j A A' B B' (Nat.le_add_l j d) dA dB dA' dB' cA cB) rho rho HEself).
   - (* decompose both Pi-families *)
-    destruct (ity_sig_inv rho (sig_ A B) k (ers rho (sig_ A B)) F1 D1)
+    destruct (ity_sig_inv rho (sig_ (d + j) A B) (d + j)
+                (ers rho (sig_ (d + j) A B)) F1 D1) as [d1 [j1 [E1 H1]]].
+    destruct (ity_sig_inv rho (sig_ (d + j) A' B') (d + j)
+                (ers rho (sig_ (d + j) A' B')) F2 D2) as [d2 [j2 [E2 H2]]].
+    destruct H1
       as [wA [FA [B0 [wB [FB [redB [isoB [gSig [[[DA DB] Hw] Hiso]]]]]]]]].
-    destruct (ity_sig_inv rho (sig_ A' B') k (ers rho (sig_ A' B')) F2 D2)
+    destruct H2
       as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig' [[[DA' DB'] Hw'] Hiso']]]]]]]]].
+    pose proof (ity_lvl rho rho eq_refl A j1 _ FA j _
+                  (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA
+                  (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ej1; subst j1.
+    pose proof (ity_lvl rho rho eq_refl A' j2 _ FA' j _
+                  (projT1 (ityT_of_ITot G A' j IHA' rho Hrho)) DA'
+                  (projT2 (ityT_of_ITot G A' j IHA' rho Hrho))) as Ej2; subst j2.
+    assert (Ed1 : d1 = d) by lia; subst d1.
+    assert (Ed2 : d2 = d) by lia; subst d2.
+    rewrite (lvlCast_irr (eq_sym E1) F1) in Hiso.
+    rewrite (lvlCast_irr (eq_sym E2) F2) in Hiso'.
     assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
     assert (EA' : wA' = ers rho A') by exact (ers_of_ITy _ _ _ _ _ DA').
     subst wA wA'.
@@ -3156,35 +3216,36 @@ Proof.
     eapply iso_trans; [| apply iso_sym; exact Hiso'].
     (* the domains *)
     assert (QA : iso (kAt FA) (kAt FA'))
-      by exact (iso_of_IRel_at' G A A' k IHcA rho Hrho _ FA DA _ FA' DA').
+      by exact (iso_of_IRel_at' G A A' j IHcA rho Hrho _ FA DA _ FA' DA').
+    apply famLiftN_iso.
     apply sigFam_iso.
     + eapply tyeq_trans; [apply tyeq_sym; exact Hw |].
       eapply tyeq_trans;
-        [ exists k; exact (LCvK_of_cv G (sig_ A B) (sig_ A' B') k
-                             (c_sig G A A' B B' k dA dB dA' dB' cA cB) rho rho HEself)
+        [ exists (d + j); exact (LCvK_of_cv G (sig_ (d + j) A B) (sig_ (d + j) A' B') (d + j)
+                             (c_sig G (d + j) j A A' B B' (Nat.le_add_l j d) dA dB dA' dB' cA cB) rho rho HEself)
         | exact Hw' ].
     + exact QA.
     + (* the codomains *)
       intros u x u' x' Hxx.
       (* B' interpreted in the A-extended environment *)
-      pose proof (EnvITy_ext G rho A k FA DA u x Hrho) as HExA.
-      pose proof (EnvITy_ext_iso G rho A' k (ers rho A) FA FA' DA' QA u x Hrho)
+      pose proof (EnvITy_ext G rho A j FA DA u x Hrho) as HExA.
+      pose proof (EnvITy_ext_iso G rho A' j (ers rho A) FA FA' DA' QA u x Hrho)
         as HExA'.
-      destruct (ityT_of_ITot (A' :: G) B' k IHB' (ext rho FA u x) HExA')
+      destruct (ityT_of_ITot (A' :: G) B' j IHB' (ext rho FA u x) HExA')
         as [FBm DBm].
       eapply iso_trans;
-        [ exact (iso_of_IRel_at' (A :: G) B B' k IHcB (ext rho FA u x) HExA
+        [ exact (iso_of_IRel_at' (A :: G) B B' j IHcB (ext rho FA u x) HExA
                    _ (FB u x) (DB u x) _ FBm DBm) |].
       (* and B' across the two environments *)
       assert (HEr : EnvRelOf (A' :: G) (ext rho FA u x) (ext rho FA' u' x')).
-      { apply (EnvRelOf_ext_ty G rho rho A' k (ers rho A) (ers rho A')
+      { apply (EnvRelOf_ext_ty G rho rho A' j (ers rho A) (ers rho A')
                  FA FA' u x u' x' HEself HtyA);
-          [ exists k; exact (uf_ty FA') | exact Hxx ]. }
+          [ exists j; exact (uf_ty FA') | exact Hxx ]. }
       assert (Eb' : wB' u' x' = ers (ext rho FA' u' x') B')
         by exact (ers_of_ITy _ _ _ _ _ (DB' u' x')).
-      refine (FunTy_of_FunTm (A' :: G) B' (funtm (A' :: G) B' (univ k) dB')
-                _ _ HEr k _ FBm _ (FB' u' x') DBm (DB' u' x') _).
-      rewrite Eb'; exact (LTyK_of_ty (A' :: G) B' k dB' _ _ HEr).
+      refine (FunTy_of_FunTm (A' :: G) B' (funtm (A' :: G) B' (UU j) dB')
+                _ _ HEr j _ FBm _ (FB' u' x') DBm (DB' u' x') _).
+      rewrite Eb'; exact (LTyK_of_ty (A' :: G) B' j dB' _ _ HEr).
 Qed.
 
 (* A conversion's relatedness across two DIFFERENT interpretations of the type:
@@ -3215,23 +3276,23 @@ Qed.
 (* ---- the lift, Prf and the successor ---- *)
 
 Lemma isem_up G A A' k (W : wfc G)
-  (dA : ty G A (univ k)) (dA' : ty G A' (univ k)) (cA : cv G A A' (univ k))
-  (IHA : ITot G A (univ k)) (IHA' : ITot G A' (univ k))
-  (IHcA : IRel G A A' (univ k)) :
-  ISem G (up (univ (S k)) A) (up (univ (S k)) A') (univ (S k)).
+  (dA : ty G A (UU k)) (dA' : ty G A' (UU k)) (cA : cv G A A' (UU k))
+  (IHA : ITot G A (UU k)) (IHA' : ITot G A' (UU k))
+  (IHcA : IRel G A A' (UU k)) :
+  ISem G (up k A) (up k A') (UU (S k)).
 Proof.
-  apply (isem_former_cv G (up (univ (S k)) A) (up (univ (S k)) A') (S k) W
+  apply (isem_former_cv G (up k A) (up k A') (S k) W
            (itot_up G A k W dA IHA) (itot_up G A' k W dA' IHA')
            (fun rho k' Sy F w x H => H) (fun rho k' Sy F w x H => H));
-    [| exact (LCv_of_cv G _ _ _ (c_up G A A' k dA dA' cA)) ].
+    [| exact (LCv_of_cv G _ _ _ (c_up G k A A' dA dA' cA)) ].
   intros rho Hrho F1 F2 D1 D2.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
   split.
   - apply (eqty_cumul k (S k)); [apply Nat.le_succ_diag_r |].
     exact (LCvK_of_cv G A A' k cA rho rho HEself).
-  - destruct (ity_up_inv rho (up (univ (S k)) A) (S k) _ F1 D1)
+  - destruct (ity_up_inv rho (up k A) (S k) _ F1 D1)
       as [F1a [[Ej DA] Hi1]].
-    destruct (ity_up_inv rho (up (univ (S k)) A') (S k) _ F2 D2)
+    destruct (ity_up_inv rho (up k A') (S k) _ F2 D2)
       as [F2a [[Ej' DA'] Hi2]].
     eapply iso_trans; [exact Hi1 |].
     eapply iso_trans; [| apply iso_sym; exact Hi2].
@@ -3239,82 +3300,100 @@ Proof.
     exact (iso_of_IRel_at' G A A' k IHcA rho Hrho _ F1a DA _ F2a DA').
 Qed.
 
-Lemma isem_prf G p p' (W : wfc G) (dp : ty G p prop) (dp' : ty G p' prop)
-  (cp : cv G p p' prop) (IHp : ITot G p prop) (IHp' : ITot G p' prop)
-  (IHc : IRel G p p' prop) : ISem G (prf p) (prf p') (univ 0).
+Lemma isem_prf G kk j p p' (Hjk : j <= kk) (W : wfc G)
+  (dp : ty G p (prop j)) (dp' : ty G p' (prop j))
+  (cp : cv G p p' (prop j)) (IHp : ITot G p (prop j)) (IHp' : ITot G p' (prop j))
+  (IHc : IRel G p p' (prop j)) : ISem G (prf kk p) (prf kk p') (UU kk).
 Proof.
-  apply (isem_former_cv G (prf p) (prf p') 0 W
-           (itot_prf G p W dp IHp) (itot_prf G p' W dp' IHp')
+  apply (isem_former_cv G (prf kk p) (prf kk p') kk W
+           (itot_prf G kk j p Hjk W dp IHp) (itot_prf G kk j p' Hjk W dp' IHp')
            (fun rho k' Sy F w x H => H) (fun rho k' Sy F w x H => H));
-    [| exact (LCv_of_cv G _ _ _ (c_prf G p p' dp dp' cp)) ].
+    [| exact (LCv_of_cv G _ _ _ (c_prf G kk j p p' Hjk dp dp' cp)) ].
   intros rho Hrho F1 F2 D1 D2.
-  destruct (ity_prf_inv rho (prf p) 0 _ F1 D1) as [wp [xp [Dp Hi1]]].
-  destruct (ity_prf_inv rho (prf p') 0 _ F2 D2) as [wp' [xp' [Dp' Hi2]]].
+  destruct (ity_prf_inv rho (prf kk p) kk _ F1 D1) as [j1 [wp [xp [Dp Hi1]]]].
+  destruct (ity_prf_inv rho (prf kk p') kk _ F2 D2) as [j2 [wp' [xp' [Dp' Hi2]]]].
+  pose proof (itm_lvl p rho rho eq_refl _ _ _ _ _ NotPrfR_prop Dp
+                _ _ _ _ _ NotPrfR_prop
+                (projT2 (IHp rho Hrho j (propFam j) (ity_prop rho _ _ eq_refl))))
+    as Ej1; subst j1.
+  pose proof (itm_lvl p' rho rho eq_refl _ _ _ _ _ NotPrfR_prop Dp'
+                _ _ _ _ _ NotPrfR_prop
+                (projT2 (IHp' rho Hrho j (propFam j) (ity_prop rho _ _ eq_refl))))
+    as Ej2; subst j2.
   assert (Ep : wp = ers rho p) by exact (ers_of_ITm _ _ _ _ _ _ _ Dp).
   assert (Ep' : wp' = ers rho p') by exact (ers_of_ITm _ _ _ _ _ _ _ Dp').
   subst wp wp'.
-  pose proof (IHc rho Hrho 0 (propFam 0) (ity_prop rho (ers rho prop) eq_refl)
+  pose proof (IHc rho Hrho j (propFam j) (ity_prop rho _ _ eq_refl)
                 xp xp' Dp Dp') as Hxx.
   destruct (proj1 (propEq_iff xp xp') Hxx) as [Hiff Hrelp].
   assert (Hpr : PR (ers rho p) (ers rho p'))
     by exact (Rel_prop_elim eprop _ _ (eval_whnf _ whnf_prop) Hrelp).
   split.
-  - exact (eqty_prf 0 (ers rho (prf p)) (ers rho (prf p')) (ers rho p) (ers rho p')
+  - exact (eqty_prf kk (ers rho (prf kk p)) (ers rho (prf kk p'))
+             (ers rho p) (ers rho p')
              (eval_whnf _ (whnf_prf _)) (eval_whnf _ (whnf_prf _)) Hpr).
   - eapply iso_trans; [exact Hi1 |].
     eapply iso_trans; [| apply iso_sym; exact Hi2].
     apply prfFam_iso;
-      [ exists 0;
-        exact (eqty_prf 0 (eprf (ers rho p)) (eprf (ers rho p'))
+      [ exists kk;
+        exact (eqty_prf kk (eprf (ers rho p)) (eprf (ers rho p'))
                  (ers rho p) (ers rho p')
                  (eval_whnf _ (whnf_prf _)) (eval_whnf _ (whnf_prf _)) Hpr)
       | exact Hiff ].
 Qed.
 
-Lemma isem_succ G n n' (W : wfc G) (dn : ty G n nat_) (dn' : ty G n' nat_)
-  (cn : cv G n n' nat_) (IHn : ITot G n nat_) (IHn' : ITot G n' nat_)
-  (IHc : IRel G n n' nat_) : ISem G (succ n) (succ n') nat_.
+Lemma isem_succ G j n n' (W : wfc G) (dn : ty G n (nat_ j)) (dn' : ty G n' (nat_ j))
+  (cn : cv G n n' (nat_ j)) (IHn : ITot G n (nat_ j)) (IHn' : ITot G n' (nat_ j))
+  (IHc : IRel G n n' (nat_ j)) : ISem G (succ n) (succ n') (nat_ j).
 Proof.
-  split; [split; [exact (itot_succ G W n IHn) | exact (itot_succ G W n' IHn')] |].
+  split;
+    [split; [exact (itot_succ G W j n IHn) | exact (itot_succ G W j n' IHn')] |].
   intros rho Hrho k F DN x y Dx Dy.
-  pose proof (ity_lvl_dec rho nat_ k (ers rho nat_) F DN) as El;
+  pose proof (ity_lvl_dec rho (nat_ j) k (ers rho (nat_ j)) F DN) as El;
     cbn [LvlDec] in El; subst k.
-  pose proof (LCv_of_cv G (succ n) (succ n') nat_ (c_succ G n n' dn dn' cn) rho rho
+  pose proof (LCv_of_cv G (succ n) (succ n') (nat_ j)
+                (c_succ G j n n' dn dn' cn) rho rho
                 (EnvRelOf_selfE G rho W Hrho)) as Hrel.
-  pose proof (itm_inv rho (succ n) 0 (ers rho nat_) F (ers rho (succ n)) x Dx) as E.
-  pose proof (itm_inv rho (succ n') 0 (ers rho nat_) F (ers rho (succ n')) y Dy) as E'.
+  pose proof (itm_inv rho (succ n) j (ers rho (nat_ j)) F
+                (ers rho (succ n)) x Dx) as E.
+  pose proof (itm_inv rho (succ n') j (ers rho (nat_ j)) F
+                (ers rho (succ n')) y Dy) as E'.
   cbn [TmInv TmShape SuccVal] in E, E'.
-  destruct E as [HT | E]; [exact (HT _ x _ y Hrel) |].
-  destruct E' as [HT' | E']; [exact (HT' _ x _ y Hrel) |].
+  destruct E as [[HT _] | E]; [exact (HT _ x _ y Hrel) |].
+  destruct E' as [[HT' _] | E']; [exact (HT' _ x _ y Hrel) |].
   destruct E as [wn [xn [Dn Hv]]]; destruct E' as [wn' [xn' [Dn' Hv']]].
   assert (Ewn : wn = ers rho n) by exact (ers_of_ITm _ _ _ _ _ _ _ Dn).
   assert (Ewn' : wn' = ers rho n') by exact (ers_of_ITm _ _ _ _ _ _ _ Dn').
   subst wn wn'.
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
-  apply (proj1 (kRel_same (natFam 0) _ _ _ _)).
+  apply (proj1 (kRel_same (natFam j) _ _ _ _)).
   apply natSucc_eq.
-  exact (IHc rho Hrho 0 (natFam 0) (ity_nat rho (ers rho nat_) eq_refl) xn xn' Dn Dn').
+  exact (IHc rho Hrho j (natFam j) (ity_nat rho _ _ eq_refl) xn xn' Dn Dn').
 Qed.
 
 (* ---- the term lift and the first projection ---- *)
 
-Lemma isem_uptm G A t t' k (W : wfc G) (dA : ty G A (univ k))
+Lemma isem_uptm G A t t' k (W : wfc G) (dA : ty G A (UU k))
   (dt : ty G t A) (dt' : ty G t' A) (ct : cv G t t' A)
-  (IHA : ITot G A (univ k)) (IHt : ITot G t A) (IHt' : ITot G t' A)
-  (IHc : IRel G t t' A) : ISem G (uptm A t) (uptm A t') (up (univ (S k)) A).
+  (IHA : ITot G A (UU k)) (IHt : ITot G t A) (IHt' : ITot G t' A)
+  (IHc : IRel G t t' A) : ISem G (uptm A t) (uptm A t') (up k A).
 Proof.
   split; [split; [exact (itot_uptm G A t k W dA dt IHA IHt)
                  | exact (itot_uptm G A t' k W dA dt' IHA IHt')] |].
   intros rho Hrho k' F DU x y Dx Dy.
-  pose proof (ity_lvl_dec rho (up (univ (S k)) A) k'
-                (ers rho (up (univ (S k)) A)) F DU) as El;
+  pose proof (ity_lvl_dec rho (up k A) k' (ers rho (up k A)) F DU) as El;
     cbn [LvlDec] in El; subst k'.
-  pose proof (itm_inv rho (uptm A t) (S k) (ers rho (up (univ (S k)) A)) F
+  pose proof (itm_inv rho (uptm A t) (S k) (ers rho (up k A)) F
                 (ers rho (uptm A t)) x Dx) as E.
-  pose proof (itm_inv rho (uptm A t') (S k) (ers rho (up (univ (S k)) A)) F
+  pose proof (itm_inv rho (uptm A t') (S k) (ers rho (up k A)) F
                 (ers rho (uptm A t')) y Dy) as E'.
   cbn [TmInv TmShape UpTmVal] in E, E'.
+  pose proof (LCv_of_cv G (uptm A t) (uptm A t') (up k A)
+                (c_up_tm G k A t t' dA dt dt' ct) rho rho
+                (EnvRelOf_selfE G rho W Hrho)) as Hrelu.
+  destruct E as [[HT _] | E]; [exact (HT _ x _ y Hrelu) |].
+  destruct E' as [[HT' _] | E']; [exact (HT' _ x _ y Hrelu) |].
   destruct E as [Sy1 [F1 [x1 [[DA1 D1] Hv]]]].
   destruct E' as [Sy1' [F1' [x1' [[DA1' D1'] Hv']]]].
   assert (E1 : Sy1 = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA1).
@@ -3356,184 +3435,234 @@ Proof.
 Qed.
 
 (* ---- the first projection ---- *)
-Lemma isem_fst_core G A B p p' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (IHc : IRel G p p' (sig_ A B))
-  rho (Hrho : EnvITy G rho) k' (F : kUFam k' (ers rho A)) x y
-  (E : FstVal rho A B p k' (ers rho A) F (ers rho (fst A B p)) x)
-  (E' : FstVal rho A B p' k' (ers rho A) F (ers rho (fst A B p')) y) :
-  kEqAt F (ers rho (fst A B p)) x (ers rho (fst A B p')) y.
+(* ------------------------------------------------------------------ *)
+(* THE GAP, IN THE CONVERSION CASES.                                   *)
+(*                                                                    *)
+(* A reading of a term whose type is an annotated former sits at the    *)
+(* ANNOTATION's level, so its value is a d-fold lift and an eliminator  *)
+(* unlifts it.  Two readings of two different terms of ONE type have to *)
+(* agree on d before IRel can compare them, and they do: the canonical  *)
+(* reading (from totality) is at the annotation, and level              *)
+(* functionality drags every other reading there.                      *)
+(* ------------------------------------------------------------------ *)
+
+Lemma lvl_of_ITot G p T (IHp : ITot G p T) rho (Hrho : EnvITy G rho)
+  kT (FT : kUFam kT (ers rho T)) (DT : ITy rho T kT (ers rho T) FT)
+  (HnT : NotPrfR (ers rho T))
+  k Sy (F : kUFam k Sy) w x (Hnp : NotPrfR Sy) (D : ITm rho p k Sy F w x) :
+  k = kT.
 Proof.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gSig
-    [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
-    [wp' [xp' [[[[Ep' DA'] DB'] Dp'] Hv']]]]]]]]]]].
-  pose proof (ity_sig rho A B k' wA FA B0 wB FB redB isoB gSig Ep DA DB) as Dsig.
-  pose proof (ity_sig rho A B k' wA' FA' B0' wB' FB' redB' isoB' gSig' Ep' DA' DB')
-    as Dsig'.
-  pose proof (FunTm_of_ty G (sig_ A B) k (t_sig G A B k dA dB)) as fS.
-  pose proof (ity_same_iso' G (sig_ A B) fS rho W Hrho k' _ _ _ _ Dsig Dsig') as Psig.
-  pose proof (kRel_of_IRel' G p p' (sig_ A B) IHc fS W rho Hrho k' _ _ _ _
-                Dsig Dsig' _ xp _ xp' Dp Dp') as Hxx.
-  apply (proj2 (kRel_same F _ _ _ _)).
-  eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
-  eapply kRel_trans;
-    [ apply (sigFst_to k' wA B0 FA wB FB redB isoB gSig
-               wA' B0' FA' wB' FB' redB' isoB' gSig' Psig) |].
-  apply (proj1 (kRel_same FA' _ _ _ _)).
-  apply (sigFst_eq k' wA' B0' FA' wB' FB' redB' isoB' gSig').
-  exact (kRel_at _ _ Psig _ xp _ xp' Hxx).
+  destruct (IHp rho Hrho kT FT DT) as [x0 D0].
+  exact (itm_lvl p rho rho eq_refl k Sy F w x Hnp D kT (ers rho T) FT _ x0 HnT D0).
 Qed.
 
-Lemma isem_fst G A B p p' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dp : ty G p (sig_ A B)) (dp' : ty G p' (sig_ A B))
-  (cp : cv G p p' (sig_ A B))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHp : ITot G p (sig_ A B)) (IHp' : ITot G p' (sig_ A B))
-  (IHc : IRel G p p' (sig_ A B)) : ISem G (fst A B p) (fst A B p') A.
+(* The first projection's conversion case.  The two subjects' values live at the
+   d-fold lift of the level-j Sigma-family; kRel_unliftN brings their
+   relatedness down to j, where sigFst_to and sigFst_eq work, and the
+   isomorphism it needs is the components', through sig_data_iso. *)
+Lemma isem_fst G A B p p' d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dp : ty G p (sig_ (d + j) A B))
+  (dp' : ty G p' (sig_ (d + j) A B))
+  (cp : cv G p p' (sig_ (d + j) A B))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHp : ITot G p (sig_ (d + j) A B)) (IHp' : ITot G p' (sig_ (d + j) A B))
+  (IHc : IRel G p p' (sig_ (d + j) A B)) : ISem G (fst A B p) (fst A B p') A.
 Proof.
   split;
-    [split; [exact (itot_fst G A B p k W dA dB dp IHA IHB IHp)
-            | exact (itot_fst G A B p' k W dA dB dp' IHA IHB IHp')] |].
-  intros rho Hrho k' F DA' x y Dx Dy.
-  pose proof (itm_inv rho (fst A B p) k' (ers rho A) F
+    [split; [exact (itot_fst G A B p d j W dA dB dp IHA IHB IHp)
+            | exact (itot_fst G A B p' d j W dA dB dp' IHA IHB IHp')] |].
+  intros rho Hrho k' F DFA x y Dx Dy.
+  pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
+  pose proof (ity_lvl rho rho eq_refl A j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) k' _ F
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho)) DFA) as Ek; subst k'.
+  pose proof (itm_inv rho (fst A B p) j (ers rho A) F
                 (ers rho (fst A B p)) x Dx) as E.
-  pose proof (itm_inv rho (fst A B p') k' (ers rho A) F
+  pose proof (itm_inv rho (fst A B p') j (ers rho A) F
                 (ers rho (fst A B p')) y Dy) as E'.
-  destruct k' as [| k0]; cbn [TmInv TmShape FstVal] in E, E'.
-  - pose proof (LCv_of_cv G (fst A B p) (fst A B p') A
-                  (c_fst G A B p p' k dA dB dp dp' cp) rho rho
-                  (EnvRelOf_selfE G rho W Hrho)) as Hrel.
-    destruct E as [HT | E]; [exact (HT _ x _ y Hrel) |].
-    destruct E' as [HT' | E']; [exact (HT' _ x _ y Hrel) |].
-    exact (isem_fst_core G A B p p' k W dA dB IHc rho Hrho 0 F x y E E').
-  - exact (isem_fst_core G A B p p' k W dA dB IHc rho Hrho (S k0) F x y E E').
-Qed.
-
-(* ---- the second projection ---- *)
-Lemma isem_snd_core G A B p p' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (IHc : IRel G p p' (sig_ A B))
-  rho (Hrho : EnvITy G rho) k' Sy (F : kUFam k' Sy) x y
-  (E : SndVal rho A B p k' Sy F (ers rho (snd A B p)) x)
-  (E' : SndVal rho A B p' k' Sy F (ers rho (snd A B p')) y) :
-  kEqAt F (ers rho (snd A B p)) x (ers rho (snd A B p')) y.
-Proof.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gSig
-    [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
-    [wp' [xp' [[[[Ep' DA'] DB'] Dp'] Hv']]]]]]]]]]].
-  pose proof (ity_sig rho A B k' wA FA B0 wB FB redB isoB gSig Ep DA DB) as Dsig.
-  pose proof (ity_sig rho A B k' wA' FA' B0' wB' FB' redB' isoB' gSig' Ep' DA' DB')
+  cbn [TmInv TmShape FstVal] in E, E'.
+  pose proof (LCv_of_cv G (fst A B p) (fst A B p') A
+                (c_fst G (d + j) j A B p p' (Nat.le_add_l j d) dA dB dp dp' cp)
+                rho rho HEself) as Hrel.
+  destruct E as [[HT _] | E]; [exact (HT _ x _ y Hrel) |].
+  destruct E' as [[HT' _] | E']; [exact (HT' _ x _ y Hrel) |].
+  destruct E as [d1 [wA [FA [B0 [wB [FB [redB [isoB [gSig
+    [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]]].
+  destruct E' as [d2 [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
+    [wp' [xp' [[[[Ep' DA'] DB'] Dp'] Hv']]]]]]]]]]]].
+  (* both gaps are the type's *)
+  destruct (build_sig G A B d j W dA dB IHA IHB rho Hrho) as [FS DS].
+  pose proof (lvl_of_ITot G p (sig_ (d + j) A B) IHp rho Hrho (d + j) FS DS
+                (NotPrfR_sig _ _) (d1 + j) _ _ _ xp (NotPrfR_sig _ _) Dp) as Ed1.
+  pose proof (lvl_of_ITot G p' (sig_ (d + j) A B) IHp' rho Hrho (d + j) FS DS
+                (NotPrfR_sig _ _) (d2 + j) _ _ _ xp' (NotPrfR_sig _ _) Dp') as Ed2.
+  assert (Ed1' : d1 = d) by lia; assert (Ed2' : d2 = d) by lia; subst d1 d2.
+  (* the level-j Sigma-families are isomorphic, by the components' *)
+  pose proof (sig_data_iso G (d + j) A B
+                (LTy_of_ty G (sig_ (d + j) A B) (d + j)
+                   (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB))
+                (LTy_of_ty G A j dA) (LTy_of_ty (A :: G) B j dB)
+                (funtm G A (UU j) dA) (funtm (A :: G) B (UU j) dB)
+                rho rho HEself j
+                wA FA B0 wB FB redB isoB gSig wA' FA' B0' wB' FB' redB' isoB' gSig'
+                Ep Ep' DA DA' DB DB') as Psig.
+  (* and the two subjects are related at the LIFTED families *)
+  pose proof (ity_sig rho A B d j wA FA B0 wB FB redB isoB gSig Ep DA DB) as Dsig.
+  pose proof (ity_sig rho A B d j wA' FA' B0' wB' FB' redB' isoB' gSig' Ep' DA' DB')
     as Dsig'.
-  pose proof (FunTm_of_ty G (sig_ A B) k (t_sig G A B k dA dB)) as fS.
-  pose proof (ity_same_iso' G (sig_ A B) fS rho W Hrho k' _ _ _ _ Dsig Dsig') as Psig.
-  pose proof (kRel_of_IRel' G p p' (sig_ A B) IHc fS W rho Hrho k' _ _ _ _
-                Dsig Dsig' _ xp _ xp' Dp Dp') as Hxx.
+  pose proof (kRel_of_IRel' G p p' (sig_ (d + j) A B) IHc
+                (FunTm_of_ty G (sig_ (d + j) A B) (d + j)
+                   (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB))
+                W rho Hrho (d + j) _ _ _ _ Dsig Dsig' _ xp _ xp' Dp Dp') as Hxx0.
+  pose proof (kRel_unliftN d _ _ Psig _ xp _ xp' Hxx0) as Hxx.
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
   eapply kRel_trans;
-    [ apply (sigSnd_to k' wA B0 FA wB FB redB isoB gSig
+    [ apply (sigFst_to j wA B0 FA wB FB redB isoB gSig
                wA' B0' FA' wB' FB' redB' isoB' gSig' Psig) |].
-  apply (sigSnd_eq k' wA' B0' FA' wB' FB' redB' isoB' gSig').
-  exact (kRel_at _ _ Psig _ xp _ xp' Hxx).
+  apply (proj1 (kRel_same FA' _ _ _ _)).
+  apply (sigFst_eq j wA' B0' FA' wB' FB' redB' isoB' gSig').
+  exact (kRel_at _ _ Psig _ _ _ _ Hxx).
 Qed.
 
-
-(* The second projection of the RIGHT-hand subject, at the type the rule's
-   conclusion mentions -- which is the one built from the LEFT subject.  The
-   two codomain families differ, at the two first projections; they are
-   isomorphic because those projections are related (build_fam_data's isoB),
-   and that isomorphism is where the value travels. *)
-Lemma itot_snd' G A B p p' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dp : ty G p (sig_ A B)) (dp' : ty G p' (sig_ A B))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHp : ITot G p (sig_ A B)) (IHp' : ITot G p' (sig_ A B))
-  (IHc : IRel G p p' (sig_ A B)) : ITot G (snd A B p') (B [(fst A B p)..]).
+(* ---- the second projection: the same, with sigSnd.  Its conclusion type is a
+     substitution instance taken at the LEFT subject's first projection, so the
+     right subject's value has to travel along the codomain's own isomorphism at
+     the two (related) projections -- which is build_fam_data's isoB. ---- *)
+Lemma itot_snd' G A B p p' d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dp : ty G p (sig_ (d + j) A B))
+  (dp' : ty G p' (sig_ (d + j) A B))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHp : ITot G p (sig_ (d + j) A B)) (IHp' : ITot G p' (sig_ (d + j) A B))
+  (IHc : IRel G p p' (sig_ (d + j) A B)) :
+  ITot G (snd A B p') (B [(fst A B p)..]).
 Proof.
   intros rho Hrho k' F DBs.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (x : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gSig := LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho
+  pose (gSig := LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho
                   (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (ity_sig rho A B k (ers rho A) FA B0
+  pose proof (ity_sig rho A B d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
                 eq_refl DFA DB) as Dsig.
-  destruct (IHp rho Hrho k
-              (sigFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-                 redB isoB gSig) Dsig) as [xp Dp].
-  destruct (IHp' rho Hrho k
-              (sigFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-                 redB isoB gSig) Dsig) as [xp' Dp'].
-  pose proof (IHc rho Hrho k
-                (sigFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-                   redB isoB gSig) Dsig xp xp' Dp Dp') as Hpp.
-  pose proof (sigFst_eq k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
+  pose (FS := famLiftN d
+                (sigFam j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+                   redB isoB gSig)).
+  destruct (IHp rho Hrho (d + j) FS Dsig) as [xp0 Dp0].
+  destruct (IHp' rho Hrho (d + j) FS Dsig) as [xp0' Dp0'].
+  pose proof (IHc rho Hrho (d + j) FS Dsig xp0 xp0' Dp0 Dp0') as Hpp0.
+  (* down to the level-j Sigma-family, where the projections live *)
+  pose (xp := elUnliftN d _ (ers rho p) xp0).
+  pose (xp' := elUnliftN d _ (ers rho p') xp0').
+  assert (Hpp : kEqAt (sigFam j (ers rho A) B0 FA
+                         (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig)
+                  (ers rho p) xp (ers rho p') xp')
+    by exact (elUnliftN_eq d _ _ xp0 _ xp0' Hpp0).
+  pose proof (sigFst_eq j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
                 FB redB isoB gSig (ers rho p) xp (ers rho p') xp' Hpp) as Hfst.
   pose proof (isoB (efst (ers rho p))
-                (sigFst k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
+                (sigFst j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
                    FB redB isoB gSig (ers rho p) xp)
                 (efst (ers rho p'))
-                (sigFst k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
+                (sigFst j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
                    FB redB isoB gSig (ers rho p') xp') Hfst) as Pfam.
-  pose proof (i_snd rho A B p' k (ers rho A) FA B0
+  pose proof (i_snd rho A B p' d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
-                (ers rho p') xp' eq_refl DFA DB Dp') as Dsnd'.
-  pose proof (i_conv rho (snd A B p') k _ _ _ _ _ _ Pfam Dsnd') as Dsnd.
+                (ers rho p') xp0' eq_refl DFA DB Dp0') as Dsnd'.
+  pose proof (i_conv rho (snd A B p') j _ _ _ _ _ _ Pfam Dsnd') as Dsnd.
   (* the type of the conclusion, and its family *)
-  pose proof (i_fst rho A B p k (ers rho A) FA B0
+  pose proof (i_fst rho A B p d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
-                (ers rho p) xp eq_refl DFA DB Dp) as Dfst.
+                (ers rho p) xp0 eq_refl DFA DB Dp0) as Dfst.
   assert (E : ers (ext rho FA (efst (ers rho p))
-                     (sigFst k (ers rho A) B0 FA
+                     (sigFst j (ers rho A) B0 FA
                         (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
                         (ers rho p) xp)) B
               = ers rho (B [(fst A B p)..]))
     by exact (eq_sym (ers_sub1 rho B (fst A B p) FA _)).
-  pose proof (isubst_ITy rho (fst A B p) k (ers rho A) FA (efst (ers rho p)) _
-                eq_refl Dfst B k _ _
+  pose proof (isubst_ITy rho (fst A B p) j (ers rho A) FA (efst (ers rho p)) _
+                eq_refl Dfst B j _ _
                 (DB (efst (ers rho p))
-                   (sigFst k (ers rho A) B0 FA
+                   (sigFst j (ers rho A) B0 FA
                       (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
                       (ers rho p) xp))) as DBsub.
-  pose proof (ITy_cast rho (B [(fst A B p)..]) k _ _ E _ DBsub) as DBc.
+  pose proof (ITy_cast rho (B [(fst A B p)..]) j _ _ E _ DBsub) as DBc.
   assert (Hfun : FunTm G (B [(fst A B p)..])).
-  { destruct (ty_subst1 G A B (univ k) (fst A B p) dB
-                (t_fst G A B p k dA dB dp)) as [d].
-    exact (FunTm_of_ty G (B [(fst A B p)..]) k d). }
-  pose proof (ity_lvl rho rho eq_refl (B [(fst A B p)..]) k
+  { destruct (ty_subst1 G A B (UU j) (fst A B p) dB
+                (t_fst G (d + j) j A B p (Nat.le_add_l j d) dA dB dp)) as [dsub].
+    exact (FunTm_of_ty G (B [(fst A B p)..]) j dsub). }
+  pose proof (ity_lvl rho rho eq_refl (B [(fst A B p)..]) j
                 (ers rho (B [(fst A B p)..])) (famCast E _) k'
                 (ers rho (B [(fst A B p)..])) F DBc DBs) as Ek; subst k'.
-  refine (itot_move G (snd A B p') (B [(fst A B p)..]) Hfun W rho Hrho k F
+  refine (itot_move G (snd A B p') (B [(fst A B p)..]) Hfun W rho Hrho j F
             (famCast E _) DBs DBc _ _).
-  refine (ITm_cast rho (snd A B p') k _ _ E _ _ _ _).
+  refine (ITm_cast rho (snd A B p') j _ _ E _ _ _ _).
   exact Dsnd.
 Qed.
 
-Lemma isem_snd G A B p p' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dp : ty G p (sig_ A B)) (dp' : ty G p' (sig_ A B))
-  (cp : cv G p p' (sig_ A B))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHp : ITot G p (sig_ A B)) (IHp' : ITot G p' (sig_ A B))
-  (IHc : IRel G p p' (sig_ A B)) :
+Lemma isem_snd G A B p p' d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dp : ty G p (sig_ (d + j) A B))
+  (dp' : ty G p' (sig_ (d + j) A B))
+  (cp : cv G p p' (sig_ (d + j) A B))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHp : ITot G p (sig_ (d + j) A B)) (IHp' : ITot G p' (sig_ (d + j) A B))
+  (IHc : IRel G p p' (sig_ (d + j) A B)) :
   ISem G (snd A B p) (snd A B p') (B [(fst A B p)..]).
 Proof.
   split;
-    [split; [exact (itot_snd G A B p k W dA dB dp IHA IHB IHp)
-            | exact (itot_snd' G A B p p' k W dA dB dp dp' IHA IHB IHp IHp' IHc)] |].
+    [split; [exact (itot_snd G A B p d j W dA dB dp IHA IHB IHp)
+            | exact (itot_snd' G A B p p' d j W dA dB dp dp' IHA IHB IHp IHp' IHc)] |].
   intros rho Hrho k' F DBs x y Dx Dy.
+  pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
   pose proof (itm_inv rho (snd A B p) k' (ers rho (B [(fst A B p)..])) F
                 (ers rho (snd A B p)) x Dx) as E.
   pose proof (itm_inv rho (snd A B p') k' (ers rho (B [(fst A B p)..])) F
                 (ers rho (snd A B p')) y Dy) as E'.
-  destruct k' as [| k0]; cbn [TmInv] in E, E'.
-  - pose proof (LCv_of_cv G (snd A B p) (snd A B p') (B [(fst A B p)..])
-                  (c_snd G A B p p' k dA dB dp dp' cp) rho rho
-                  (EnvRelOf_selfE G rho W Hrho)) as Hrel.
-    destruct E as [HT | E]; [exact (HT _ x _ y Hrel) |].
-    destruct E' as [HT' | E']; [exact (HT' _ x _ y Hrel) |].
-    exact (isem_snd_core G A B p p' k W dA dB IHc rho Hrho 0 _ F x y E E').
-  - exact (isem_snd_core G A B p p' k W dA dB IHc rho Hrho (S k0) _ F x y E E').
+  cbn [TmInv TmShape SndVal] in E, E'.
+  pose proof (LCv_of_cv G (snd A B p) (snd A B p') (B [(fst A B p)..])
+                (c_snd G (d + j) j A B p p' (Nat.le_add_l j d) dA dB dp dp' cp)
+                rho rho HEself) as Hrel.
+  destruct E as [[HT _] | E]; [exact (HT _ x _ y Hrel) |].
+  destruct E' as [[HT' _] | E']; [exact (HT' _ x _ y Hrel) |].
+  destruct E as [d1 [wA [FA [B0 [wB [FB [redB [isoB [gSig
+    [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]]].
+  destruct E' as [d2 [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
+    [wp' [xp' [[[[Ep' DA'] DB'] Dp'] Hv']]]]]]]]]]]].
+  (* the projections' level is the domain's, and both gaps are the type's *)
+  pose proof (ity_lvl rho rho eq_refl A k' _ FA j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ek; subst k'.
+  destruct (build_sig G A B d j W dA dB IHA IHB rho Hrho) as [FS DS].
+  pose proof (lvl_of_ITot G p (sig_ (d + j) A B) IHp rho Hrho (d + j) FS DS
+                (NotPrfR_sig _ _) (d1 + j) _ _ _ xp (NotPrfR_sig _ _) Dp) as Ed1.
+  pose proof (lvl_of_ITot G p' (sig_ (d + j) A B) IHp' rho Hrho (d + j) FS DS
+                (NotPrfR_sig _ _) (d2 + j) _ _ _ xp' (NotPrfR_sig _ _) Dp') as Ed2.
+  assert (Ed1' : d1 = d) by lia; assert (Ed2' : d2 = d) by lia; subst d1 d2.
+  pose proof (sig_data_iso G (d + j) A B
+                (LTy_of_ty G (sig_ (d + j) A B) (d + j)
+                   (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB))
+                (LTy_of_ty G A j dA) (LTy_of_ty (A :: G) B j dB)
+                (funtm G A (UU j) dA) (funtm (A :: G) B (UU j) dB)
+                rho rho HEself j
+                wA FA B0 wB FB redB isoB gSig wA' FA' B0' wB' FB' redB' isoB' gSig'
+                Ep Ep' DA DA' DB DB') as Psig.
+  pose proof (ity_sig rho A B d j wA FA B0 wB FB redB isoB gSig Ep DA DB) as Dsig.
+  pose proof (ity_sig rho A B d j wA' FA' B0' wB' FB' redB' isoB' gSig' Ep' DA' DB')
+    as Dsig'.
+  pose proof (kRel_of_IRel' G p p' (sig_ (d + j) A B) IHc
+                (FunTm_of_ty G (sig_ (d + j) A B) (d + j)
+                   (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB))
+                W rho Hrho (d + j) _ _ _ _ Dsig Dsig' _ xp _ xp' Dp Dp') as Hxx0.
+  pose proof (kRel_unliftN d _ _ Psig _ xp _ xp' Hxx0) as Hxx.
+  apply (proj2 (kRel_same F _ _ _ _)).
+  eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
+  eapply kRel_trans;
+    [ apply (sigSnd_to j wA B0 FA wB FB redB isoB gSig
+               wA' B0' FA' wB' FB' redB' isoB' gSig' Psig) |].
+  apply (sigSnd_eq j wA' B0' FA' wB' FB' redB' isoB' gSig').
+  exact (kRel_at _ _ Psig _ _ _ _ Hxx).
 Qed.
 
 (* ---- application ---- *)
@@ -3541,115 +3670,128 @@ Qed.
 (* the right-hand subject at the LEFT-hand type, as for the second
    projection: the codomain instances at the two arguments are isomorphic
    because the arguments are related. *)
-Lemma itot_app' G A B f' u u' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (df' : ty G f' (pi A B)) (du : ty G u A)
+Lemma itot_app' G A B f' u u' d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (df' : ty G f' (pi (d + j) A B)) (du : ty G u A)
   (du' : ty G u' A)
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHf' : ITot G f' (pi A B)) (IHu : ITot G u A) (IHu' : ITot G u' A)
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHf' : ITot G f' (pi (d + j) A B)) (IHu : ITot G u A) (IHu' : ITot G u' A)
   (IHcu : IRel G u u' A) : ITot G (app A B f' u') (B [u..]).
 Proof.
   intros rho Hrho k' F DBu.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (x : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gPi := LTyK_of_ty G (pi A B) k (t_pi G A B k dA dB) rho rho
+  pose (gPi := LTyK_of_ty G (pi j A B) j (t_pi G j j A B (le_n j) dA dB) rho rho
                  (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (ity_pi rho A B k (ers rho A) FA B0
+  pose proof (ity_pi rho A B d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
                 eq_refl DFA DB) as Dpi.
-  destruct (IHf' rho Hrho k
-              (piFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-                 redB isoB gPi) Dpi) as [xf Df].
-  destruct (IHu rho Hrho k FA DFA) as [xu Du].
-  destruct (IHu' rho Hrho k FA DFA) as [xu' Du'].
-  pose proof (IHcu rho Hrho k FA DFA xu xu' Du Du') as Huu.
+  destruct (IHf' rho Hrho (d + j)
+              (famLiftN d
+                 (piFam j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+                    redB isoB gPi)) Dpi) as [xf Df].
+  destruct (IHu rho Hrho j FA DFA) as [xu Du].
+  destruct (IHu' rho Hrho j FA DFA) as [xu' Du'].
+  pose proof (IHcu rho Hrho j FA DFA xu xu' Du Du') as Huu.
   pose proof (isoB (ers rho u) xu (ers rho u') xu' Huu) as Pfam.
-  pose proof (i_app rho A B f' u' k (ers rho A) FA B0
+  pose proof (i_app rho A B f' u' d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
                 (ers rho f') xf (ers rho u') xu' eq_refl DFA DB Df Du') as Dap'.
-  pose proof (i_conv rho (app A B f' u') k _ _ _ _ _ _ Pfam Dap') as Dap.
+  pose proof (i_conv rho (app A B f' u') j _ _ _ _ _ _ Pfam Dap') as Dap.
   (* the type of the conclusion *)
-  pose proof (isubst_ITy rho u k (ers rho A) FA (ers rho u) xu eq_refl Du
-                B k (ers (ext rho FA (ers rho u) xu) B) (FB (ers rho u) xu)
+  pose proof (isubst_ITy rho u j (ers rho A) FA (ers rho u) xu eq_refl Du
+                B j (ers (ext rho FA (ers rho u) xu) B) (FB (ers rho u) xu)
                 (DB (ers rho u) xu)) as DBsub.
   assert (E : ers (ext rho FA (ers rho u) xu) B = ers rho (B [u..]))
     by exact (eq_sym (ers_sub1 rho B u FA xu)).
-  pose proof (ITy_cast rho (B [u..]) k _ _ E (FB (ers rho u) xu) DBsub) as DBc.
+  pose proof (ITy_cast rho (B [u..]) j _ _ E (FB (ers rho u) xu) DBsub) as DBc.
   assert (Hfun : FunTm G (B [u..])).
-  { destruct (ty_subst1 G A B (univ k) u dB du) as [d].
-    exact (FunTm_of_ty G (B [u..]) k d). }
-  pose proof (ity_lvl rho rho eq_refl (B [u..]) k (ers rho (B [u..]))
+  { destruct (ty_subst1 G A B (UU j) u dB du) as [dsub].
+    exact (FunTm_of_ty G (B [u..]) j dsub). }
+  pose proof (ity_lvl rho rho eq_refl (B [u..]) j (ers rho (B [u..]))
                 (famCast E (FB (ers rho u) xu)) k' (ers rho (B [u..])) F DBc DBu)
     as Ek; subst k'.
-  refine (itot_move G (app A B f' u') (B [u..]) Hfun W rho Hrho k F
+  refine (itot_move G (app A B f' u') (B [u..]) Hfun W rho Hrho j F
             (famCast E (FB (ers rho u) xu)) DBu DBc _ _).
-  refine (ITm_cast rho (app A B f' u') k _ _ E (FB (ers rho u) xu) _ _ _).
+  refine (ITm_cast rho (app A B f' u') j _ _ E (FB (ers rho u) xu) _ _ _).
   exact Dap.
 Qed.
 
-Lemma isem_app_core G A B f f' u u' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k))
-  (IHcf : IRel G f f' (pi A B)) (IHcu : IRel G u u' A)
-  rho (Hrho : EnvITy G rho) k' Sy (F : kUFam k' Sy) x y
-  (E : AppVal rho A B f u k' Sy F (ers rho (app A B f u)) x)
-  (E' : AppVal rho A B f' u' k' Sy F (ers rho (app A B f' u')) y) :
-  kEqAt F (ers rho (app A B f u)) x (ers rho (app A B f' u')) y.
-Proof.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gPi
-    [wf [xf [wa [xa [[[[[Ep DA] DB] Df] Da] Hv]]]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi'
-    [wf' [xf' [wa' [xa' [[[[[Ep' DA'] DB'] Df'] Da'] Hv']]]]]]]]]]]]].
-  pose proof (ity_pi rho A B k' wA FA B0 wB FB redB isoB gPi Ep DA DB) as Dpi.
-  pose proof (ity_pi rho A B k' wA' FA' B0' wB' FB' redB' isoB' gPi' Ep' DA' DB')
-    as Dpi'.
-  pose proof (FunTm_of_ty G (pi A B) k (t_pi G A B k dA dB)) as fPi.
-  pose proof (ity_same_iso' G (pi A B) fPi rho W Hrho k' _ _ _ _ Dpi Dpi') as Ppi.
-  pose proof (ity_same_iso' G A (FunTm_of_ty G A k dA)
-                rho W Hrho k' _ FA _ FA' DA DA') as QA.
-  pose proof (kRel_of_IRel' G f f' (pi A B) IHcf fPi W rho Hrho k' _ _ _ _
-                Dpi Dpi' _ xf _ xf' Df Df') as Hxf.
-  pose proof (kRel_of_IRel' G u u' A IHcu
-                (FunTm_of_ty G A k dA) W rho Hrho k'
-                _ FA _ FA' DA DA' _ xa _ xa' Da Da') as Hxa.
-  apply (proj2 (kRel_same F _ _ _ _)).
-  eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
-  eapply kRel_trans;
-    [ apply (piApp_to k' wA B0 FA wB FB redB isoB gPi
-               wA' B0' FA' wB' FB' redB' isoB' gPi' Ppi QA wf xf
-               (proj2 (kRel_same _ _ _ _ _) (kRel_refl _ wf xf)) wa xa) |].
-  apply (piApp_eq k' wA' B0' FA' wB' FB' redB' isoB' gPi');
-    [ exact (kRel_at _ _ Ppi wf xf wf' xf' Hxf)
-    | exact (kRel_at _ _ QA wa xa wa' xa' Hxa) ].
-Qed.
-
-Lemma isem_app G A B f f' u u' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (df : ty G f (pi A B)) (df' : ty G f' (pi A B))
-  (cf : cv G f f' (pi A B)) (du : ty G u A) (du' : ty G u' A) (cu : cv G u u' A)
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHf : ITot G f (pi A B)) (IHf' : ITot G f' (pi A B))
-  (IHcf : IRel G f f' (pi A B))
+(* Application's conversion case.  Both functions' values live at the d-fold
+   lift of the level-j Pi-family; kRel_unliftN brings their relatedness down to
+   j, where piApp_to and piApp_eq work. *)
+Lemma isem_app G A B f f' u u' d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (df : ty G f (pi (d + j) A B))
+  (df' : ty G f' (pi (d + j) A B))
+  (cf : cv G f f' (pi (d + j) A B)) (du : ty G u A) (du' : ty G u' A)
+  (cu : cv G u u' A)
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHf : ITot G f (pi (d + j) A B)) (IHf' : ITot G f' (pi (d + j) A B))
+  (IHcf : IRel G f f' (pi (d + j) A B))
   (IHu : ITot G u A) (IHu' : ITot G u' A) (IHcu : IRel G u u' A) :
   ISem G (app A B f u) (app A B f' u') (B [u..]).
 Proof.
   split;
-    [split; [exact (itot_app G A B f u k W dA dB df du IHA IHB IHf IHu)
-            | exact (itot_app' G A B f' u u' k W dA dB df' du du'
+    [split; [exact (itot_app G A B f u d j W dA dB df du IHA IHB IHf IHu)
+            | exact (itot_app' G A B f' u u' d j W dA dB df' du du'
                        IHA IHB IHf' IHu IHu' IHcu)] |].
   intros rho Hrho k' F DBu x y Dx Dy.
+  pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
   pose proof (itm_inv rho (app A B f u) k' (ers rho (B [u..])) F
                 (ers rho (app A B f u)) x Dx) as E.
   pose proof (itm_inv rho (app A B f' u') k' (ers rho (B [u..])) F
                 (ers rho (app A B f' u')) y Dy) as E'.
-  destruct k' as [| k0]; cbn [TmInv] in E, E'.
-  - pose proof (LCv_of_cv G (app A B f u) (app A B f' u') (B [u..])
-                  (c_app G A B f f' u u' k dA dB df df' cf du du' cu) rho rho
-                  (EnvRelOf_selfE G rho W Hrho)) as Hrel.
-    destruct E as [HT | E]; [exact (HT _ x _ y Hrel) |].
-    destruct E' as [HT' | E']; [exact (HT' _ x _ y Hrel) |].
-    exact (isem_app_core G A B f f' u u' k W dA dB IHcf IHcu rho Hrho 0 _ F x y E E').
-  - exact (isem_app_core G A B f f' u u' k W dA dB IHcf IHcu rho Hrho (S k0) _ F x y
-             E E').
+  cbn [TmInv TmShape AppVal] in E, E'.
+  pose proof (LCv_of_cv G (app A B f u) (app A B f' u') (B [u..])
+                (c_app G (d + j) j A B f f' u u' (Nat.le_add_l j d)
+                   dA dB df df' cf du du' cu) rho rho HEself) as Hrel.
+  destruct E as [[HT _] | E]; [exact (HT _ x _ y Hrel) |].
+  destruct E' as [[HT' _] | E']; [exact (HT' _ x _ y Hrel) |].
+  destruct E as [d1 [wA [FA [B0 [wB [FB [redB [isoB [gPi
+    [wf [xf [wa [xa [[[[[Ep DA] DB] Df] Da] Hv]]]]]]]]]]]]]].
+  destruct E' as [d2 [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi'
+    [wf' [xf' [wa' [xa' [[[[[Ep' DA'] DB'] Df'] Da'] Hv']]]]]]]]]]]]]].
+  (* the domain's level, and both gaps, are the type's *)
+  pose proof (ity_lvl rho rho eq_refl A k' _ FA j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ek; subst k'.
+  destruct (build_pi G A B d j W dA dB IHA IHB rho Hrho) as [FP DP].
+  pose proof (lvl_of_ITot G f (pi (d + j) A B) IHf rho Hrho (d + j) FP DP
+                (NotPrfR_pi _ _) (d1 + j) _ _ _ xf (NotPrfR_pi _ _) Df) as Ed1.
+  pose proof (lvl_of_ITot G f' (pi (d + j) A B) IHf' rho Hrho (d + j) FP DP
+                (NotPrfR_pi _ _) (d2 + j) _ _ _ xf' (NotPrfR_pi _ _) Df') as Ed2.
+  assert (Ed1' : d1 = d) by lia; assert (Ed2' : d2 = d) by lia; subst d1 d2.
+  (* the two level-j Pi-families, and the two domains *)
+  pose proof (pi_data_iso G (d + j) A B
+                (LTy_of_ty G (pi (d + j) A B) (d + j)
+                   (t_pi G (d + j) j A B (Nat.le_add_l j d) dA dB))
+                (LTy_of_ty G A j dA) (LTy_of_ty (A :: G) B j dB)
+                (funtm G A (UU j) dA) (funtm (A :: G) B (UU j) dB)
+                rho rho HEself j
+                wA FA B0 wB FB redB isoB gPi wA' FA' B0' wB' FB' redB' isoB' gPi'
+                Ep Ep' DA DA' DB DB') as Ppi.
+  pose proof (ity_same_iso' G A (FunTm_of_ty G A j dA)
+                rho W Hrho j _ FA _ FA' DA DA') as QA.
+  pose proof (ity_pi rho A B d j wA FA B0 wB FB redB isoB gPi Ep DA DB) as Dpi.
+  pose proof (ity_pi rho A B d j wA' FA' B0' wB' FB' redB' isoB' gPi' Ep' DA' DB')
+    as Dpi'.
+  pose proof (kRel_of_IRel' G f f' (pi (d + j) A B) IHcf
+                (FunTm_of_ty G (pi (d + j) A B) (d + j)
+                   (t_pi G (d + j) j A B (Nat.le_add_l j d) dA dB))
+                W rho Hrho (d + j) _ _ _ _ Dpi Dpi' _ xf _ xf' Df Df') as Hxf0.
+  pose proof (kRel_unliftN d _ _ Ppi _ xf _ xf' Hxf0) as Hxf.
+  pose proof (kRel_of_IRel' G u u' A IHcu (FunTm_of_ty G A j dA) W rho Hrho j
+                _ FA _ FA' DA DA' _ xa _ xa' Da Da') as Hxa.
+  apply (proj2 (kRel_same F _ _ _ _)).
+  eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
+  eapply kRel_trans;
+    [ apply (piApp_to j wA B0 FA wB FB redB isoB gPi
+               wA' B0' FA' wB' FB' redB' isoB' gPi' Ppi QA wf _
+               (kEqAt_refl_ _ wf _) wa xa) |].
+  apply (piApp_eq j wA' B0' FA' wB' FB' redB' isoB' gPi');
+    [ exact (kRel_at _ _ Ppi wf _ wf' _ Hxf)
+    | exact (kRel_at _ _ QA wa xa wa' xa' Hxa) ].
 Qed.
 
 (* ---- the pair ---- *)
@@ -3659,70 +3801,107 @@ Qed.
    value has to be moved to the codomain instance at t', along the
    isomorphism the relatedness of t and t' provides.  Its layer-1 goodness is
    read off the conversion the rule concludes. *)
-Lemma itot_pair' G A B t t' u u' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty G t A) (dt' : ty G t' A)
+Lemma itot_pair' G A B t t' u u' d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dt : ty G t A) (dt' : ty G t' A)
   (ct : cv G t t' A) (du : ty G u (B [t..])) (du' : ty G u' (B [t..]))
   (cu : cv G u u' (B [t..]))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
   (IHt : ITot G t A) (IHt' : ITot G t' A) (IHu' : ITot G u' (B [t..]))
-  (IHct : IRel G t t' A) : ITot G (pair A B t' u') (sig_ A B).
+  (IHct : IRel G t t' A) : ITot G (pair (d + j) A B t' u') (sig_ (d + j) A B).
 Proof.
   intros rho Hrho k' F Dsg.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (x : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gSig := LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho
+  pose (gSig := LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho
                   (EnvRelOf_selfE G rho W Hrho)).
-  pose proof (ity_sig rho A B k (ers rho A) FA B0
+  pose proof (ity_sig rho A B d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
                 eq_refl DFA DB) as Dsig.
-  destruct (IHt rho Hrho k FA DFA) as [xt Dt].
-  destruct (IHt' rho Hrho k FA DFA) as [xt' Dt'].
-  pose proof (IHct rho Hrho k FA DFA xt xt' Dt Dt') as Htt.
+  destruct (IHt rho Hrho j FA DFA) as [xt Dt].
+  destruct (IHt' rho Hrho j FA DFA) as [xt' Dt'].
+  pose proof (IHct rho Hrho j FA DFA xt xt' Dt Dt') as Htt.
   assert (E : ers (ext rho FA (ers rho t) xt) B = ers rho (B [t..]))
     by exact (eq_sym (ers_sub1 rho B t FA xt)).
-  pose proof (isubst_ITy rho t k (ers rho A) FA (ers rho t) xt eq_refl Dt
-                B k _ (FB (ers rho t) xt) (DB (ers rho t) xt)) as DBsub.
-  destruct (IHu' rho Hrho k (famCast E (FB (ers rho t) xt))
-              (ITy_cast rho (B [t..]) k _ _ E _ DBsub)) as [y0 Dy0].
-  destruct (ITm_uncast rho u' k _ _ E (FB (ers rho t) xt) _ _ Dy0) as [ya Dya].
+  pose proof (isubst_ITy rho t j (ers rho A) FA (ers rho t) xt eq_refl Dt
+                B j _ (FB (ers rho t) xt) (DB (ers rho t) xt)) as DBsub.
+  destruct (IHu' rho Hrho j (famCast E (FB (ers rho t) xt))
+              (ITy_cast rho (B [t..]) j _ _ E _ DBsub)) as [y0 Dy0].
+  destruct (ITm_uncast rho u' j _ _ E (FB (ers rho t) xt) _ _ Dy0) as [ya Dya].
   pose proof (isoB (ers rho t') xt' (ers rho t) xt (kEqAt_sym FA _ _ _ _ Htt))
     as Pfam.
-  pose proof (i_conv rho u' k _ _ _ _ _ _ Pfam Dya) as Dya'.
+  pose proof (i_conv rho u' j _ _ _ _ _ _ Pfam Dya) as Dya'.
   assert (g : Good (esig (ers rho A) B0) (epair (ers rho t') (ers rho u'))).
-  { pose proof (LCv_of_cv G (pair A B t u) (pair A B t' u') (sig_ A B)
-                  (c_pair G A B t t' u u' k dA dB dt dt' ct du du' cu) rho rho
+  { pose proof (LCv_of_cv G (pair (d + j) A B t u) (pair (d + j) A B t' u') (sig_ (d + j) A B)
+                  (c_pair G (d + j) j A B t t' u u' (Nat.le_add_l j d) dA dB dt dt' ct du du' cu) rho rho
                   (EnvRelOf_selfE G rho W Hrho)) as Hpr.
     eapply Rel_trans; [apply Rel_sym; exact Hpr | exact Hpr]. }
-  pose proof (ity_lvl rho rho eq_refl (sig_ A B) k (ers rho (sig_ A B))
-                (sigFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-                   redB isoB gSig) k' (ers rho (sig_ A B)) F Dsig Dsg) as Ek;
+  pose proof (ity_lvl rho rho eq_refl (sig_ (d + j) A B) (d + j)
+                (ers rho (sig_ (d + j) A B))
+                (famLiftN d
+                   (sigFam j (ers rho A) B0 FA
+                      (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig))
+                k' (ers rho (sig_ (d + j) A B)) F Dsig Dsg) as Ek;
     subst k'.
-  refine (itot_move G (pair A B t' u') (sig_ A B)
-            (FunTm_of_ty G (sig_ A B) k (t_sig G A B k dA dB)) W rho Hrho k F
-            (sigFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-               redB isoB gSig) Dsg Dsig _ _).
-  exact (i_pair rho A B t' u' k (ers rho A) FA B0
+  refine (itot_move G (pair (d + j) A B t' u') (sig_ (d + j) A B)
+            (FunTm_of_ty G (sig_ (d + j) A B) (d + j)
+               (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB)) W rho Hrho (d + j) F
+            (famLiftN d
+               (sigFam j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+                  redB isoB gSig)) Dsg Dsig _ _).
+  exact (i_pair rho A B t' u' d j (ers rho A) FA B0
            (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gSig
            (ers rho t') xt' (ers rho u') _ g eq_refl DFA DB Dt' Dya').
 Qed.
 
-Lemma isem_pair_core G A B t t' u u' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty G t A) (dt' : ty G t' A)
+(* The pair's conversion case.  The two values are the LIFTS of the level-j
+   pairs, so kRel_liftN reduces the comparison to the level-j one, which is the
+   old argument: surjective pairing on the right, then the two components. *)
+Lemma isem_pair G A B t t' u u' d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dt : ty G t A) (dt' : ty G t' A)
   (ct : cv G t t' A) (du : ty G u (B [t..])) (du' : ty G u' (B [t..]))
   (cu : cv G u u' (B [t..]))
-  (IHct : IRel G t t' A) (IHcu : IRel G u u' (B [t..]))
-  (IHu' : ITot G u' (B [t..]))
-  rho (Hrho : EnvITy G rho) k' Sy (F : kUFam k' Sy) x y
-  (E : PairVal rho A B t u k' Sy F (ers rho (pair A B t u)) x)
-  (E' : PairVal rho A B t' u' k' Sy F (ers rho (pair A B t' u')) y) :
-  kEqAt F (ers rho (pair A B t u)) x (ers rho (pair A B t' u')) y.
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHt : ITot G t A) (IHt' : ITot G t' A) (IHct : IRel G t t' A)
+  (IHu : ITot G u (B [t..])) (IHu' : ITot G u' (B [t..]))
+  (IHcu : IRel G u u' (B [t..])) :
+  ISem G (pair (d + j) A B t u) (pair (d + j) A B t' u') (sig_ (d + j) A B).
 Proof.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gSig [wt [xt [wa [xa [g
-    [[[[[Ep DA] DB] Dt] Da] Hv]]]]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig' [wt' [xt' [wa' [xa' [g'
-    [[[[[Ep' DA'] DB'] Dt'] Da'] Hv']]]]]]]]]]]]]].
+  split;
+    [split; [exact (itot_pair G A B t u d j W dA dB dt du IHA IHB IHt IHu)
+            | exact (itot_pair' G A B t t' u u' d j W dA dB dt dt' ct du du' cu
+                       IHA IHB IHt IHt' IHu' IHct)] |].
+  intros rho Hrho k' F Dsg x y Dx Dy.
+  pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
+  pose proof (itm_inv rho (pair (d + j) A B t u) k' (ers rho (sig_ (d + j) A B)) F
+                (ers rho (pair (d + j) A B t u)) x Dx) as E.
+  pose proof (itm_inv rho (pair (d + j) A B t' u') k' (ers rho (sig_ (d + j) A B)) F
+                (ers rho (pair (d + j) A B t' u')) y Dy) as E'.
+  cbn [TmInv TmShape PairVal] in E, E'.
+  pose proof (LCv_of_cv G (pair (d + j) A B t u) (pair (d + j) A B t' u')
+                (sig_ (d + j) A B)
+                (c_pair G (d + j) j A B t t' u u' (Nat.le_add_l j d)
+                   dA dB dt dt' ct du du' cu) rho rho HEself) as Hrel.
+  destruct E as [[HT _] | E]; [exact (HT _ x _ y Hrel) |].
+  destruct E' as [[HT' _] | E']; [exact (HT' _ x _ y Hrel) |].
+  destruct E as [d1 [j1 [Ek1 H1]]]; destruct E' as [d2 [j2 [Ek2 H2]]].
+  destruct H1 as [wA [FA [B0 [wB [FB [redB [isoB [gSig [wt [xt [wa [xa [g
+    [[[[[[Ekk Ep] DA] DB] Dt] Da] Hv]]]]]]]]]]]]]].
+  destruct H2 as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig' [wt' [xt' [wa' [xa' [g'
+    [[[[[[Ekk2 Ep'] DA'] DB'] Dt'] Da'] Hv']]]]]]]]]]]]]].
+  (* the annotation is d + j on both sides, and the components' level is the
+     domain's, so both gaps are d *)
+  pose proof (ity_lvl rho rho eq_refl A j1 _ FA j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ej1; subst j1.
+  pose proof (ity_lvl rho rho eq_refl A j2 _ FA' j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA'
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ej2; subst j2.
+  assert (Ed1 : d1 = d) by lia; assert (Ed2 : d2 = d) by lia; subst d1 d2.
+  destruct Ek1.
+  rewrite (Eqdep_dec.UIP_dec Nat.eq_dec Ek2 eq_refl) in Hv'.
+  cbn [lvlCast lvlCastEl eq_sym] in Hv, Hv'.
   assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
   assert (EA' : wA' = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA').
   assert (Ewt : wt = ers rho t) by exact (ers_of_ITm _ _ _ _ _ _ _ Dt).
@@ -3730,49 +3909,54 @@ Proof.
   assert (Ewa : wa = ers rho u) by exact (ers_of_ITm _ _ _ _ _ _ _ Da).
   assert (Ewa' : wa' = ers rho u') by exact (ers_of_ITm _ _ _ _ _ _ _ Da').
   subst wA wA' wt wt' wa wa'.
-  pose proof (ity_sig rho A B k' _ FA B0 wB FB redB isoB gSig Ep DA DB) as Dsig.
-  pose proof (ity_sig rho A B k' _ FA' B0' wB' FB' redB' isoB' gSig' Ep' DA' DB')
+  pose proof (ity_sig rho A B d j _ FA B0 wB FB redB isoB gSig Ep DA DB) as Dsig.
+  pose proof (ity_sig rho A B d j _ FA' B0' wB' FB' redB' isoB' gSig' Ep' DA' DB')
     as Dsig'.
-  pose proof (FunTm_of_ty G (sig_ A B) k (t_sig G A B k dA dB)) as fS.
-  pose proof (ity_same_iso' G (sig_ A B) fS rho W Hrho k' _ _ _ _ Dsig Dsig')
-    as Psig.
-  pose proof (ity_same_iso' G A (FunTm_of_ty G A k dA) rho W Hrho k' _ FA _ FA'
+  pose proof (sig_data_iso G (d + j) A B
+                (LTy_of_ty G (sig_ (d + j) A B) (d + j)
+                   (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB))
+                (LTy_of_ty G A j dA) (LTy_of_ty (A :: G) B j dB)
+                (funtm G A (UU j) dA) (funtm (A :: G) B (UU j) dB)
+                rho rho (EnvRelOf_selfE G rho W Hrho) j
+                _ FA B0 wB FB redB isoB gSig _ FA' B0' wB' FB' redB' isoB' gSig'
+                Ep Ep' DA DA' DB DB') as Psig.
+  pose proof (ity_same_iso' G A (FunTm_of_ty G A j dA) rho W Hrho j _ FA _ FA'
                 DA DA') as QA.
-  pose proof (kRel_of_IRel' G t t' A IHct (FunTm_of_ty G A k dA) W rho Hrho k'
+  pose proof (kRel_of_IRel' G t t' A IHct (FunTm_of_ty G A j dA) W rho Hrho j
                 _ FA _ FA' DA DA' _ xt _ xt' Dt Dt') as A3.
   (* the second components, in the two extended environments *)
-  pose proof (EnvRelOf_ext G rho rho A k' FA FA' _ xt _ xt'
+  pose proof (EnvRelOf_ext G rho rho A j FA FA' _ xt _ xt'
                 (EnvRelOf_selfE G rho W Hrho) A3) as HEx.
   assert (EB : wB (ers rho t) xt = ers (ext rho FA (ers rho t) xt) B)
     by exact (ers_of_ITy _ _ _ _ _ (DB _ xt)).
   assert (EB' : wB' (ers rho t') xt' = ers (ext rho FA' (ers rho t') xt') B)
     by exact (ers_of_ITy _ _ _ _ _ (DB' _ xt')).
   assert (Htb : tyeq (wB (ers rho t) xt) (wB' (ers rho t') xt'))
-    by (rewrite EB, EB'; exact (LTy_of_ty (A :: G) B k dB _ _ HEx)).
+    by (rewrite EB, EB'; exact (LTy_of_ty (A :: G) B j dB _ _ HEx)).
   assert (QB : iso (kAt (FB (ers rho t) xt)) (kAt (FB' (ers rho t') xt')))
-    by exact (FunTy_of_FunTm (A :: G) B (funtm (A :: G) B (univ k) dB) _ _ HEx k'
+    by exact (FunTy_of_FunTm (A :: G) B (funtm (A :: G) B (UU j) dB) _ _ HEx j
                 _ (FB _ xt) _ (FB' _ xt') (DB _ xt) (DB' _ xt')
-                (eqty_at_lvl k' _ _ (uf_ty (FB _ xt)) (uf_ty (FB' _ xt')) Htb)).
+                (eqty_at_lvl j _ _ (uf_ty (FB _ xt)) (uf_ty (FB' _ xt')) Htb)).
   (* u and u' are related at the UNPRIMED codomain instance, and u' travels
      from there to the primed one by its own functionality *)
-  pose proof (isubst_ITy rho t k' _ FA (ers rho t) xt eq_refl Dt
-                B k' _ (FB _ xt) (DB _ xt)) as D1.
+  pose proof (isubst_ITy rho t j _ FA (ers rho t) xt eq_refl Dt
+                B j _ (FB _ xt) (DB _ xt)) as D1.
   assert (Eb : wB (ers rho t) xt = ers rho (B [t..]))
     by (rewrite EB; exact (eq_sym (ers_sub1 rho B t FA xt))).
-  destruct (IHu' rho Hrho k' (famCast Eb (FB _ xt))
-              (ITy_cast rho (B [t..]) k' _ _ Eb _ D1)) as [y0 Dy0].
-  destruct (ITm_uncast rho u' k' _ _ Eb (FB _ xt) _ _ Dy0) as [ya Dya].
+  destruct (IHu' rho Hrho j (famCast Eb (FB _ xt))
+              (ITy_cast rho (B [t..]) j _ _ Eb _ D1)) as [y0 Dy0].
+  destruct (ITm_uncast rho u' j _ _ Eb (FB _ xt) _ _ Dy0) as [ya Dya].
   assert (fBt : FunTm G (B [t..])).
-  { destruct (ty_subst1 G A B (univ k) t dB dt) as [d].
-    exact (FunTm_of_ty G (B [t..]) k d). }
-  pose proof (kRel_of_IRel' G u u' (B [t..]) IHcu fBt W rho Hrho k'
+  { destruct (ty_subst1 G A B (UU j) t dB dt) as [dsub].
+    exact (FunTm_of_ty G (B [t..]) j dsub). }
+  pose proof (kRel_of_IRel' G u u' (B [t..]) IHcu fBt W rho Hrho j
                 _ (FB _ xt) _ (FB _ xt) D1 D1 _ xa _ ya Da Dya) as Hb1.
   assert (Hru' : Rel (wB' (ers rho t') xt') (ers rho u') (ers rho u')).
   { apply (Rel_tyeq (wB (ers rho t) xt) (wB' (ers rho t') xt')); [exact Htb |].
     rewrite Eb.
     exact (LTm_of_ty G u' (B [t..]) du' rho rho
              (EnvRelOf_selfE G rho W Hrho)). }
-  pose proof (funtm G u' (B [t..]) du' rho rho (EnvRelOf_selfE G rho W Hrho) k'
+  pose proof (funtm G u' (B [t..]) du' rho rho (EnvRelOf_selfE G rho W Hrho) j
                 _ (FB _ xt) _ ya Dya _ (FB' _ xt') _ xa' Da' QB Hru') as Hb2.
   assert (B3 : kRel (FB (ers rho t) xt) (FB' (ers rho t') xt')
                  (ers rho u) xa (ers rho u') xa')
@@ -3780,16 +3964,16 @@ Proof.
   (* the layer-1 facts about the two pairs *)
   assert (Hty : tyeq (esig (ers rho A) B0) (esig (ers rho A) B0'))
     by (rewrite Ep, Ep';
-        exact (LTy_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho
+        exact (LTy_of_ty G (sig_ (d + j) A B) (d + j) (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB) rho rho
                  (EnvRelOf_selfE G rho W Hrho))).
   assert (Hrp : Rel (esig (ers rho A) B0')
                   (epair (ers rho t) (ers rho u)) (epair (ers rho t') (ers rho u'))).
-  { apply (Rel_tyeq (ers rho (sig_ A B)) (esig (ers rho A) B0'));
+  { apply (Rel_tyeq (ers rho (sig_ (d + j) A B)) (esig (ers rho A) B0'));
       [ rewrite <- Ep; exact Hty
-      | exact (LCv_of_cv G (pair A B t u) (pair A B t' u') (sig_ A B)
-                 (c_pair G A B t t' u u' k dA dB dt dt' ct du du' cu) rho rho
+      | exact (LCv_of_cv G (pair (d + j) A B t u) (pair (d + j) A B t' u') (sig_ (d + j) A B)
+                 (c_pair G (d + j) j A B t t' u u' (Nat.le_add_l j d) dA dB dt dt' ct du du' cu) rho rho
                  (EnvRelOf_selfE G rho W Hrho)) ]. }
-  assert (gT' : Good_ty (esig (ers rho A) B0')) by (exists k'; exact gSig').
+  assert (gT' : Good_ty (esig (ers rho A) B0')) by (exists j; exact gSig').
   assert (Hsame : Rel (esig (ers rho A) B0')
                     (epair (ers rho t) (ers rho u)) (epair (ers rho t) (ers rho u)))
     by (eapply Rel_trans; [exact Hrp | apply Rel_sym; exact Hrp]).
@@ -3801,59 +3985,29 @@ Proof.
   pose proof (sig_eta_rel _ _ _ _ _ gT' (ev_sig _ _) Hrp) as Hc.
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_of_IsVal2; [exact Hv | exact Hv' |].
+  apply (kRel_liftN d).
   exists Psig.
   eapply kEqAt_trans;
     [ apply kEqAt_sym;
-      exact (sigPair_surj k' _ B0' FA' wB' FB' redB' isoB' gSig' _
-               (ctoK _ _ Psig _ (sigPair k' _ B0 FA wB FB redB isoB gSig _ _ xt xa g))
+      exact (sigPair_surj j _ B0' FA' wB' FB' redB' isoB' gSig' _
+               (ctoK _ _ Psig _ (sigPair j _ B0 FA wB FB redB isoB gSig _ _ xt xa g))
                g2 gr) |].
-  apply (sigPair_eq k' _ B0' FA' wB' FB' redB' isoB' gSig'); [exact Hc | |].
+  apply (sigPair_eq j _ B0' FA' wB' FB' redB' isoB' gSig'); [exact Hc | |].
   - apply (proj2 (kRel_same FA' _ _ _ _)).
     eapply kRel_trans;
       [ apply kRel_sym;
-        apply (sigFst_to k' _ B0 FA wB FB redB isoB gSig
+        apply (sigFst_to j _ B0 FA wB FB redB isoB gSig
                  _ B0' FA' wB' FB' redB' isoB' gSig' Psig) |].
     eapply kRel_trans;
       [ apply (proj1 (kRel_same FA _ _ _ _));
-        apply (sigFst_pair k' _ B0 FA wB FB redB isoB gSig)
+        apply (sigFst_pair j _ B0 FA wB FB redB isoB gSig)
       | exact A3 ].
   - eapply kRel_trans;
       [ apply kRel_sym;
-        apply (sigSnd_to k' _ B0 FA wB FB redB isoB gSig
+        apply (sigSnd_to j _ B0 FA wB FB redB isoB gSig
                  _ B0' FA' wB' FB' redB' isoB' gSig' Psig) |].
     eapply kRel_trans;
-      [ apply (sigSnd_pair k' _ B0 FA wB FB redB isoB gSig) | exact B3 ].
-Qed.
-
-Lemma isem_pair G A B t t' u u' k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty G t A) (dt' : ty G t' A)
-  (ct : cv G t t' A) (du : ty G u (B [t..])) (du' : ty G u' (B [t..]))
-  (cu : cv G u u' (B [t..]))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHt : ITot G t A) (IHt' : ITot G t' A) (IHct : IRel G t t' A)
-  (IHu : ITot G u (B [t..])) (IHu' : ITot G u' (B [t..]))
-  (IHcu : IRel G u u' (B [t..])) :
-  ISem G (pair A B t u) (pair A B t' u') (sig_ A B).
-Proof.
-  split;
-    [split; [exact (itot_pair G A B t u k W dA dB dt du IHA IHB IHt IHu)
-            | exact (itot_pair' G A B t t' u u' k W dA dB dt dt' ct du du' cu
-                       IHA IHB IHt IHt' IHu' IHct)] |].
-  intros rho Hrho k' F Dsg x y Dx Dy.
-  pose proof (itm_inv rho (pair A B t u) k' (ers rho (sig_ A B)) F
-                (ers rho (pair A B t u)) x Dx) as E.
-  pose proof (itm_inv rho (pair A B t' u') k' (ers rho (sig_ A B)) F
-                (ers rho (pair A B t' u')) y Dy) as E'.
-  destruct k' as [| k0]; cbn [TmInv] in E, E'.
-  - pose proof (LCv_of_cv G (pair A B t u) (pair A B t' u') (sig_ A B)
-                  (c_pair G A B t t' u u' k dA dB dt dt' ct du du' cu) rho rho
-                  (EnvRelOf_selfE G rho W Hrho)) as Hrel.
-    destruct E as [HT | E]; [exact (HT _ x _ y Hrel) |].
-    destruct E' as [HT' | E']; [exact (HT' _ x _ y Hrel) |].
-    exact (isem_pair_core G A B t t' u u' k W dA dB dt dt' ct du du' cu
-             IHct IHcu IHu' rho Hrho 0 _ F x y E E').
-  - exact (isem_pair_core G A B t t' u u' k W dA dB dt dt' ct du du' cu
-             IHct IHcu IHu' rho Hrho (S k0) _ F x y E E').
+      [ apply (sigSnd_pair j _ B0 FA wB FB redB isoB gSig) | exact B3 ].
 Qed.
 
 (* ---- the universal quantifier.  Its type is `prop`, so the two values are
@@ -3861,34 +4015,34 @@ Qed.
      equivalent: the two directions are the same statement about a related
      pair of arguments, once each way, and the bodies are compared in the two
      steps isem_pi uses for the codomains. ---- *)
-Lemma isem_all G A A' p p' k (W : wfc G) (dA : ty G A (univ k))
-  (dp : ty (A :: G) p prop) (dA' : ty G A' (univ k)) (dp' : ty (A' :: G) p' prop)
-  (cA : cv G A A' (univ k)) (cp : cv (A :: G) p p' prop)
-  (IHA : ITot G A (univ k)) (IHp : ITot (A :: G) p prop)
-  (IHA' : ITot G A' (univ k)) (IHp' : ITot (A' :: G) p' prop)
-  (IHcA : IRel G A A' (univ k)) (IHcp : IRel (A :: G) p p' prop) :
-  ISem G (all A p) (all A' p') prop.
+Lemma isem_all G A A' p p' jj k (W : wfc G) (dA : ty G A (UU k))
+  (dp : ty (A :: G) p (prop jj)) (dA' : ty G A' (UU k)) (dp' : ty (A' :: G) p' (prop jj))
+  (cA : cv G A A' (UU k)) (cp : cv (A :: G) p p' (prop jj))
+  (IHA : ITot G A (UU k)) (IHp : ITot (A :: G) p (prop jj))
+  (IHA' : ITot G A' (UU k)) (IHp' : ITot (A' :: G) p' (prop jj))
+  (IHcA : IRel G A A' (UU k)) (IHcp : IRel (A :: G) p p' (prop jj)) :
+  ISem G (all jj A p) (all jj A' p') (prop jj).
 Proof.
   pose proof (w_cons G A k W dA) as WA.
   split;
-    [split; [exact (itot_all G A p k W dA dp IHA IHp)
-            | exact (itot_all G A' p' k W dA' dp' IHA' IHp')] |].
+    [split; [exact (itot_all G A p jj k W dA dp IHA IHp)
+            | exact (itot_all G A' p' jj k W dA' dp' IHA' IHp')] |].
   intros rho Hrho k' F DP x y Dx Dy.
-  pose proof (ity_lvl_dec rho prop k' (ers rho prop) F DP) as El;
+  pose proof (ity_lvl_dec rho (prop jj) k' (ers rho (prop jj)) F DP) as El;
     cbn [LvlDec] in El; subst k'.
-  pose proof (LCv_of_cv G (all A p) (all A' p') prop
-                (c_all G A A' p p' k dA dp dA' dp' cA cp) rho rho
+  pose proof (LCv_of_cv G (all jj A p) (all jj A' p') (prop jj)
+                (c_all G A A' p p' jj k dA dp dA' dp' cA cp) rho rho
                 (EnvRelOf_selfE G rho W Hrho)) as Hrel.
-  pose proof (itm_inv rho (all A p) 0 (ers rho prop) F (ers rho (all A p)) x Dx)
-    as E.
-  pose proof (itm_inv rho (all A' p') 0 (ers rho prop) F (ers rho (all A' p')) y Dy)
-    as E'.
+  pose proof (itm_inv rho (all jj A p) jj (ers rho (prop jj)) F
+                (ers rho (all jj A p)) x Dx) as E.
+  pose proof (itm_inv rho (all jj A' p') jj (ers rho (prop jj)) F
+                (ers rho (all jj A' p')) y Dy) as E'.
   cbn [TmInv] in E, E'.
-  destruct E as [HT | E]; [exact (HT _ x _ y Hrel) |].
-  destruct E' as [HT' | E']; [exact (HT' _ x _ y Hrel) |].
+  destruct E as [[HT _] | E]; [exact (HT _ x _ y Hrel) |].
+  destruct E' as [[HT' _] | E']; [exact (HT' _ x _ y Hrel) |].
   cbn [TmShape AllVal] in E, E'.
-  destruct E as [kA [wA [FA [wp [xp [wv [g [[DA Dp] Hv]]]]]]]].
-  destruct E' as [kA' [wA' [FA' [wp' [xp' [wv' [g' [[DA' Dp'] Hv']]]]]]]].
+  destruct E as [kA [wA [FA [wp [xp [wv [g [[[Ejj DA] Dp] Hv]]]]]]]].
+  destruct E' as [kA' [wA' [FA' [wp' [xp' [wv' [g' [[[Ejj' DA'] Dp'] Hv']]]]]]]].
   assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
   assert (EA' : wA' = ers rho A') by exact (ers_of_ITy _ _ _ _ _ DA').
   subst wA wA'.
@@ -3911,13 +4065,14 @@ Proof.
     pose proof (EnvITy_ext G rho A k FA DA u z Hrho) as HExA.
     pose proof (EnvITy_ext_iso G rho A' k (ers rho A) FA FA' DA' QA u z Hrho)
       as HExA'.
-    destruct (IHp' (ext rho FA u z) HExA' 0 (propFam 0)
-                (ity_prop (ext rho FA u z) (ers (ext rho FA u z) prop) eq_refl))
+    destruct (IHp' (ext rho FA u z) HExA' jj (propFam jj)
+                (ity_prop (ext rho FA u z) jj
+                   (ers (ext rho FA u z) (prop jj)) eq_refl))
       as [w0 Dw0].
-    pose proof (kRel_of_IRel' (A :: G) p p' prop IHcp
-                  (FunTm_of_ty (A :: G) prop 0 (t_prop (A :: G) WA)) WA
-                  (ext rho FA u z) HExA 0 eprop (propFam 0) eprop (propFam 0)
-                  (ity_prop _ _ eq_refl) (ity_prop _ _ eq_refl)
+    pose proof (kRel_of_IRel' (A :: G) p p' (prop jj) IHcp
+                  (FunTm_of_ty (A :: G) (prop jj) jj (t_prop (A :: G) jj WA)) WA
+                  (ext rho FA u z) HExA jj eprop (propFam jj) eprop (propFam jj)
+                  (ity_prop _ _ _ eq_refl) (ity_prop _ _ _ eq_refl)
                   _ (xp u z) _ w0 (Dp u z) Dw0) as H1.
     assert (HEr : EnvRelOf (A' :: G) (ext rho FA u z) (ext rho FA' u2 z2)).
     { apply (EnvRelOf_ext_ty G rho rho A' k (ers rho A) (ers rho A')
@@ -3926,21 +4081,21 @@ Proof.
     assert (Ew' : wp' u2 z2 = ers (ext rho FA' u2 z2) p')
       by exact (ers_of_ITm _ _ _ _ _ _ _ (Dp' u2 z2)).
     assert (Hr2 : Rel eprop (ers (ext rho FA u z) p') (wp' u2 z2))
-      by (rewrite Ew'; exact (LTm_of_ty (A' :: G) p' prop dp' _ _ HEr)).
-    pose proof (funtm (A' :: G) p' prop dp' _ _ HEr 0 eprop (propFam 0) _ w0 Dw0
-                  eprop (propFam 0) _ (xp' u2 z2) (Dp' u2 z2)
-                  (iso_self (propFam 0)) Hr2) as H2.
+      by (rewrite Ew'; exact (LTm_of_ty (A' :: G) p' (prop jj) dp' _ _ HEr)).
+    pose proof (funtm (A' :: G) p' (prop jj) dp' _ _ HEr jj eprop (propFam jj)
+                  _ w0 Dw0 eprop (propFam jj) _ (xp' u2 z2) (Dp' u2 z2)
+                  (iso_self (propFam jj)) Hr2) as H2.
     exact (proj1 (proj1 (propEq_iff (xp u z) (xp' u2 z2))
-                    (proj2 (kRel_same (propFam 0) _ _ _ _)
+                    (proj2 (kRel_same (propFam jj) _ _ _ _)
                        (kRel_trans _ _ _ _ _ _ _ _ _ H1 H2)))). }
   destruct Hv as [Q HQ]; destruct Hv' as [Q' HQ'].
-  assert (Hw : Rel eprop (ers rho (all A p)) wv)
+  assert (Hw : Rel eprop (ers rho (all jj A p)) wv)
     by exact (proj2 (proj1 (propEq_iff _ _) HQ)).
-  assert (Hw' : Rel eprop (ers rho (all A' p')) wv')
+  assert (Hw' : Rel eprop (ers rho (all jj A' p')) wv')
     by exact (proj2 (proj1 (propEq_iff _ _) HQ')).
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_of_IsVal2; [exists Q; exact HQ | exists Q'; exact HQ' |].
-  apply (proj1 (kRel_same (propFam 0) _ _ _ _)).
+  apply (proj1 (kRel_same (propFam jj) _ _ _ _)).
   apply propEq_iff; split.
   - cbn [propVal propElem proj1_sig Datatypes.fst]; split.
     + intros H u2 z2.
@@ -3963,50 +4118,89 @@ Qed.
      -- which is the Pi-congruence, symmetrised.  The bodies are compared in
      the same two steps as the codomains: t against t' in the A-extended
      environment, then t' against itself across the two extensions. ---- *)
-Lemma isem_lam_core G A A' B B' t t' k (W : wfc G)
-  (dA : ty G A (univ k)) (dB : ty (A :: G) B (univ k))
-  (dA' : ty G A' (univ k)) (dB' : ty (A' :: G) B' (univ k))
-  (cA : cv G A A' (univ k)) (cB : cv (A :: G) B B' (univ k))
+Lemma isem_lam_core G A A' B B' t t' d j (W : wfc G)
+  (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (dA' : ty G A' (UU j)) (dB' : ty (A' :: G) B' (UU j))
+  (cA : cv G A A' (UU j)) (cB : cv (A :: G) B B' (UU j))
   (dt : ty (A :: G) t B) (dt' : ty (A' :: G) t' B') (ct : cv (A :: G) t t' B)
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHA' : ITot G A' (univ k)) (IHB' : ITot (A' :: G) B' (univ k))
-  (IHcA : IRel G A A' (univ k)) (IHcB : IRel (A :: G) B B' (univ k))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHA' : ITot G A' (UU j)) (IHB' : ITot (A' :: G) B' (UU j))
+  (IHcA : IRel G A A' (UU j)) (IHcB : IRel (A :: G) B B' (UU j))
   (IHt2 : ITot (A :: G) t' B) (IHct : IRel (A :: G) t t' B)
-  (IHcPi : IRel G (pi A B) (pi A' B') (univ k))
-  rho (Hrho : EnvITy G rho) k' Sy (F : kUFam k' Sy) x y
-  (E : LamVal rho A B t k' Sy F (ers rho (lam A B t)) x)
-  (E' : LamVal rho A' B' t' k' Sy F (ers rho (lam A' B' t')) y)
-  (Hrel : Rel Sy (ers rho (lam A B t)) (ers rho (lam A' B' t'))) :
-  kEqAt F (ers rho (lam A B t)) x (ers rho (lam A' B' t')) y.
+  (IHcPi : IRel G (pi (d + j) A B) (pi (d + j) A' B') (UU (d + j)))
+  rho (Hrho : EnvITy G rho) Sy (F : kUFam (d + j) Sy) x y
+  (E : LamVal rho (d + j) A B t (d + j) Sy F (ers rho (lam (d + j) A B t)) x)
+  (E' : LamVal rho (d + j) A' B' t' (d + j) Sy F (ers rho (lam (d + j) A' B' t')) y)
+  (Hrel : Rel Sy (ers rho (lam (d + j) A B t)) (ers rho (lam (d + j) A' B' t'))) :
+  kEqAt F (ers rho (lam (d + j) A B t)) x (ers rho (lam (d + j) A' B' t')) y.
 Proof.
-  pose proof (w_cons G A k W dA) as WA.
+  pose proof (w_cons G A j W dA) as WA.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-  destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gPi [wv [xv [wt [xt
-    [[[[[Ep DA] DB] Dt] Hb] Hv]]]]]]]]]]]]].
-  destruct E' as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi' [wv' [xv' [wt' [xt'
-    [[[[[Ep' DA'] DB'] Dt'] Hb'] Hv']]]]]]]]]]]]].
+  destruct E as [d1 [j1 [Ek1 H1]]]; destruct E' as [d2 [j2 [Ek2 H2]]].
+  destruct H1 as [wA [FA [B0 [wB [FB [redB [isoB [gPi [wv [xv [wt [xt
+    [[[[[[Ekk Ep] DA] DB] Dt] Hb] Hv]]]]]]]]]]]]].
+  destruct H2 as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi' [wv' [xv' [wt' [xt'
+    [[[[[[Ekk2 Ep'] DA'] DB'] Dt'] Hb'] Hv']]]]]]]]]]]]].
+  (* the components' level is the domains', so both gaps are d *)
+  pose proof (ity_lvl rho rho eq_refl A j1 _ FA j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ej1; subst j1.
+  pose proof (ity_lvl rho rho eq_refl A' j2 _ FA' j _
+                (projT1 (ityT_of_ITot G A' j IHA' rho Hrho)) DA'
+                (projT2 (ityT_of_ITot G A' j IHA' rho Hrho))) as Ej2; subst j2.
+  assert (Ed1 : d1 = d) by lia; assert (Ed2 : d2 = d) by lia; subst d1 d2.
+  rewrite (Eqdep_dec.UIP_dec Nat.eq_dec Ek1 eq_refl) in Hv.
+  rewrite (Eqdep_dec.UIP_dec Nat.eq_dec Ek2 eq_refl) in Hv'.
+  cbn [lvlCast lvlCastEl eq_sym] in Hv, Hv'.
   assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
   assert (EA' : wA' = ers rho A') by exact (ers_of_ITy _ _ _ _ _ DA').
   subst wA wA'.
-  pose proof (ity_pi rho A B k' _ FA B0 wB FB redB isoB gPi Ep DA DB) as Dpi.
-  pose proof (ity_pi rho A' B' k' _ FA' B0' wB' FB' redB' isoB' gPi' Ep' DA' DB')
+  pose proof (ity_pi rho A B d j _ FA B0 wB FB redB isoB gPi Ep DA DB) as Dpi.
+  pose proof (ity_pi rho A' B' d j _ FA' B0' wB' FB' redB' isoB' gPi' Ep' DA' DB')
     as Dpi'.
-  (* the shape's level is the typing's *)
-  destruct (ityT_of_ITot G (pi A B) k (itot_pi G A B k W dA dB IHA IHB) rho Hrho)
-    as [Fpic Dpic].
-  pose proof (ity_lvl rho rho eq_refl (pi A B) k _ Fpic k' _ _ Dpic Dpi) as Ek;
-    subst k'.
-  assert (Ppi : iso (kAt (piFam k (ers rho A) B0 FA wB FB redB isoB gPi))
-                    (kAt (piFam k (ers rho A') B0' FA' wB' FB' redB' isoB' gPi')))
-    by exact (iso_of_IRel_at' G (pi A B) (pi A' B') k IHcPi rho Hrho _ _ Dpi _ _ Dpi').
+  (* the two level-j Pi-families are isomorphic, through the lifted ones *)
+  assert (PpiL : iso (kAt (famLiftN d
+                             (piFam j (ers rho A) B0 FA wB FB redB isoB gPi)))
+                     (kAt (famLiftN d
+                             (piFam j (ers rho A') B0' FA' wB' FB' redB' isoB'
+                                gPi'))))
+    by exact (iso_of_IRel_at' G (pi (d + j) A B) (pi (d + j) A' B') (d + j)
+                IHcPi rho Hrho _ _ Dpi _ _ Dpi').
   assert (QA : iso (kAt FA) (kAt FA'))
-    by exact (iso_of_IRel_at' G A A' k IHcA rho Hrho _ FA DA _ FA' DA').
+    by exact (iso_of_IRel_at' G A A' j IHcA rho Hrho _ FA DA _ FA' DA').
   assert (HtyA : tyeq (ers rho A) (ers rho A'))
-    by (exists k; exact (LCvK_of_cv G A A' k cA rho rho HEself)).
+    by (exists j; exact (LCvK_of_cv G A A' j cA rho rho HEself)).
   assert (Hty : tyeq (epi (ers rho A) B0) (epi (ers rho A') B0'))
-    by (rewrite Ep, Ep'; exists k;
-        exact (LCvK_of_cv G (pi A B) (pi A' B') k
-                 (c_pi G A A' B B' k dA dB dA' dB' cA cB) rho rho HEself)).
+    by (rewrite Ep, Ep'; exists (d + j);
+        exact (LCvK_of_cv G (pi (d + j) A B) (pi (d + j) A' B') (d + j)
+                 (c_pi G (d + j) j A A' B B' (Nat.le_add_l j d)
+                    dA dB dA' dB' cA cB) rho rho HEself)).
+  (* the codomains, at every related pair of arguments: this is what both the
+     Pi-families' isomorphism and the bodies' comparison need *)
+  assert (HBiso : forall v y0 v' y1', kRel FA FA' v y0 v' y1' ->
+             iso (kAt (FB v y0)) (kAt (FB' v' y1'))).
+  { intros v y0 v' y1' Hy0'.
+    pose proof (EnvITy_ext G rho A j FA DA v y0 Hrho) as HExA.
+    pose proof (EnvITy_ext_iso G rho A' j (ers rho A) FA FA' DA' QA v y0 Hrho)
+      as HExA'.
+    assert (HEr : EnvRelOf (A' :: G) (ext rho FA v y0) (ext rho FA' v' y1')).
+    { apply (EnvRelOf_ext_ty G rho rho A' j (ers rho A) (ers rho A')
+               FA FA' v y0 v' y1' HEself HtyA);
+        [ exists j; exact (uf_ty FA') | exact Hy0' ]. }
+    destruct (ityT_of_ITot (A' :: G) B' j IHB' (ext rho FA v y0) HExA')
+      as [FBm DBm].
+    assert (Eb' : wB' v' y1' = ers (ext rho FA' v' y1') B')
+      by exact (ers_of_ITy _ _ _ _ _ (DB' v' y1')).
+    eapply iso_trans;
+      [ exact (iso_of_IRel_at' (A :: G) B B' j IHcB (ext rho FA v y0) HExA
+                 _ (FB v y0) (DB v y0) _ FBm DBm) |].
+    refine (FunTy_of_FunTm (A' :: G) B' (funtm (A' :: G) B' (UU j) dB')
+              _ _ HEr j _ FBm _ (FB' v' y1') DBm (DB' v' y1') _).
+    rewrite Eb'; exact (LTyK_of_ty (A' :: G) B' j dB' _ _ HEr). }
+  assert (Ppi : iso (kAt (piFam j (ers rho A) B0 FA wB FB redB isoB gPi))
+                    (kAt (piFam j (ers rho A') B0' FA' wB' FB' redB' isoB' gPi')))
+    by exact (piFam_iso j (ers rho A) B0 FA wB FB redB isoB gPi
+                (ers rho A') B0' FA' wB' FB' redB' isoB' gPi' Hty QA HBiso).
   destruct Hv as [Q HQ]; destruct Hv' as [Q' HQ'].
   assert (Hrv : Rel (epi (ers rho A') B0') wv wv').
   { eapply Rel_trans;
@@ -4015,13 +4209,19 @@ Proof.
                  (kRel_rel _ _ _ _ _ _ (proj1 (kRel_same _ _ _ _ _) HQ))) |].
     eapply Rel_trans;
       [ exact (Rel_tyeq Sy (epi (ers rho A') B0') _ _
-                 (iso_ty F (piFam k (ers rho A') B0' FA' wB' FB' redB' isoB' gPi')
+                 (iso_ty F
+                    (famLiftN d
+                       (piFam j (ers rho A') B0' FA' wB' FB' redB' isoB' gPi'))
                     Q') Hrel)
       | exact (kRel_rel _ _ _ _ _ _ (proj1 (kRel_same _ _ _ _ _) HQ')) ]. }
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_of_IsVal2; [exists Q; exact HQ | exists Q'; exact HQ' |].
+  (* both values are lifts; compare their unlifts down at j *)
+  eapply hetC_eq_l; [apply kEqC_sym; apply elLiftN_elUnliftN |].
+  eapply hetC_eq_r; [| apply elLiftN_elUnliftN].
+  apply (kRel_liftN d).
   exists Ppi.
-  apply (piEq_of k _ B0' FA' wB' FB' redB' isoB' gPi'); [exact Hrv |].
+  apply (piEq_of j _ B0' FA' wB' FB' redB' isoB' gPi'); [exact Hrv |].
   intros v y1 v' y1' Hyy.
   set (y0 := moveTo FA' FA (iso_sym _ _ QA) v y1 v (reds_refl v)).
   assert (Hy0 : kRel FA FA' v y0 v y1)
@@ -4030,41 +4230,31 @@ Proof.
   assert (Hy0' : kRel FA FA' v y0 v' y1').
   { eapply kRel_trans; [exact Hy0 |].
     apply (proj1 (kRel_same FA' _ _ _ _)); exact Hyy. }
-  pose proof (EnvITy_ext G rho A k FA DA v y0 Hrho) as HExA.
-  pose proof (EnvITy_ext_iso G rho A' k (ers rho A) FA FA' DA' QA v y0 Hrho)
-    as HExA'.
+  pose proof (EnvITy_ext G rho A j FA DA v y0 Hrho) as HExA.
   assert (HEr : EnvRelOf (A' :: G) (ext rho FA v y0) (ext rho FA' v' y1')).
-  { apply (EnvRelOf_ext_ty G rho rho A' k (ers rho A) (ers rho A')
+  { apply (EnvRelOf_ext_ty G rho rho A' j (ers rho A) (ers rho A')
              FA FA' v y0 v' y1' HEself HtyA);
-      [ exists k; exact (uf_ty FA') | exact Hy0' ]. }
-  (* the codomains *)
-  destruct (ityT_of_ITot (A' :: G) B' k IHB' (ext rho FA v y0) HExA') as [FBm DBm].
+      [ exists j; exact (uf_ty FA') | exact Hy0' ]. }
   assert (Eb' : wB' v' y1' = ers (ext rho FA' v' y1') B')
     by exact (ers_of_ITy _ _ _ _ _ (DB' v' y1')).
-  assert (QB : iso (kAt (FB v y0)) (kAt (FB' v' y1'))).
-  { eapply iso_trans;
-      [ exact (iso_of_IRel_at' (A :: G) B B' k IHcB (ext rho FA v y0) HExA
-                 _ (FB v y0) (DB v y0) _ FBm DBm) |].
-    refine (FunTy_of_FunTm (A' :: G) B' (funtm (A' :: G) B' (univ k) dB')
-              _ _ HEr k _ FBm _ (FB' v' y1') DBm (DB' v' y1') _).
-    rewrite Eb'; exact (LTyK_of_ty (A' :: G) B' k dB' _ _ HEr). }
+  pose proof (HBiso v y0 v' y1' Hy0') as QB.
   (* the bodies *)
   assert (EB : wB v y0 = ers (ext rho FA v y0) B)
     by exact (ers_of_ITy _ _ _ _ _ (DB v y0)).
-  destruct (IHt2 (ext rho FA v y0) HExA k (famCast EB (FB v y0))
-              (ITy_cast (ext rho FA v y0) B k _ _ EB _ (DB v y0))) as [z0 Dz0].
-  destruct (ITm_uncast (ext rho FA v y0) t' k _ _ EB (FB v y0) _ _ Dz0) as [z Dz].
-  pose proof (kRel_of_IRel' (A :: G) t t' B IHct (FunTm_of_ty (A :: G) B k dB) WA
-                (ext rho FA v y0) HExA k _ (FB v y0) _ (FB v y0)
+  destruct (IHt2 (ext rho FA v y0) HExA j (famCast EB (FB v y0))
+              (ITy_cast (ext rho FA v y0) B j _ _ EB _ (DB v y0))) as [z0 Dz0].
+  destruct (ITm_uncast (ext rho FA v y0) t' j _ _ EB (FB v y0) _ _ Dz0) as [z Dz].
+  pose proof (kRel_of_IRel' (A :: G) t t' B IHct (FunTm_of_ty (A :: G) B j dB) WA
+                (ext rho FA v y0) HExA j _ (FB v y0) _ (FB v y0)
                 (DB v y0) (DB v y0) _ (xt v y0) _ z (Dt v y0) Dz) as Hb1.
   assert (Hrb : Rel (wB' v' y1') (ers (ext rho FA v y0) t') (wt' v' y1')).
   { assert (Et' : wt' v' y1' = ers (ext rho FA' v' y1') t')
       by exact (ers_of_ITm _ _ _ _ _ _ _ (Dt' v' y1')).
     rewrite Eb', Et'.
     apply (Rel_tyeq (ers (ext rho FA v y0) B') (ers (ext rho FA' v' y1') B'));
-      [ exact (LTy_of_ty (A' :: G) B' k dB' _ _ HEr)
+      [ exact (LTy_of_ty (A' :: G) B' j dB' _ _ HEr)
       | exact (LTm_of_ty (A' :: G) t' B' dt' _ _ HEr) ]. }
-  pose proof (funtm (A' :: G) t' B' dt' _ _ HEr k _ (FB v y0) _ z Dz
+  pose proof (funtm (A' :: G) t' B' dt' _ _ HEr j _ (FB v y0) _ z Dz
                 _ (FB' v' y1') _ (xt' v' y1') (Dt' v' y1') QB Hrb) as Hb2.
   assert (Hbody : kRel (FB v y0) (FB' v' y1')
                     (wt v y0) (xt v y0) (wt' v' y1') (xt' v' y1'))
@@ -4072,16 +4262,23 @@ Proof.
   (* and the five legs *)
   eapply kRel_trans;
     [ apply kRel_sym;
-      apply (piApp_eq k _ B0' FA' wB' FB' redB' isoB' gPi' wv
-               (ctoK _ _ Ppi wv xv) wv (ctoK _ _ Ppi wv xv) v
-               (ctoK _ _ QA v y0) v y1);
-      [ apply (proj2 (kRel_same _ _ _ _ _)); apply kRel_refl
+      apply (piApp_eq j _ B0' FA' wB' FB' redB' isoB' gPi' wv
+               (ctoK _ _ Ppi wv
+                  (elUnliftN d (piFam j (ers rho A) B0 FA wB FB redB isoB gPi)
+                     wv xv))
+               wv
+               (ctoK _ _ Ppi wv
+                  (elUnliftN d (piFam j (ers rho A) B0 FA wB FB redB isoB gPi)
+                     wv xv))
+               v (ctoK _ _ QA v y0) v y1);
+      [ apply kEqAt_refl_
       | exact (kRel_at _ _ QA v y0 v y1 Hy0) ] |].
   eapply kRel_trans;
     [ apply kRel_sym;
-      apply (piApp_to k _ B0 FA wB FB redB isoB gPi
-               _ B0' FA' wB' FB' redB' isoB' gPi' Ppi QA wv xv
-               (proj2 (kRel_same _ _ _ _ _) (kRel_refl _ wv xv)) v y0) |].
+      apply (piApp_to j _ B0 FA wB FB redB isoB gPi
+               _ B0' FA' wB' FB' redB' isoB' gPi' Ppi QA wv
+               (elUnliftN d (piFam j (ers rho A) B0 FA wB FB redB isoB gPi) wv xv)
+               (kEqAt_refl_ _ wv _) v y0) |].
   eapply kRel_trans;
     [ apply (proj1 (kRel_same (FB v y0) _ _ _ _)); exact (Hb v y0) |].
   eapply kRel_trans; [ exact Hbody |].
@@ -4089,45 +4286,52 @@ Proof.
   apply kEqAt_sym; exact (Hb' v' y1').
 Qed.
 
-Lemma isem_lam G A A' B B' t t' k (W : wfc G)
-  (dA : ty G A (univ k)) (dB : ty (A :: G) B (univ k))
-  (dA' : ty G A' (univ k)) (dB' : ty (A' :: G) B' (univ k))
-  (cA : cv G A A' (univ k)) (cB : cv (A :: G) B B' (univ k))
+Lemma isem_lam G A A' B B' t t' d j (W : wfc G)
+  (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (dA' : ty G A' (UU j)) (dB' : ty (A' :: G) B' (UU j))
+  (cA : cv G A A' (UU j)) (cB : cv (A :: G) B B' (UU j))
   (dt : ty (A :: G) t B) (dt' : ty (A' :: G) t' B') (ct : cv (A :: G) t t' B)
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHA' : ITot G A' (univ k)) (IHB' : ITot (A' :: G) B' (univ k))
-  (IHcA : IRel G A A' (univ k)) (IHcB : IRel (A :: G) B B' (univ k))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHA' : ITot G A' (UU j)) (IHB' : ITot (A' :: G) B' (UU j))
+  (IHcA : IRel G A A' (UU j)) (IHcB : IRel (A :: G) B B' (UU j))
   (IHt : ITot (A :: G) t B) (IHt2 : ITot (A :: G) t' B)
   (IHt' : ITot (A' :: G) t' B') (IHct : IRel (A :: G) t t' B) :
-  ISem G (lam A B t) (lam A' B' t') (pi A B).
+  ISem G (lam (d + j) A B t) (lam (d + j) A' B' t') (pi (d + j) A B).
 Proof.
-  pose proof (isem_pi G A A' B B' k W dA dB dA' dB' cA cB
+  pose proof (isem_pi G A A' B B' d j W dA dB dA' dB' cA cB
                 IHA IHB IHA' IHB' IHcA IHcB) as Hpi.
   split.
-  - split; [exact (itot_lam G A B t k W dA dB dt IHA IHB IHt) |].
-    exact (itot_conv G (lam A' B' t') (pi A' B') (pi A B) k W
-             (t_pi G A' B' k dA' dB') (t_pi G A B k dA dB)
-             (itot_lam G A' B' t' k W dA' dB' dt' IHA' IHB' IHt')
-             (itot_pi G A' B' k W dA' dB' IHA' IHB')
-             (itot_pi G A B k W dA dB IHA IHB)
-             (Datatypes.snd (isem_sym G (pi A B) (pi A' B') (univ k) Hpi))).
+  - split; [exact (itot_lam G A B t d j W dA dB dt IHA IHB IHt) |].
+    exact (itot_conv G (lam (d + j) A' B' t') (pi (d + j) A' B') (pi (d + j) A B)
+             (d + j) W
+             (t_pi G (d + j) j A' B' (Nat.le_add_l j d) dA' dB')
+             (t_pi G (d + j) j A B (Nat.le_add_l j d) dA dB)
+             (itot_lam G A' B' t' d j W dA' dB' dt' IHA' IHB' IHt')
+             (itot_pi G A' B' d j W dA' dB' IHA' IHB')
+             (itot_pi G A B d j W dA dB IHA IHB)
+             (Datatypes.snd
+                (isem_sym G (pi (d + j) A B) (pi (d + j) A' B') (UU (d + j)) Hpi))).
   - intros rho Hrho k' F Dpi0 x y Dx Dy.
-    pose proof (LCv_of_cv G (lam A B t) (lam A' B' t') (pi A B)
-                  (c_lam G A A' B B' t t' k dA dB dA' dB' cA cB dt dt' ct) rho rho
+    pose proof (LCv_of_cv G (lam (d + j) A B t) (lam (d + j) A' B' t')
+                  (pi (d + j) A B)
+                  (c_lam G (d + j) j A A' B B' t t' (Nat.le_add_l j d)
+                     dA dB dA' dB' cA cB dt dt' ct) rho rho
                   (EnvRelOf_selfE G rho W Hrho)) as Hrel.
-    pose proof (itm_inv rho (lam A B t) k' (ers rho (pi A B)) F
-                  (ers rho (lam A B t)) x Dx) as E.
-    pose proof (itm_inv rho (lam A' B' t') k' (ers rho (pi A B)) F
-                  (ers rho (lam A' B' t')) y Dy) as E'.
-    destruct k' as [| k0]; cbn [TmInv] in E, E'.
-    + destruct E as [HT | E]; [exact (HT _ x _ y Hrel) |].
-      destruct E' as [HT' | E']; [exact (HT' _ x _ y Hrel) |].
-      exact (isem_lam_core G A A' B B' t t' k W dA dB dA' dB' cA cB dt dt' ct
-               IHA IHB IHA' IHB' IHcA IHcB IHt2 IHct (Datatypes.snd Hpi)
-               rho Hrho 0 _ F x y E E' Hrel).
-    + exact (isem_lam_core G A A' B B' t t' k W dA dB dA' dB' cA cB dt dt' ct
-               IHA IHB IHA' IHB' IHcA IHcB IHt2 IHct (Datatypes.snd Hpi)
-               rho Hrho (S k0) _ F x y E E' Hrel).
+    (* the level is the annotation's *)
+    destruct (build_pi G A B d j W dA dB IHA IHB rho Hrho) as [FP DP].
+    pose proof (ity_lvl rho rho eq_refl (pi (d + j) A B) (d + j) _ FP k' _ F
+                  DP Dpi0) as Ek; subst k'.
+    pose proof (itm_inv rho (lam (d + j) A B t) (d + j) (ers rho (pi (d + j) A B)) F
+                  (ers rho (lam (d + j) A B t)) x Dx) as E.
+    pose proof (itm_inv rho (lam (d + j) A' B' t') (d + j)
+                  (ers rho (pi (d + j) A B)) F
+                  (ers rho (lam (d + j) A' B' t')) y Dy) as E'.
+    cbn [TmInv] in E, E'.
+    destruct E as [[HT _] | E]; [exact (HT _ x _ y Hrel) |].
+    destruct E' as [[HT' _] | E']; [exact (HT' _ x _ y Hrel) |].
+    exact (isem_lam_core G A A' B B' t t' d j W dA dB dA' dB' cA cB dt dt' ct
+             IHA IHB IHA' IHB' IHcA IHcB IHt2 IHct (Datatypes.snd Hpi)
+             rho Hrho _ F x y E E' Hrel).
 Qed.
 
 (* ---- the Sigma computation rules.  Each is proved by CONSTRUCTING the
@@ -4136,258 +4340,318 @@ Qed.
      handed are compared to the constructed ones by functionality, which is
      what funtm says about two readings of one term. ---- *)
 
-Lemma isem_fst_beta G A B t u k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty G t A) (du : ty G u (B [t..]))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
+Lemma isem_fst_beta G A B t u d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dt : ty G t A) (du : ty G u (B [t..]))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
   (IHt : ITot G t A) (IHu : ITot G u (B [t..])) :
-  ISem G (fst A B (pair A B t u)) t A.
+  ISem G (fst A B (pair (d + j) A B t u)) t A.
 Proof.
-  pose proof (t_pair G A B t u k dA dB dt du) as dpair.
+  pose proof (t_pair G (d + j) j A B t u (Nat.le_add_l j d) dA dB dt du) as dpair.
   split;
-    [split; [exact (itot_fst G A B (pair A B t u) k W dA dB dpair IHA IHB
-                      (itot_pair G A B t u k W dA dB dt du IHA IHB IHt IHu))
+    [split; [exact (itot_fst G A B (pair (d + j) A B t u) d j W dA dB dpair IHA IHB
+                      (itot_pair G A B t u d j W dA dB dt du IHA IHB IHt IHu))
             | exact IHt] |].
   intros rho Hrho k' F DA0 x y Dx Dy.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (z : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gSig := LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho HEself).
-  destruct (IHt rho Hrho k FA DFA) as [xt Dt].
+  pose (gSig := LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho HEself).
+  destruct (IHt rho Hrho j FA DFA) as [xt Dt].
   assert (E : ers (ext rho FA (ers rho t) xt) B = ers rho (B [t..]))
     by exact (eq_sym (ers_sub1 rho B t FA xt)).
-  pose proof (isubst_ITy rho t k (ers rho A) FA (ers rho t) xt eq_refl Dt
-                B k _ (FB (ers rho t) xt) (DB (ers rho t) xt)) as DBsub.
-  destruct (IHu rho Hrho k (famCast E (FB (ers rho t) xt))
-              (ITy_cast rho (B [t..]) k _ _ E _ DBsub)) as [xu0 Du0].
-  destruct (ITm_uncast rho u k _ _ E (FB (ers rho t) xt) _ _ Du0) as [xu Du].
+  pose proof (isubst_ITy rho t j (ers rho A) FA (ers rho t) xt eq_refl Dt
+                B j _ (FB (ers rho t) xt) (DB (ers rho t) xt)) as DBsub.
+  destruct (IHu rho Hrho j (famCast E (FB (ers rho t) xt))
+              (ITy_cast rho (B [t..]) j _ _ E _ DBsub)) as [xu0 Du0].
+  destruct (ITm_uncast rho u j _ _ E (FB (ers rho t) xt) _ _ Du0) as [xu Du].
   assert (g : Good (esig (ers rho A) B0) (epair (ers rho t) (ers rho u)))
-    by exact (LTm_of_ty G (pair A B t u) (sig_ A B) dpair rho rho HEself).
-  pose proof (i_pair rho A B t u k (ers rho A) FA B0
+    by exact (LTm_of_ty G (pair (d + j) A B t u) (sig_ (d + j) A B) dpair rho rho HEself).
+  pose (FS := sigFam j (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B)
+                FB redB isoB gSig).
+  pose (xpr := sigPair j (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B)
+                 FB redB isoB gSig (ers rho t) (ers rho u) xt xu g).
+  pose proof (i_pair rho A B t u d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
                 (ers rho t) xt (ers rho u) xu g eq_refl DFA DB Dt Du) as Dpair.
-  pose proof (i_fst rho A B (pair A B t u) k (ers rho A) FA B0
+  (* the clause lifted the pair and the projection unlifts it again: that round
+     trip is the identity up to the family's own equality *)
+  assert (Hrt : kEqAt FS (epair (ers rho t) (ers rho u))
+                  (elUnliftN d FS (epair (ers rho t) (ers rho u))
+                     (elLiftN d FS (epair (ers rho t) (ers rho u)) xpr))
+                  (epair (ers rho t) (ers rho u)) xpr)
+    by apply elUnliftN_elLiftN.
+  pose proof (i_fst rho A B (pair (d + j) A B t u) d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
                 (epair (ers rho t) (ers rho u)) _ eq_refl DFA DB Dpair) as Dfst.
-  pose proof (ity_lvl rho rho eq_refl A k (ers rho A) FA k' (ers rho A) F DFA DA0)
+  pose proof (ity_lvl rho rho eq_refl A j (ers rho A) FA k' (ers rho A) F DFA DA0)
     as Ek; subst k'.
-  pose proof (ity_same_iso G A (FunTm_of_ty G A k dA) rho W Hrho k F FA DA0 DFA)
+  pose proof (ity_same_iso G A (FunTm_of_ty G A j dA) rho W Hrho j F FA DA0 DFA)
     as P.
-  pose proof (funtm G (fst A B (pair A B t u)) A
-                (t_fst G A B (pair A B t u) k dA dB dpair) rho rho HEself k
+  pose proof (funtm G (fst A B (pair (d + j) A B t u)) A
+                (t_fst G (d + j) j A B (pair (d + j) A B t u) (Nat.le_add_l j d) dA dB dpair) rho rho HEself j
                 (ers rho A) F _ x Dx (ers rho A) FA _ _ Dfst P
-                (LTm_of_ty G (fst A B (pair A B t u)) A
-                   (t_fst G A B (pair A B t u) k dA dB dpair) rho rho HEself))
+                (LTm_of_ty G (fst A B (pair (d + j) A B t u)) A
+                   (t_fst G (d + j) j A B (pair (d + j) A B t u) (Nat.le_add_l j d) dA dB dpair) rho rho HEself))
     as H1.
-  pose proof (funtm G t A dt rho rho HEself k (ers rho A) FA _ xt Dt
+  pose proof (funtm G t A dt rho rho HEself j (ers rho A) FA _ xt Dt
                 (ers rho A) F _ y Dy (iso_sym _ _ P)
                 (LTm_of_ty G t A dt rho rho HEself)) as H2.
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_trans; [exact H1 |].
   eapply kRel_trans;
     [ apply (proj1 (kRel_same FA _ _ _ _));
-      exact (sigFst_pair k (ers rho A) B0 FA
-               (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-               (ers rho t) (ers rho u) xt xu g)
+      (* the clause unlifts what i_pair lifted: undo the round trip, then the
+         family's own law *)
+      eapply kEqC_trans;
+        [ apply (sigFst_eq j (ers rho A) B0 FA
+                   (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig);
+          exact Hrt
+        | exact (sigFst_pair j (ers rho A) B0 FA
+                   (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
+                   (ers rho t) (ers rho u) xt xu g) ]
     | exact H2 ].
 Qed.
 
-Lemma itot_snd_beta G A B t u k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty G t A) (du : ty G u (B [t..]))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
+Lemma itot_snd_beta G A B t u d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dt : ty G t A) (du : ty G u (B [t..]))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
   (IHt : ITot G t A) (IHu : ITot G u (B [t..])) :
-  ITot G (snd A B (pair A B t u)) (B [t..]).
+  ITot G (snd A B (pair (d + j) A B t u)) (B [t..]).
 Proof.
-  pose proof (t_pair G A B t u k dA dB dt du) as dpair.
+  pose proof (t_pair G (d + j) j A B t u (Nat.le_add_l j d) dA dB dt du) as dpair.
   intros rho Hrho k' F DBt.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (z : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gSig := LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho HEself).
-  destruct (IHt rho Hrho k FA DFA) as [xt Dt].
+  pose (gSig := LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho HEself).
+  destruct (IHt rho Hrho j FA DFA) as [xt Dt].
   assert (E : ers (ext rho FA (ers rho t) xt) B = ers rho (B [t..]))
     by exact (eq_sym (ers_sub1 rho B t FA xt)).
-  pose proof (isubst_ITy rho t k (ers rho A) FA (ers rho t) xt eq_refl Dt
-                B k _ (FB (ers rho t) xt) (DB (ers rho t) xt)) as DBsub.
-  destruct (IHu rho Hrho k (famCast E (FB (ers rho t) xt))
-              (ITy_cast rho (B [t..]) k _ _ E _ DBsub)) as [xu0 Du0].
-  destruct (ITm_uncast rho u k _ _ E (FB (ers rho t) xt) _ _ Du0) as [xu Du].
+  pose proof (isubst_ITy rho t j (ers rho A) FA (ers rho t) xt eq_refl Dt
+                B j _ (FB (ers rho t) xt) (DB (ers rho t) xt)) as DBsub.
+  destruct (IHu rho Hrho j (famCast E (FB (ers rho t) xt))
+              (ITy_cast rho (B [t..]) j _ _ E _ DBsub)) as [xu0 Du0].
+  destruct (ITm_uncast rho u j _ _ E (FB (ers rho t) xt) _ _ Du0) as [xu Du].
   assert (g : Good (esig (ers rho A) B0) (epair (ers rho t) (ers rho u)))
-    by exact (LTm_of_ty G (pair A B t u) (sig_ A B) dpair rho rho HEself).
-  pose proof (i_pair rho A B t u k (ers rho A) FA B0
+    by exact (LTm_of_ty G (pair (d + j) A B t u) (sig_ (d + j) A B) dpair rho rho HEself).
+  pose (FS := sigFam j (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B)
+                FB redB isoB gSig).
+  pose (xpr := sigPair j (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B)
+                 FB redB isoB gSig (ers rho t) (ers rho u) xt xu g).
+  pose proof (i_pair rho A B t u d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
                 (ers rho t) xt (ers rho u) xu g eq_refl DFA DB Dt Du) as Dpair.
-  pose proof (i_snd rho A B (pair A B t u) k (ers rho A) FA B0
+  (* the clause lifted the pair and the projection unlifts it again: that round
+     trip is the identity up to the family's own equality *)
+  assert (Hrt : kEqAt FS (epair (ers rho t) (ers rho u))
+                  (elUnliftN d FS (epair (ers rho t) (ers rho u))
+                     (elLiftN d FS (epair (ers rho t) (ers rho u)) xpr))
+                  (epair (ers rho t) (ers rho u)) xpr)
+    by apply elUnliftN_elLiftN.
+  pose proof (i_snd rho A B (pair (d + j) A B t u) d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
                 (epair (ers rho t) (ers rho u)) _ eq_refl DFA DB Dpair) as Dsnd0.
-  pose proof (isoB (ers rho t) xt _
-                (sigFst k (ers rho A) B0 FA
-                   (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-                   (epair (ers rho t) (ers rho u))
-                   (sigPair k (ers rho A) B0 FA
-                      (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-                      (ers rho t) (ers rho u) xt xu g))
-                (kEqAt_sym FA _ _ _ _
-                   (sigFst_pair k (ers rho A) B0 FA
-                      (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-                      (ers rho t) (ers rho u) xt xu g))) as Pfam.
-  pose proof (i_conv rho (snd A B (pair A B t u)) k _ _ _ _ _ _ Pfam Dsnd0) as Dsnd.
+  assert (Hfp : kEqAt FA (efst (epair (ers rho t) (ers rho u)))
+                  (sigFst j (ers rho A) B0 FA
+                     (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
+                     (epair (ers rho t) (ers rho u))
+                     (elUnliftN d FS (epair (ers rho t) (ers rho u))
+                        (elLiftN d FS (epair (ers rho t) (ers rho u)) xpr)))
+                  (ers rho t) xt).
+  { eapply kEqC_trans;
+      [ apply (sigFst_eq j (ers rho A) B0 FA
+                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig);
+        exact Hrt
+      | exact (sigFst_pair j (ers rho A) B0 FA
+                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
+                 (ers rho t) (ers rho u) xt xu g) ]. }
+  pose proof (isoB (ers rho t) xt _ _ (kEqAt_sym FA _ _ _ _ Hfp)) as Pfam.
+  pose proof (i_conv rho (snd A B (pair (d + j) A B t u)) j _ _ _ _ _ _ Pfam Dsnd0) as Dsnd.
   assert (Hfun : FunTm G (B [t..])).
-  { destruct (ty_subst1 G A B (univ k) t dB dt) as [d].
-    exact (FunTm_of_ty G (B [t..]) k d). }
-  pose proof (ITy_cast rho (B [t..]) k _ _ E _ DBsub) as DBc.
-  pose proof (ity_lvl rho rho eq_refl (B [t..]) k (ers rho (B [t..]))
+  { destruct (ty_subst1 G A B (UU j) t dB dt) as [dsub].
+    exact (FunTm_of_ty G (B [t..]) j dsub). }
+  pose proof (ITy_cast rho (B [t..]) j _ _ E _ DBsub) as DBc.
+  pose proof (ity_lvl rho rho eq_refl (B [t..]) j (ers rho (B [t..]))
                 (famCast E (FB (ers rho t) xt)) k' (ers rho (B [t..])) F DBc DBt)
     as Ek; subst k'.
-  refine (itot_move G (snd A B (pair A B t u)) (B [t..]) Hfun W rho Hrho k F
+  refine (itot_move G (snd A B (pair (d + j) A B t u)) (B [t..]) Hfun W rho Hrho j F
             (famCast E (FB (ers rho t) xt)) DBt DBc _ _).
-  refine (ITm_cast rho (snd A B (pair A B t u)) k _ _ E (FB (ers rho t) xt) _ _ _).
+  refine (ITm_cast rho (snd A B (pair (d + j) A B t u)) j _ _ E (FB (ers rho t) xt) _ _ _).
   exact Dsnd.
 Qed.
 
-Lemma isem_snd_beta G A B t u k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty G t A) (du : ty G u (B [t..]))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
+Lemma isem_snd_beta G A B t u d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dt : ty G t A) (du : ty G u (B [t..]))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
   (IHt : ITot G t A) (IHu : ITot G u (B [t..])) :
-  ISem G (snd A B (pair A B t u)) u (B [t..]).
+  ISem G (snd A B (pair (d + j) A B t u)) u (B [t..]).
 Proof.
-  pose proof (t_pair G A B t u k dA dB dt du) as dpair.
+  pose proof (t_pair G (d + j) j A B t u (Nat.le_add_l j d) dA dB dt du) as dpair.
   split;
-    [split; [exact (itot_snd_beta G A B t u k W dA dB dt du IHA IHB IHt IHu)
+    [split; [exact (itot_snd_beta G A B t u d j W dA dB dt du IHA IHB IHt IHu)
             | exact IHu] |].
   intros rho Hrho k' F DBt x y Dx Dy.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (z : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gSig := LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho HEself).
-  destruct (IHt rho Hrho k FA DFA) as [xt Dt].
+  pose (gSig := LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho HEself).
+  destruct (IHt rho Hrho j FA DFA) as [xt Dt].
   assert (E : ers (ext rho FA (ers rho t) xt) B = ers rho (B [t..]))
     by exact (eq_sym (ers_sub1 rho B t FA xt)).
-  pose proof (isubst_ITy rho t k (ers rho A) FA (ers rho t) xt eq_refl Dt
-                B k _ (FB (ers rho t) xt) (DB (ers rho t) xt)) as DBsub.
-  destruct (IHu rho Hrho k (famCast E (FB (ers rho t) xt))
-              (ITy_cast rho (B [t..]) k _ _ E _ DBsub)) as [xu0 Du0].
-  destruct (ITm_uncast rho u k _ _ E (FB (ers rho t) xt) _ _ Du0) as [xu Du].
+  pose proof (isubst_ITy rho t j (ers rho A) FA (ers rho t) xt eq_refl Dt
+                B j _ (FB (ers rho t) xt) (DB (ers rho t) xt)) as DBsub.
+  destruct (IHu rho Hrho j (famCast E (FB (ers rho t) xt))
+              (ITy_cast rho (B [t..]) j _ _ E _ DBsub)) as [xu0 Du0].
+  destruct (ITm_uncast rho u j _ _ E (FB (ers rho t) xt) _ _ Du0) as [xu Du].
   assert (g : Good (esig (ers rho A) B0) (epair (ers rho t) (ers rho u)))
-    by exact (LTm_of_ty G (pair A B t u) (sig_ A B) dpair rho rho HEself).
-  pose proof (i_pair rho A B t u k (ers rho A) FA B0
+    by exact (LTm_of_ty G (pair (d + j) A B t u) (sig_ (d + j) A B) dpair rho rho HEself).
+  pose (FS := sigFam j (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B)
+                FB redB isoB gSig).
+  pose (xpr := sigPair j (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B)
+                 FB redB isoB gSig (ers rho t) (ers rho u) xt xu g).
+  pose proof (i_pair rho A B t u d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
                 (ers rho t) xt (ers rho u) xu g eq_refl DFA DB Dt Du) as Dpair.
-  pose proof (i_snd rho A B (pair A B t u) k (ers rho A) FA B0
+  (* the clause lifted the pair and the projection unlifts it again: that round
+     trip is the identity up to the family's own equality *)
+  assert (Hrt : kEqAt FS (epair (ers rho t) (ers rho u))
+                  (elUnliftN d FS (epair (ers rho t) (ers rho u))
+                     (elLiftN d FS (epair (ers rho t) (ers rho u)) xpr))
+                  (epair (ers rho t) (ers rho u)) xpr)
+    by apply elUnliftN_elLiftN.
+  pose proof (i_snd rho A B (pair (d + j) A B t u) d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
                 (epair (ers rho t) (ers rho u)) _ eq_refl DFA DB Dpair) as Dsnd0.
   (* the level and the isomorphism to the statement's family *)
   assert (Hfun : FunTm G (B [t..])).
-  { destruct (ty_subst1 G A B (univ k) t dB dt) as [d].
-    exact (FunTm_of_ty G (B [t..]) k d). }
-  pose proof (ity_lvl rho rho eq_refl (B [t..]) k _ (FB (ers rho t) xt) k'
+  { destruct (ty_subst1 G A B (UU j) t dB dt) as [dsub].
+    exact (FunTm_of_ty G (B [t..]) j dsub). }
+  pose proof (ity_lvl rho rho eq_refl (B [t..]) j _ (FB (ers rho t) xt) k'
                 (ers rho (B [t..])) F DBsub DBt) as Ek; subst k'.
-  pose proof (ity_same_iso' G (B [t..]) Hfun rho W Hrho k _ F _
+  pose proof (ity_same_iso' G (B [t..]) Hfun rho W Hrho j _ F _
                 (FB (ers rho t) xt) DBt DBsub) as P.
   (* the canonical second projection lives at the codomain instance the FIRST
      projection picks, which is isomorphic to the one at t *)
-  pose proof (isoB (ers rho t) xt _
-                (sigFst k (ers rho A) B0 FA
-                   (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-                   (epair (ers rho t) (ers rho u))
-                   (sigPair k (ers rho A) B0 FA
-                      (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-                      (ers rho t) (ers rho u) xt xu g))
-                (kEqAt_sym FA _ _ _ _
-                   (sigFst_pair k (ers rho A) B0 FA
-                      (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-                      (ers rho t) (ers rho u) xt xu g))) as Pfam.
+  assert (Hfp : kEqAt FA (efst (epair (ers rho t) (ers rho u)))
+                  (sigFst j (ers rho A) B0 FA
+                     (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
+                     (epair (ers rho t) (ers rho u))
+                     (elUnliftN d FS (epair (ers rho t) (ers rho u))
+                        (elLiftN d FS (epair (ers rho t) (ers rho u)) xpr)))
+                  (ers rho t) xt).
+  { eapply kEqC_trans;
+      [ apply (sigFst_eq j (ers rho A) B0 FA
+                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig);
+        exact Hrt
+      | exact (sigFst_pair j (ers rho A) B0 FA
+                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
+                 (ers rho t) (ers rho u) xt xu g) ]. }
+  pose proof (isoB (ers rho t) xt _ _ (kEqAt_sym FA _ _ _ _ Hfp)) as Pfam.
   assert (Hgs : Rel (ers (ext rho FA (ers rho t) xt) B)
-                  (ers rho (snd A B (pair A B t u))) (ers rho (snd A B (pair A B t u)))).
+                  (ers rho (snd A B (pair (d + j) A B t u))) (ers rho (snd A B (pair (d + j) A B t u)))).
   { rewrite E.
-    pose proof (LCv_of_cv G (snd A B (pair A B t u)) u (B [t..])
-                  (c_snd_beta G A B t u k dA dB dt du) rho rho HEself) as Hc.
+    pose proof (LCv_of_cv G (snd A B (pair (d + j) A B t u)) u (B [t..])
+                  (c_snd_beta G (d + j) j A B t u (Nat.le_add_l j d) dA dB dt du) rho rho HEself) as Hc.
     eapply Rel_trans; [exact Hc | apply Rel_sym; exact Hc]. }
-  pose proof (funtm G (snd A B (pair A B t u)) (B [(fst A B (pair A B t u))..])
-                (t_snd G A B (pair A B t u) k dA dB dpair)
-                rho rho HEself k _ F _ x Dx _ (FB (ers rho t) xt) _ _
-                (i_conv rho (snd A B (pair A B t u)) k _ _ _ _ _ _ Pfam Dsnd0)
+  pose proof (funtm G (snd A B (pair (d + j) A B t u)) (B [(fst A B (pair (d + j) A B t u))..])
+                (t_snd G (d + j) j A B (pair (d + j) A B t u) (Nat.le_add_l j d) dA dB dpair)
+                rho rho HEself j _ F _ x Dx _ (FB (ers rho t) xt) _ _
+                (i_conv rho (snd A B (pair (d + j) A B t u)) j _ _ _ _ _ _ Pfam Dsnd0)
                 P Hgs) as H1.
   assert (Hgu : Rel (ers rho (B [t..])) (ers rho u) (ers rho u))
     by exact (LTm_of_ty G u (B [t..]) du rho rho HEself).
-  pose proof (funtm G u (B [t..]) du rho rho HEself k _ (FB (ers rho t) xt) _ xu Du
+  pose proof (funtm G u (B [t..]) du rho rho HEself j _ (FB (ers rho t) xt) _ xu Du
                 _ F _ y Dy (iso_sym _ _ P) Hgu) as H2.
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_trans; [exact H1 |].
   eapply kRel_trans; [| exact H2].
   (* the moved canonical value is the second component *)
   apply (proj1 (kRel_same (FB (ers rho t) xt) _ _ _ _)).
-  exact (kRel_at _ _ Pfam _ _ _ _
-           (sigSnd_pair k (ers rho A) B0 FA
-              (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-              (ers rho t) (ers rho u) xt xu g)).
+  refine (kRel_at _ _ Pfam _ _ _ _ _).
+  eapply kRel_trans;
+    [ apply (sigSnd_eq j (ers rho A) B0 FA
+               (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig);
+      exact Hrt
+    | exact (sigSnd_pair j (ers rho A) B0 FA
+               (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
+               (ers rho t) (ers rho u) xt xu g) ].
 Qed.
 
 (* ---- surjective pairing ---- *)
-Lemma isem_surj G A B p k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dp : ty G p (sig_ A B))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHp : ITot G p (sig_ A B)) :
-  ISem G (pair A B (fst A B p) (snd A B p)) p (sig_ A B).
+Lemma isem_surj G A B p d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dp : ty G p (sig_ (d + j) A B))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHp : ITot G p (sig_ (d + j) A B)) :
+  ISem G (pair (d + j) A B (fst A B p) (snd A B p)) p (sig_ (d + j) A B).
 Proof.
-  pose proof (t_fst G A B p k dA dB dp) as dfst.
-  pose proof (t_snd G A B p k dA dB dp) as dsnd.
+  pose proof (t_fst G (d + j) j A B p (Nat.le_add_l j d) dA dB dp) as dfst.
+  pose proof (t_snd G (d + j) j A B p (Nat.le_add_l j d) dA dB dp) as dsnd.
   split;
-    [split; [exact (itot_pair G A B (fst A B p) (snd A B p) k W dA dB dfst dsnd
-                      IHA IHB (itot_fst G A B p k W dA dB dp IHA IHB IHp)
-                      (itot_snd G A B p k W dA dB dp IHA IHB IHp))
+    [split; [exact (itot_pair G A B (fst A B p) (snd A B p) d j W dA dB dfst dsnd
+                      IHA IHB (itot_fst G A B p d j W dA dB dp IHA IHB IHp)
+                      (itot_snd G A B p d j W dA dB dp IHA IHB IHp))
             | exact IHp] |].
   intros rho Hrho k' F Dsg x y Dx Dy.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (z : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gSig := LTyK_of_ty G (sig_ A B) k (t_sig G A B k dA dB) rho rho HEself).
-  pose proof (ity_sig rho A B k (ers rho A) FA B0
+  pose (gSig := LTyK_of_ty G (sig_ j A B) j (t_sig G j j A B (le_n j) dA dB) rho rho HEself).
+  pose proof (ity_sig rho A B d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
                 eq_refl DFA DB) as Dsig.
-  destruct (IHp rho Hrho k
-              (sigFam k (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B) FB
-                 redB isoB gSig) Dsig) as [xp Dp].
-  pose proof (i_fst rho A B p k (ers rho A) FA B0
+  pose (FS := sigFam j (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B)
+                FB redB isoB gSig).
+  destruct (IHp rho Hrho (d + j) (famLiftN d FS) Dsig) as [xpl Dp].
+  pose (xp := elUnliftN d FS (ers rho p) xpl).
+  pose proof (i_fst rho A B p d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-                (ers rho p) xp eq_refl DFA DB Dp) as Dfst.
-  pose proof (i_snd rho A B p k (ers rho A) FA B0
+                (ers rho p) xpl eq_refl DFA DB Dp) as Dfst.
+  pose proof (i_snd rho A B p d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-                (ers rho p) xp eq_refl DFA DB Dp) as Dsnd.
-  assert (gT : Good_ty (esig (ers rho A) B0)) by (exists k; exact gSig).
-  pose proof (LTm_of_ty G p (sig_ A B) dp rho rho HEself) as Hgp.
+                (ers rho p) xpl eq_refl DFA DB Dp) as Dsnd.
+  assert (gT : Good_ty (esig (ers rho A) B0)) by (exists j; exact gSig).
+  pose proof (LTm_of_ty G p (sig_ (d + j) A B) dp rho rho HEself) as Hgp.
   pose proof (sig_eta_rel _ _ _ _ _ gT (ev_sig _ _) Hgp) as gr.
   assert (g2 : Good (esig (ers rho A) B0)
                  (epair (efst (ers rho p)) (esnd (ers rho p))))
     by (eapply Rel_trans; [exact gr | apply Rel_sym; exact gr]).
-  pose proof (i_pair rho A B (fst A B p) (snd A B p) k (ers rho A) FA B0
+  pose proof (i_pair rho A B (fst A B p) (snd A B p) d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
                 (efst (ers rho p)) _ (esnd (ers rho p)) _ g2 eq_refl DFA DB
                 Dfst Dsnd) as Dpv.
-  pose proof (ity_lvl rho rho eq_refl (sig_ A B) k (ers rho (sig_ A B)) _ k'
-                (ers rho (sig_ A B)) F Dsig Dsg) as Ek; subst k'.
-  pose proof (ity_same_iso G (sig_ A B)
-                (FunTm_of_ty G (sig_ A B) k (t_sig G A B k dA dB)) rho W Hrho k
-                F _ Dsg Dsig) as P.
-  pose proof (funtm G (pair A B (fst A B p) (snd A B p)) (sig_ A B)
-                (t_pair G A B (fst A B p) (snd A B p) k dA dB dfst dsnd)
-                rho rho HEself k _ F _ x Dx _ _ _ _ Dpv P g2) as H1.
-  pose proof (funtm G p (sig_ A B) dp rho rho HEself k _ _ _ xp Dp
+  pose proof (ity_lvl rho rho eq_refl (sig_ (d + j) A B) (d + j)
+                (ers rho (sig_ (d + j) A B)) _ k'
+                (ers rho (sig_ (d + j) A B)) F Dsig Dsg) as Ek; subst k'.
+  pose proof (ity_same_iso G (sig_ (d + j) A B)
+                (FunTm_of_ty G (sig_ (d + j) A B) (d + j)
+                   (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB))
+                rho W Hrho (d + j) F _ Dsg Dsig) as P.
+  pose proof (funtm G (pair (d + j) A B (fst A B p) (snd A B p)) (sig_ (d + j) A B)
+                (t_pair G (d + j) j A B (fst A B p) (snd A B p) (Nat.le_add_l j d)
+                   dA dB dfst dsnd)
+                rho rho HEself (d + j) _ F _ x Dx _ _ _ _ Dpv P g2) as H1.
+  pose proof (funtm G p (sig_ (d + j) A B) dp rho rho HEself (d + j) _ _ _ xpl Dp
                 _ F _ y Dy (iso_sym _ _ P) Hgp) as H2.
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_trans; [exact H1 |].
   eapply kRel_trans; [| exact H2].
   apply (proj1 (kRel_same _ _ _ _ _)).
-  exact (sigPair_surj k (ers rho A) B0 FA
-           (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
-           (ers rho p) xp g2 gr).
+  (* the pair of the two projections IS the subject: the surjectivity law lives
+     at j, so lift it and undo the unlift on the right *)
+  eapply kEqC_trans;
+    [ apply (elLiftN_eq d FS);
+      exact (sigPair_surj j (ers rho A) B0 FA
+               (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gSig
+               (ers rho p) xp g2 gr)
+    | apply elLiftN_elUnliftN ].
 Qed.
 
 (* ---- beta.  The right-hand side is a substitution instance, and its
@@ -4397,72 +4661,72 @@ Lemma ITm_vcast rho t k w (F : kUFam k w) v v' (Ev : v = v') (x : kElAt F v) :
   ITm rho t k w F v x -> { y : kElAt F v' & ITm rho t k w F v' y }.
 Proof. destruct Ev; intros D; exists x; exact D. Qed.
 
-Lemma itot_subst1 G A B t u k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty (A :: G) t B) (du : ty G u A)
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
+Lemma itot_subst1 G A B t u j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dt : ty (A :: G) t B) (du : ty G u A)
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
   (IHt : ITot (A :: G) t B) (IHu : ITot G u A) : ITot G (t [u..]) (B [u..]).
 Proof.
   intros rho Hrho k' F DBu.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
-  destruct (IHu rho Hrho k FA DFA) as [xu Du].
+  destruct (IHu rho Hrho j FA DFA) as [xu Du].
   assert (E : ers (ext rho FA (ers rho u) xu) B = ers rho (B [u..]))
     by exact (eq_sym (ers_sub1 rho B u FA xu)).
   assert (Ev : ers (ext rho FA (ers rho u) xu) t = ers rho (t [u..]))
     by exact (eq_sym (ers_sub1 rho t u FA xu)).
-  pose proof (isubst_ITy rho u k (ers rho A) FA (ers rho u) xu eq_refl Du
-                B k _ (FB (ers rho u) xu) (DB (ers rho u) xu)) as DBsub.
+  pose proof (isubst_ITy rho u j (ers rho A) FA (ers rho u) xu eq_refl Du
+                B j _ (FB (ers rho u) xu) (DB (ers rho u) xu)) as DBsub.
   destruct (IHt (ext rho FA (ers rho u) xu)
-              (EnvITy_ext G rho A k FA DFA (ers rho u) xu Hrho) k
+              (EnvITy_ext G rho A j FA DFA (ers rho u) xu Hrho) j
               (FB (ers rho u) xu) (DB (ers rho u) xu)) as [z Dz].
-  pose proof (isubst_ITm rho u k (ers rho A) FA (ers rho u) xu eq_refl Du
-                t k _ (FB (ers rho u) xu) _ z Dz) as Dzs.
-  destruct (ITm_vcast rho (t [u..]) k _ (FB (ers rho u) xu) _ _ Ev z Dzs)
+  pose proof (isubst_ITm rho u j (ers rho A) FA (ers rho u) xu eq_refl Du
+                t j _ (FB (ers rho u) xu) _ z Dz) as Dzs.
+  destruct (ITm_vcast rho (t [u..]) j _ (FB (ers rho u) xu) _ _ Ev z Dzs)
     as [z' Dz'].
   assert (Hfun : FunTm G (B [u..])).
-  { destruct (ty_subst1 G A B (univ k) u dB du) as [d].
-    exact (FunTm_of_ty G (B [u..]) k d). }
-  pose proof (ITy_cast rho (B [u..]) k _ _ E _ DBsub) as DBc.
-  pose proof (ity_lvl rho rho eq_refl (B [u..]) k (ers rho (B [u..]))
+  { destruct (ty_subst1 G A B (UU j) u dB du) as [dsub].
+    exact (FunTm_of_ty G (B [u..]) j dsub). }
+  pose proof (ITy_cast rho (B [u..]) j _ _ E _ DBsub) as DBc.
+  pose proof (ity_lvl rho rho eq_refl (B [u..]) j (ers rho (B [u..]))
                 (famCast E (FB (ers rho u) xu)) k' (ers rho (B [u..])) F DBc DBu)
     as Ek; subst k'.
-  refine (itot_move G (t [u..]) (B [u..]) Hfun W rho Hrho k F
+  refine (itot_move G (t [u..]) (B [u..]) Hfun W rho Hrho j F
             (famCast E (FB (ers rho u) xu)) DBu DBc _ _).
-  refine (ITm_cast rho (t [u..]) k _ _ E (FB (ers rho u) xu) _ _ _).
+  refine (ITm_cast rho (t [u..]) j _ _ E (FB (ers rho u) xu) _ _ _).
   exact Dz'.
 Qed.
 
-Lemma isem_beta G A B t u k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (dt : ty (A :: G) t B) (du : ty G u A)
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
+Lemma isem_beta G A B t u d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (dt : ty (A :: G) t B) (du : ty G u A)
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
   (IHt : ITot (A :: G) t B) (IHu : ITot G u A) :
-  ISem G (app A B (lam A B t) u) (t [u..]) (B [u..]).
+  ISem G (app A B (lam (d + j) A B t) u) (t [u..]) (B [u..]).
 Proof.
-  pose proof (t_lam G A B t k dA dB dt) as dlam.
+  pose proof (t_lam G (d + j) j A B t (Nat.le_add_l j d) dA dB dt) as dlam.
   split;
-    [split; [exact (itot_app G A B (lam A B t) u k W dA dB dlam du IHA IHB
-                      (itot_lam G A B t k W dA dB dt IHA IHB IHt) IHu)
-            | exact (itot_subst1 G A B t u k W dA dB dt du IHA IHB IHt IHu)] |].
+    [split; [exact (itot_app G A B (lam (d + j) A B t) u d j W dA dB dlam du IHA IHB
+                      (itot_lam G A B t d j W dA dB dt IHA IHB IHt) IHu)
+            | exact (itot_subst1 G A B t u j W dA dB dt du IHA IHB IHt IHu)] |].
   intros rho Hrho k' F DBu x y Dx Dy.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (z : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gPi := LTyK_of_ty G (pi A B) k (t_pi G A B k dA dB) rho rho HEself).
-  pose proof (ity_pi rho A B k (ers rho A) FA B0
+  pose (gPi := LTyK_of_ty G (pi j A B) j (t_pi G j j A B (le_n j) dA dB) rho rho HEself).
+  pose proof (ity_pi rho A B d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gPi
                 eq_refl DFA DB) as Dpi.
   (* the body's values, and the lambda they make *)
   pose (xt := fun u0 (z : kElAt FA u0) =>
                 projT1 (IHt (ext rho FA u0 z)
-                          (EnvITy_ext G rho A k FA DFA u0 z Hrho) k (FB u0 z)
+                          (EnvITy_ext G rho A j FA DFA u0 z Hrho) j (FB u0 z)
                           (DB u0 z))).
-  assert (Dt : forall u0 z, ITm (ext rho FA u0 z) t k (ers (ext rho FA u0 z) B)
+  assert (Dt : forall u0 z, ITm (ext rho FA u0 z) t j (ers (ext rho FA u0 z) B)
                               (FB u0 z) (ers (ext rho FA u0 z) t) (xt u0 z))
     by (intros u0 z;
         exact (projT2 (IHt (ext rho FA u0 z)
-                         (EnvITy_ext G rho A k FA DFA u0 z Hrho) k (FB u0 z)
+                         (EnvITy_ext G rho A j FA DFA u0 z Hrho) j (FB u0 z)
                          (DB u0 z)))).
   assert (Hfunb : forall u0 z u0' z', kEqAt FA u0 z u0' z' ->
              kRel (FB u0 z) (FB u0' z')
@@ -4470,249 +4734,273 @@ Proof.
                   (ers (ext rho FA u0' z') t) (xt u0' z')).
   { intros u0 z u0' z' Hzz.
     assert (HEx : EnvRelOf (A :: G) (ext rho FA u0 z) (ext rho FA u0' z')).
-    { apply (EnvRelOf_ext G rho rho A k FA FA u0 z u0' z' HEself).
+    { apply (EnvRelOf_ext G rho rho A j FA FA u0 z u0' z' HEself).
       apply (proj1 (kRel_same FA _ _ _ _)); exact Hzz. }
-    refine (funtm (A :: G) t B dt _ _ HEx k _ (FB u0 z) _ (xt u0 z) (Dt u0 z)
+    refine (funtm (A :: G) t B dt _ _ HEx j _ (FB u0 z) _ (xt u0 z) (Dt u0 z)
               _ (FB u0' z') _ (xt u0' z') (Dt u0' z')
-              (FunTy_of_FunTm (A :: G) B (funtm (A :: G) B (univ k) dB) _ _ HEx
-                 k _ (FB u0 z) _ (FB u0' z') (DB u0 z) (DB u0' z')
-                 (LTyK_of_ty (A :: G) B k dB _ _ HEx)) _).
+              (FunTy_of_FunTm (A :: G) B (funtm (A :: G) B (UU j) dB) _ _ HEx
+                 j _ (FB u0 z) _ (FB u0' z') (DB u0 z) (DB u0' z')
+                 (LTyK_of_ty (A :: G) B j dB _ _ HEx)) _).
     apply (Rel_tyeq (ers (ext rho FA u0 z) B) (ers (ext rho FA u0' z') B));
-      [ exact (LTy_of_ty (A :: G) B k dB _ _ HEx)
+      [ exact (LTy_of_ty (A :: G) B j dB _ _ HEx)
       | exact (LTm_of_ty (A :: G) t B dt _ _ HEx) ]. }
-  assert (gw : Good (epi (ers rho A) B0) (ers rho (lam A B t)))
-    by exact (LTm_of_ty G (lam A B t) (pi A B) dlam rho rho HEself).
-  destruct (piEl_of k (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B) FB
-              redB isoB gPi (ers rho (lam A B t)) gw
+  assert (gw : Good (epi (ers rho A) B0) (ers rho (lam (d + j) A B t)))
+    by exact (LTm_of_ty G (lam (d + j) A B t) (pi (d + j) A B) dlam rho rho HEself).
+  destruct (piEl_of j (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B) FB
+              redB isoB gPi (ers rho (lam (d + j) A B t)) gw
               (fun u0 z => ers (ext rho FA u0 z) t) xt
               (fun u0 z => reds_beta_sub (rsub rho) (er t) u0) Hfunb)
     as [xl Hbeh].
-  pose proof (i_lam rho A B t k (ers rho A) FA B0
+  pose (FP := piFam j (ers rho A) B0 FA (fun u0 z => ers (ext rho FA u0 z) B)
+                FB redB isoB gPi).
+  refine ((fun Dlam => _)
+            (i_lam rho A B t d j (ers rho A) FA B0
+               (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gPi
+               (ers rho (lam (d + j) A B t))
+               (elLiftN d FP (ers rho (lam (d + j) A B t)) xl)
+               (fun u0 z => ers (ext rho FA u0 z) t) xt
+               eq_refl eq_refl DFA DB Dt _)).
+  2: { intros u0 z.
+       eapply kEqC_trans; [| exact (Hbeh u0 z)].
+       apply (proj2 (kRel_same (FB u0 z) _ _ _ _)).
+       apply (piApp_eq j (ers rho A) B0 FA
+                (fun u1 z1 => ers (ext rho FA u1 z1) B) FB redB isoB gPi
+                _ _ _ _ u0 z u0 z);
+         [ apply elUnliftN_elLiftN | apply kEqAt_refl_ ]. }
+  destruct (IHu rho Hrho j FA DFA) as [xu Du].
+  pose proof (i_app rho A B (lam (d + j) A B t) u d j (ers rho A) FA B0
                 (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gPi
-                (ers rho (lam A B t)) xl (fun u0 z => ers (ext rho FA u0 z) t) xt
-                eq_refl eq_refl DFA DB Dt Hbeh) as Dlam.
-  destruct (IHu rho Hrho k FA DFA) as [xu Du].
-  pose proof (i_app rho A B (lam A B t) u k (ers rho A) FA B0
-                (fun u0 z => ers (ext rho FA u0 z) B) FB redB isoB gPi
-                (ers rho (lam A B t)) xl (ers rho u) xu eq_refl DFA DB Dlam Du)
-    as Dapp.
+                (ers rho (lam (d + j) A B t))
+                (elLiftN d FP (ers rho (lam (d + j) A B t)) xl)
+                (ers rho u) xu eq_refl DFA DB Dlam Du) as Dapp.
   (* the substituted body, in rho *)
   assert (E : ers (ext rho FA (ers rho u) xu) B = ers rho (B [u..]))
     by exact (eq_sym (ers_sub1 rho B u FA xu)).
   assert (Ev : ers (ext rho FA (ers rho u) xu) t = ers rho (t [u..]))
     by exact (eq_sym (ers_sub1 rho t u FA xu)).
-  pose proof (isubst_ITy rho u k (ers rho A) FA (ers rho u) xu eq_refl Du
-                B k _ (FB (ers rho u) xu) (DB (ers rho u) xu)) as DBsub.
-  pose proof (isubst_ITm rho u k (ers rho A) FA (ers rho u) xu eq_refl Du
-                t k _ (FB (ers rho u) xu) _ (xt (ers rho u) xu)
+  pose proof (isubst_ITy rho u j (ers rho A) FA (ers rho u) xu eq_refl Du
+                B j _ (FB (ers rho u) xu) (DB (ers rho u) xu)) as DBsub.
+  pose proof (isubst_ITm rho u j (ers rho A) FA (ers rho u) xu eq_refl Du
+                t j _ (FB (ers rho u) xu) _ (xt (ers rho u) xu)
                 (Dt (ers rho u) xu)) as Dzs.
   (* the level, and the isomorphism to the statement's family *)
   assert (ftu : FunTm G (t [u..])).
-  { destruct (ty_subst1 G A t B u dt du) as [d].
-    exact (funtm G (t [u..]) (B [u..]) d). }
+  { destruct (ty_subst1 G A t B u dt du) as [dsub].
+    exact (funtm G (t [u..]) (B [u..]) dsub). }
   assert (fBu : FunTm G (B [u..])).
-  { destruct (ty_subst1 G A B (univ k) u dB du) as [d].
-    exact (FunTm_of_ty G (B [u..]) k d). }
-  pose proof (ity_lvl rho rho eq_refl (B [u..]) k _ (FB (ers rho u) xu) k'
+  { destruct (ty_subst1 G A B (UU j) u dB du) as [dsub].
+    exact (FunTm_of_ty G (B [u..]) j dsub). }
+  pose proof (ity_lvl rho rho eq_refl (B [u..]) j _ (FB (ers rho u) xu) k'
                 (ers rho (B [u..])) F DBsub DBu) as Ek; subst k'.
-  pose proof (ity_same_iso' G (B [u..]) fBu rho W Hrho k _ F _
+  pose proof (ity_same_iso' G (B [u..]) fBu rho W Hrho j _ F _
                 (FB (ers rho u) xu) DBu DBsub) as P.
   assert (Hg1 : Rel (ers (ext rho FA (ers rho u) xu) B)
-                  (ers rho (app A B (lam A B t) u))
-                  (eapp (ers rho (lam A B t)) (ers rho u))).
+                  (ers rho (app A B (lam (d + j) A B t) u))
+                  (eapp (ers rho (lam (d + j) A B t)) (ers rho u))).
   { rewrite E.
-    exact (LTm_of_ty G (app A B (lam A B t) u) (B [u..])
-             (t_app G A B (lam A B t) u k dA dB dlam du) rho rho HEself). }
-  pose proof (funtm G (app A B (lam A B t) u) (B [u..])
-                (t_app G A B (lam A B t) u k dA dB dlam du) rho rho HEself k
+    exact (LTm_of_ty G (app A B (lam (d + j) A B t) u) (B [u..])
+             (t_app G (d + j) j A B (lam (d + j) A B t) u (Nat.le_add_l j d) dA dB dlam du) rho rho HEself). }
+  pose proof (funtm G (app A B (lam (d + j) A B t) u) (B [u..])
+                (t_app G (d + j) j A B (lam (d + j) A B t) u (Nat.le_add_l j d)
+                   dA dB dlam du) rho rho HEself j
                 _ F _ x Dx _ (FB (ers rho u) xu) _ _ Dapp P Hg1) as H1.
   assert (Hg2 : Rel (ers rho (B [u..])) (ers (ext rho FA (ers rho u) xu) t)
                   (ers rho (t [u..]))).
   { rewrite Ev.
-    destruct (ty_subst1 G A t B u dt du) as [d].
-    exact (LTm_of_ty G (t [u..]) (B [u..]) d rho rho HEself). }
-  pose proof (ftu rho rho HEself k _ (FB (ers rho u) xu) _ (xt (ers rho u) xu) Dzs
+    destruct (ty_subst1 G A t B u dt du) as [dsub].
+    exact (LTm_of_ty G (t [u..]) (B [u..]) dsub rho rho HEself). }
+  pose proof (ftu rho rho HEself j _ (FB (ers rho u) xu) _ (xt (ers rho u) xu) Dzs
                 _ F _ y Dy (iso_sym _ _ P) Hg2) as H2.
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_trans; [exact H1 |].
   eapply kRel_trans; [| exact H2].
   apply (proj1 (kRel_same (FB (ers rho u) xu) _ _ _ _)).
-  exact (Hbeh (ers rho u) xu).
+  (* the clause unlifted the lambda's lifted value; undo the round trip *)
+  eapply kEqC_trans;
+    [ apply (proj2 (kRel_same (FB (ers rho u) xu) _ _ _ _));
+      apply (piApp_eq j (ers rho A) B0 FA
+               (fun u1 z1 => ers (ext rho FA u1 z1) B) FB redB isoB gPi
+               (ers rho (lam (d + j) A B t))
+               (elUnliftN d FP (ers rho (lam (d + j) A B t))
+                  (elLiftN d FP (ers rho (lam (d + j) A B t)) xl))
+               (ers rho (lam (d + j) A B t)) xl (ers rho u) xu (ers rho u) xu);
+        [ apply elUnliftN_elLiftN | apply kEqAt_refl_ ]
+    | exact (Hbeh (ers rho u) xu) ].
 Qed.
 
 (* ---- the recursor.  The three rules share the data itot_natrec builds, so
      it is packaged once here. ---- *)
-Lemma build_rec_data G C z s k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dz : ty G z (C [zero..]))
-  (ds : ty (C :: nat_ :: G) s (nrec_succ C))
-  (IHC : ITot (nat_ :: G) C (univ k)) (IHz : ITot G z (C [zero..]))
-  (IHs : ITot (C :: nat_ :: G) s (nrec_succ C))
+Lemma build_rec_data G C z s k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dz : ty G z (C [(zero j)..]))
+  (ds : ty (C :: nat_ j :: G) s (nrec_succ C))
+  (IHC : ITot (nat_ j :: G) C (UU k)) (IHz : ITot G z (C [(zero j)..]))
+  (IHs : ITot (C :: nat_ j :: G) s (nrec_succ C))
   rho (Hrho : EnvITy G rho) :
-  { FC : forall m (x : kElAt (natFam 0) m),
+  { FC : forall m (x : kElAt (natFam j) m),
            kUFam k (subst_etm (scons m (rsub rho)) (er C)) &
-  { isoC : forall m x m' x', kEqAt (natFam 0) m x m' x' ->
+  { isoC : forall m x m' x', kEqAt (natFam j) m x m' x' ->
              iso (kAt (FC m x)) (kAt (FC m' x')) &
   { xz : kElAt (FC ezero (natE 0 NatAt_zero)) (ers rho z) &
-  { xs : forall m (x : kElAt (natFam 0) m) w (y : kElAt (FC m x) w),
+  { xs : forall m (x : kElAt (natFam j) m) w (y : kElAt (FC m x) w),
            kElAt (FC (esucc m) (natSucc x))
-             (ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s) &
-    ((forall m x, ITy (ext rho (natFam 0) m x) C k
+             (ers (ext (ext rho (natFam j) m x) (FC m x) w y) s) &
+    ((forall m x, ITy (ext rho (natFam j) m x) C k
                     (subst_etm (scons m (rsub rho)) (er C)) (FC m x)) *
      ITm rho z k (subst_etm (scons ezero (rsub rho)) (er C))
          (FC ezero (natE 0 NatAt_zero)) (ers rho z) xz *
      (forall m x w y,
-        ITm (ext (ext rho (natFam 0) m x) (FC m x) w y) s k
+        ITm (ext (ext rho (natFam j) m x) (FC m x) w y) s k
             (subst_etm (scons (esucc m) (rsub rho)) (er C))
             (FC (esucc m) (natSucc x))
-            (ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s) (xs m x w y)) *
-     (forall m x w y m' x' w' y', kEqAt (natFam 0) m x m' x' ->
+            (ers (ext (ext rho (natFam j) m x) (FC m x) w y) s) (xs m x w y)) *
+     (forall m x w y m' x' w' y', kEqAt (natFam j) m x m' x' ->
         kRel (FC m x) (FC m' x') w y w' y' ->
         kRel (FC (esucc m) (natSucc x)) (FC (esucc m') (natSucc x'))
-             (ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s) (xs m x w y)
-             (ers (ext (ext rho (natFam 0) m' x') (FC m' x') w' y') s)
+             (ers (ext (ext rho (natFam j) m x) (FC m x) w y) s) (xs m x w y)
+             (ers (ext (ext rho (natFam j) m' x') (FC m' x') w' y') s)
              (xs m' x' w' y')))%type
   } } } }.
 Proof.
   pose (SC := fun m : etm => subst_etm (scons m (rsub rho)) (er C)).
-  assert (HEm : forall m (x : kElAt (natFam 0) m),
-             EnvITy (nat_ :: G) (ext rho (natFam 0) m x)).
+  assert (HEm : forall m (x : kElAt (natFam j) m),
+             EnvITy (nat_ j :: G) (ext rho (natFam j) m x)).
   { intros m x.
-    exact (EnvITy_ext G rho nat_ 0 (natFam 0)
-             (ity_nat rho (ers rho nat_) eq_refl) m x Hrho). }
-  pose (FC := fun m (x : kElAt (natFam 0) m) =>
-                projT1 (ityT_of_ITot (nat_ :: G) C k IHC
-                          (ext rho (natFam 0) m x) (HEm m x))).
-  assert (DC : forall m x, ITy (ext rho (natFam 0) m x) C k (SC m) (FC m x))
+    exact (EnvITy_ext G rho (nat_ j) j (natFam j)
+             (ity_nat rho _ _ eq_refl) m x Hrho). }
+  pose (FC := fun m (x : kElAt (natFam j) m) =>
+                projT1 (ityT_of_ITot (nat_ j :: G) C k IHC
+                          (ext rho (natFam j) m x) (HEm m x))).
+  assert (DC : forall m x, ITy (ext rho (natFam j) m x) C k (SC m) (FC m x))
     by (intros m x;
-        exact (projT2 (ityT_of_ITot (nat_ :: G) C k IHC
-                         (ext rho (natFam 0) m x) (HEm m x)))).
-  assert (isoC : forall m x m' x', kEqAt (natFam 0) m x m' x' ->
+        exact (projT2 (ityT_of_ITot (nat_ j :: G) C k IHC
+                         (ext rho (natFam j) m x) (HEm m x)))).
+  assert (isoC : forall m x m' x', kEqAt (natFam j) m x m' x' ->
              iso (kAt (FC m x)) (kAt (FC m' x'))).
   { intros m x m' x' Hm.
-    assert (HEx : EnvRelOf (nat_ :: G) (ext rho (natFam 0) m x)
-                    (ext rho (natFam 0) m' x')).
-    { apply (EnvRelOf_ext G rho rho nat_ 0 (natFam 0) (natFam 0) m x m' x'
+    assert (HEx : EnvRelOf (nat_ j :: G) (ext rho (natFam j) m x)
+                    (ext rho (natFam j) m' x')).
+    { apply (EnvRelOf_ext G rho rho (nat_ j) j (natFam j) (natFam j) m x m' x'
                (EnvRelOf_selfE G rho W Hrho)).
-      apply (proj1 (kRel_same (natFam 0) _ _ _ _)); exact Hm. }
-    exact (FunTy_of_FunTm (nat_ :: G) C (funtm (nat_ :: G) C (univ k) dC)
+      apply (proj1 (kRel_same (natFam j) _ _ _ _)); exact Hm. }
+    exact (FunTy_of_FunTm (nat_ j :: G) C (funtm (nat_ j :: G) C (UU k) dC)
              _ _ HEx k _ (FC m x) _ (FC m' x') (DC m x) (DC m' x')
-             (LTyK_of_ty (nat_ :: G) C k dC _ _ HEx)). }
-  assert (E0 : SC ezero = ers rho (C [zero..]))
-    by exact (eq_sym (ers_sub1 rho C zero (natFam 0) (natE 0 NatAt_zero))).
-  pose proof (isubst_ITy rho zero 0 enat (natFam 0) ezero (natE 0 NatAt_zero)
-                eq_refl (i_zero rho) C k (SC ezero) (FC ezero (natE 0 NatAt_zero))
+             (LTyK_of_ty (nat_ j :: G) C k dC _ _ HEx)). }
+  assert (E0 : SC ezero = ers rho (C [(zero j)..]))
+    by exact (eq_sym (ers_sub1 rho C (zero j) (natFam j) (natE 0 NatAt_zero))).
+  pose proof (isubst_ITy rho (zero j) j enat (natFam j) ezero (natE 0 NatAt_zero)
+                eq_refl (i_zero rho j) C k (SC ezero) (FC ezero (natE 0 NatAt_zero))
                 (DC ezero (natE 0 NatAt_zero))) as DCz.
   destruct (IHz rho Hrho k (famCast E0 (FC ezero (natE 0 NatAt_zero)))
-              (ITy_cast rho (C [zero..]) k _ _ E0 _ DCz)) as [xz' Dz'].
+              (ITy_cast rho (C [(zero j)..]) k _ _ E0 _ DCz)) as [xz' Dz'].
   destruct (ITm_uncast rho z k _ _ E0 (FC ezero (natE 0 NatAt_zero)) _ _ Dz')
     as [xz Dz].
-  assert (Hstep : forall m (x : kElAt (natFam 0) m) w (y : kElAt (FC m x) w),
+  assert (Hstep : forall m (x : kElAt (natFam j) m) w (y : kElAt (FC m x) w),
              { xs : kElAt (FC (esucc m) (natSucc x))
-                      (ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s) &
-               ITm (ext (ext rho (natFam 0) m x) (FC m x) w y) s k
+                      (ers (ext (ext rho (natFam j) m x) (FC m x) w y) s) &
+               ITm (ext (ext rho (natFam j) m x) (FC m x) w y) s k
                    (SC (esucc m)) (FC (esucc m) (natSucc x))
-                   (ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s) xs }).
+                   (ers (ext (ext rho (natFam j) m x) (FC m x) w y) s) xs }).
   { intros m x w y.
-    pose proof (ity_nrec_succ rho C k m x (FC (esucc m) (natSucc x))
+    pose proof (ity_nrec_succ rho C k j m x (FC (esucc m) (natSucc x))
                   (DC (esucc m) (natSucc x)) k (SC m) (FC m x) w y) as DS.
     assert (Es : SC (esucc m)
-                 = ers (ext (ext rho (natFam 0) m x) (FC m x) w y) (nrec_succ C))
+                 = ers (ext (ext rho (natFam j) m x) (FC m x) w y) (nrec_succ C))
       by exact (eq_sym (er_nrec_succ C (rsub rho) m w)).
-    destruct (IHs (ext (ext rho (natFam 0) m x) (FC m x) w y)
-                (EnvITy_ext (nat_ :: G) (ext rho (natFam 0) m x) C k (FC m x)
+    destruct (IHs (ext (ext rho (natFam j) m x) (FC m x) w y)
+                (EnvITy_ext (nat_ j :: G) (ext rho (natFam j) m x) C k (FC m x)
                    (DC m x) w y (HEm m x))
                 k (famCast Es (FC (esucc m) (natSucc x)))
                 (ITy_cast _ (nrec_succ C) k _ _ Es _ DS)) as [xs' Ds'].
     destruct (ITm_uncast _ s k _ _ Es (FC (esucc m) (natSucc x)) _ _ Ds')
       as [xs Ds].
     exists xs; exact Ds. }
-  assert (Hfs : forall m x w y m' x' w' y', kEqAt (natFam 0) m x m' x' ->
+  assert (Hfs : forall m x w y m' x' w' y', kEqAt (natFam j) m x m' x' ->
              kRel (FC m x) (FC m' x') w y w' y' ->
              kRel (FC (esucc m) (natSucc x)) (FC (esucc m') (natSucc x'))
-                  (ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s)
+                  (ers (ext (ext rho (natFam j) m x) (FC m x) w y) s)
                   (projT1 (Hstep m x w y))
-                  (ers (ext (ext rho (natFam 0) m' x') (FC m' x') w' y') s)
+                  (ers (ext (ext rho (natFam j) m' x') (FC m' x') w' y') s)
                   (projT1 (Hstep m' x' w' y'))).
   { intros m x w y m' x' w' y' Hm Hy.
-    assert (HE0 : EnvRelOf (nat_ :: G) (ext rho (natFam 0) m x)
-                    (ext rho (natFam 0) m' x')).
-    { apply (EnvRelOf_ext G rho rho nat_ 0 (natFam 0) (natFam 0) m x m' x'
+    assert (HE0 : EnvRelOf (nat_ j :: G) (ext rho (natFam j) m x)
+                    (ext rho (natFam j) m' x')).
+    { apply (EnvRelOf_ext G rho rho (nat_ j) j (natFam j) (natFam j) m x m' x'
                (EnvRelOf_selfE G rho W Hrho)).
-      apply (proj1 (kRel_same (natFam 0) _ _ _ _)); exact Hm. }
-    assert (HEr : EnvRelOf (C :: nat_ :: G)
-                    (ext (ext rho (natFam 0) m x) (FC m x) w y)
-                    (ext (ext rho (natFam 0) m' x') (FC m' x') w' y'))
-      by exact (EnvRelOf_ext (nat_ :: G) (ext rho (natFam 0) m x)
-                  (ext rho (natFam 0) m' x') C k (FC m x) (FC m' x') w y w' y'
+      apply (proj1 (kRel_same (natFam j) _ _ _ _)); exact Hm. }
+    assert (HEr : EnvRelOf (C :: nat_ j :: G)
+                    (ext (ext rho (natFam j) m x) (FC m x) w y)
+                    (ext (ext rho (natFam j) m' x') (FC m' x') w' y'))
+      by exact (EnvRelOf_ext (nat_ j :: G) (ext rho (natFam j) m x)
+                  (ext rho (natFam j) m' x') C k (FC m x) (FC m' x') w y w' y'
                   HE0 Hy).
     assert (Q : iso (kAt (FC (esucc m) (natSucc x)))
                     (kAt (FC (esucc m') (natSucc x'))))
       by exact (isoC (esucc m) (natSucc x) (esucc m') (natSucc x')
                   (natSucc_eq x x' Hm)).
     assert (Es : SC (esucc m)
-                 = ers (ext (ext rho (natFam 0) m x) (FC m x) w y) (nrec_succ C))
+                 = ers (ext (ext rho (natFam j) m x) (FC m x) w y) (nrec_succ C))
       by exact (eq_sym (er_nrec_succ C (rsub rho) m w)).
-    refine (funtm (C :: nat_ :: G) s (nrec_succ C) ds _ _ HEr k
+    refine (funtm (C :: nat_ j :: G) s (nrec_succ C) ds _ _ HEr k
               _ (FC (esucc m) (natSucc x)) _ (projT1 (Hstep m x w y))
               (projT2 (Hstep m x w y))
               _ (FC (esucc m') (natSucc x')) _ (projT1 (Hstep m' x' w' y'))
               (projT2 (Hstep m' x' w' y')) Q _).
-    apply (Rel_tyeq (ers (ext (ext rho (natFam 0) m x) (FC m x) w y)
+    apply (Rel_tyeq (ers (ext (ext rho (natFam j) m x) (FC m x) w y)
                       (nrec_succ C)) (SC (esucc m'))).
     - rewrite <- Es; exact (iso_ty _ _ Q).
-    - exact (LTm_of_ty (C :: nat_ :: G) s (nrec_succ C) ds _ _ HEr). }
+    - exact (LTm_of_ty (C :: nat_ j :: G) s (nrec_succ C) ds _ _ HEr). }
   exists FC, isoC, xz, (fun m x w y => projT1 (Hstep m x w y)).
   split; [split; [split; [exact DC | exact Dz] |] |].
   - intros m x w y; exact (projT2 (Hstep m x w y)).
   - exact Hfs.
 Qed.
 
-Lemma isem_rec_zero G C z s k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dz : ty G z (C [zero..]))
-  (ds : ty (C :: nat_ :: G) s (nrec_succ C))
-  (IHC : ITot (nat_ :: G) C (univ k)) (IHz : ITot G z (C [zero..]))
-  (IHs : ITot (C :: nat_ :: G) s (nrec_succ C)) :
-  ISem G (natrec C z s zero) z (C [zero..]).
+Lemma isem_rec_zero G C z s k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dz : ty G z (C [(zero j)..]))
+  (ds : ty (C :: nat_ j :: G) s (nrec_succ C))
+  (IHC : ITot (nat_ j :: G) C (UU k)) (IHz : ITot G z (C [(zero j)..]))
+  (IHs : ITot (C :: nat_ j :: G) s (nrec_succ C)) :
+  ISem G (natrec C z s (zero j)) z (C [(zero j)..]).
 Proof.
   split;
-    [split; [exact (itot_natrec G C z s zero k W dC dz ds (t_zero G W)
-                      IHC IHz IHs (itot_zero G W))
+    [split; [exact (itot_natrec G C z s (zero j) k j W dC dz ds (t_zero G j W)
+                      IHC IHz IHs (itot_zero G W j))
             | exact IHz] |].
   intros rho Hrho k' F DCz x y Dx Dy.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-  destruct (build_rec_data G C z s k W dC dz ds IHC IHz IHs rho Hrho)
+  destruct (build_rec_data G C z s k j W dC dz ds IHC IHz IHs rho Hrho)
     as [FC [isoC [xz [xs [[[DC Dz] Ds] Hfs]]]]].
-  pose proof (i_natrec rho C z s zero k
+  pose proof (i_natrec rho C z s (zero j) k j
                 (fun m => subst_etm (scons m (rsub rho)) (er C)) FC isoC
                 (ers rho (stepWrap s)) (ers rho z) xz
-                (fun m x w y => ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s)
+                (fun m x w y => ers (ext (ext rho (natFam j) m x) (FC m x) w y) s)
                 xs (fun m x w y => reds_lam2_app (er s) (rsub rho) m w)
-                ezero (natE 0 NatAt_zero) eq_refl DC Dz Ds (i_zero rho)) as Dnr.
-  assert (E0 : subst_etm (scons ezero (rsub rho)) (er C) = ers rho (C [zero..]))
-    by exact (eq_sym (ers_sub1 rho C zero (natFam 0) (natE 0 NatAt_zero))).
-  pose proof (isubst_ITy rho zero 0 enat (natFam 0) ezero (natE 0 NatAt_zero)
-                eq_refl (i_zero rho) C k _ (FC ezero (natE 0 NatAt_zero))
+                ezero (natE 0 NatAt_zero) eq_refl DC Dz Ds (i_zero rho j)) as Dnr.
+  assert (E0 : subst_etm (scons ezero (rsub rho)) (er C) = ers rho (C [(zero j)..]))
+    by exact (eq_sym (ers_sub1 rho C (zero j) (natFam j) (natE 0 NatAt_zero))).
+  pose proof (isubst_ITy rho (zero j) j enat (natFam j) ezero (natE 0 NatAt_zero)
+                eq_refl (i_zero rho j) C k _ (FC ezero (natE 0 NatAt_zero))
                 (DC ezero (natE 0 NatAt_zero))) as DCz0.
-  assert (fCz : FunTm G (C [zero..])).
-  { destruct (ty_subst1 G nat_ C (univ k) zero dC (t_zero G W)) as [d].
-    exact (FunTm_of_ty G (C [zero..]) k d). }
-  pose proof (ity_lvl rho rho eq_refl (C [zero..]) k _
-                (FC ezero (natE 0 NatAt_zero)) k' (ers rho (C [zero..])) F
+  assert (fCz : FunTm G (C [(zero j)..])).
+  { destruct (ty_subst1 G (nat_ j) C (UU k) (zero j) dC (t_zero G j W)) as [dsub].
+    exact (FunTm_of_ty G (C [(zero j)..]) k dsub). }
+  pose proof (ity_lvl rho rho eq_refl (C [(zero j)..]) k _
+                (FC ezero (natE 0 NatAt_zero)) k' (ers rho (C [(zero j)..])) F
                 DCz0 DCz) as Ek; subst k'.
-  pose proof (ity_same_iso' G (C [zero..]) fCz rho W Hrho k _ F _
+  pose proof (ity_same_iso' G (C [(zero j)..]) fCz rho W Hrho k _ F _
                 (FC ezero (natE 0 NatAt_zero)) DCz DCz0) as P.
   assert (Hg1 : Rel (subst_etm (scons ezero (rsub rho)) (er C))
-                  (ers rho (natrec C z s zero))
+                  (ers rho (natrec C z s (zero j)))
                   (enatrec (ers rho z) (ers rho (stepWrap s)) ezero)).
   { rewrite E0.
-    exact (LTm_of_ty G (natrec C z s zero) (C [zero..])
-             (t_natrec G C z s zero k dC dz ds (t_zero G W)) rho rho HEself). }
-  pose proof (funtm G (natrec C z s zero) (C [zero..])
-                (t_natrec G C z s zero k dC dz ds (t_zero G W)) rho rho HEself k
+    exact (LTm_of_ty G (natrec C z s (zero j)) (C [(zero j)..])
+             (t_natrec G C z s (zero j) k j dC dz ds (t_zero G j W)) rho rho HEself). }
+  pose proof (funtm G (natrec C z s (zero j)) (C [(zero j)..])
+                (t_natrec G C z s (zero j) k j dC dz ds (t_zero G j W)) rho rho HEself k
                 _ F _ x Dx _ (FC ezero (natE 0 NatAt_zero)) _ _ Dnr P Hg1) as H1.
-  pose proof (funtm G z (C [zero..]) dz rho rho HEself k
+  pose proof (funtm G z (C [(zero j)..]) dz rho rho HEself k
                 _ (FC ezero (natE 0 NatAt_zero)) _ xz Dz _ F _ y Dy
-                (iso_sym _ _ P) (LTm_of_ty G z (C [zero..]) dz rho rho HEself))
+                (iso_sym _ _ P) (LTm_of_ty G z (C [(zero j)..]) dz rho rho HEself))
     as H2.
   apply (proj2 (kRel_same F _ _ _ _)).
   eapply kRel_trans; [exact H1 |].
@@ -4722,67 +5010,67 @@ Proof.
 Qed.
 
 (* The motive alone, which the congruence needs for both motives. *)
-Lemma build_motive G C k (W : wfc G) (dC : ty (nat_ :: G) C (univ k))
-  (IHC : ITot (nat_ :: G) C (univ k)) rho (Hrho : EnvITy G rho) :
-  { FC : forall m (x : kElAt (natFam 0) m),
+Lemma build_motive G C k j (W : wfc G) (dC : ty (nat_ j :: G) C (UU k))
+  (IHC : ITot (nat_ j :: G) C (UU k)) rho (Hrho : EnvITy G rho) :
+  { FC : forall m (x : kElAt (natFam j) m),
            kUFam k (subst_etm (scons m (rsub rho)) (er C)) &
-    ((forall m x, ITy (ext rho (natFam 0) m x) C k
+    ((forall m x, ITy (ext rho (natFam j) m x) C k
                     (subst_etm (scons m (rsub rho)) (er C)) (FC m x)) *
-     (forall m x m' x', kEqAt (natFam 0) m x m' x' ->
+     (forall m x m' x', kEqAt (natFam j) m x m' x' ->
         iso (kAt (FC m x)) (kAt (FC m' x'))))%type }.
 Proof.
-  assert (HEm : forall m (x : kElAt (natFam 0) m),
-             EnvITy (nat_ :: G) (ext rho (natFam 0) m x)).
+  assert (HEm : forall m (x : kElAt (natFam j) m),
+             EnvITy (nat_ j :: G) (ext rho (natFam j) m x)).
   { intros m x.
-    exact (EnvITy_ext G rho nat_ 0 (natFam 0)
-             (ity_nat rho (ers rho nat_) eq_refl) m x Hrho). }
-  pose (FC := fun m (x : kElAt (natFam 0) m) =>
-                projT1 (ityT_of_ITot (nat_ :: G) C k IHC
-                          (ext rho (natFam 0) m x) (HEm m x))).
-  assert (DC : forall m x, ITy (ext rho (natFam 0) m x) C k
+    exact (EnvITy_ext G rho (nat_ j) j (natFam j)
+             (ity_nat rho _ _ eq_refl) m x Hrho). }
+  pose (FC := fun m (x : kElAt (natFam j) m) =>
+                projT1 (ityT_of_ITot (nat_ j :: G) C k IHC
+                          (ext rho (natFam j) m x) (HEm m x))).
+  assert (DC : forall m x, ITy (ext rho (natFam j) m x) C k
                              (subst_etm (scons m (rsub rho)) (er C)) (FC m x))
     by (intros m x;
-        exact (projT2 (ityT_of_ITot (nat_ :: G) C k IHC
-                         (ext rho (natFam 0) m x) (HEm m x)))).
+        exact (projT2 (ityT_of_ITot (nat_ j :: G) C k IHC
+                         (ext rho (natFam j) m x) (HEm m x)))).
   exists FC; split; [exact DC |].
   intros m x m' x' Hm.
-  assert (HEx : EnvRelOf (nat_ :: G) (ext rho (natFam 0) m x)
-                  (ext rho (natFam 0) m' x')).
-  { apply (EnvRelOf_ext G rho rho nat_ 0 (natFam 0) (natFam 0) m x m' x'
+  assert (HEx : EnvRelOf (nat_ j :: G) (ext rho (natFam j) m x)
+                  (ext rho (natFam j) m' x')).
+  { apply (EnvRelOf_ext G rho rho (nat_ j) j (natFam j) (natFam j) m x m' x'
              (EnvRelOf_selfE G rho W Hrho)).
-    apply (proj1 (kRel_same (natFam 0) _ _ _ _)); exact Hm. }
-  exact (FunTy_of_FunTm (nat_ :: G) C (funtm (nat_ :: G) C (univ k) dC)
+    apply (proj1 (kRel_same (natFam j) _ _ _ _)); exact Hm. }
+  exact (FunTy_of_FunTm (nat_ j :: G) C (funtm (nat_ j :: G) C (UU k) dC)
            _ _ HEx k _ (FC m x) _ (FC m' x') (DC m x) (DC m' x')
-           (LTyK_of_ty (nat_ :: G) C k dC _ _ HEx)).
+           (LTyK_of_ty (nat_ j :: G) C k dC _ _ HEx)).
 Qed.
 
 (* The step's type is well typed: a renaming, a substitution and a weakening of
    the motive's derivation. *)
-Lemma ty_nrec_succ G C k (W : wfc G) (dC : ty (nat_ :: G) C (univ k)) :
-  inhabited (ty (C :: nat_ :: G) (nrec_succ C) (univ k)).
+Lemma ty_nrec_succ G C k j (W : wfc G) (dC : ty (nat_ j :: G) C (UU k)) :
+  inhabited (ty (C :: nat_ j :: G) (nrec_succ C) (UU k)).
 Proof.
-  pose proof (w_cons G nat_ 0 W (t_nat G W)) as W1.
-  pose proof (w_cons (nat_ :: G) nat_ 0 W1 (t_nat (nat_ :: G) W1)) as W2.
-  destruct (proj1 (proj2 renaming) (nat_ :: G) C (univ k) dC
-              (nat_ :: nat_ :: G) (upRen_tm_tm shift)
-              (ren_ok_up shift G (nat_ :: G) nat_ (ren_ok_shift G nat_))
+  pose proof (w_cons G (nat_ j) j W (t_nat G j W)) as W1.
+  pose proof (w_cons (nat_ j :: G) (nat_ j) j W1 (t_nat (nat_ j :: G) j W1)) as W2.
+  destruct (proj1 (proj2 renaming) (nat_ j :: G) C (UU k) dC
+              (nat_ j :: nat_ j :: G) (upRen_tm_tm shift)
+              (ren_ok_up shift G (nat_ j :: G) (nat_ j) (ren_ok_shift G (nat_ j)))
               (inhabits W2)) as [d1].
-  destruct (ty_subst1 (nat_ :: G) nat_ (C ⟨upRen_tm_tm shift⟩) (univ k)
+  destruct (ty_subst1 (nat_ j :: G) (nat_ j) (C ⟨upRen_tm_tm shift⟩) (UU k)
               (succ (var_tm 0)) d1
-              (t_succ (nat_ :: G) (var_tm 0)
-                 (t_var (nat_ :: G) 0 nat_ W1 (lookup_O G nat_)))) as [d2].
-  destruct (proj1 (proj2 renaming) (nat_ :: G) _ (univ k) d2
-              (C :: nat_ :: G) shift (ren_ok_shift (nat_ :: G) C)
-              (inhabits (w_cons (nat_ :: G) C k W1 dC))) as [d3].
+              (t_succ (nat_ j :: G) j (var_tm 0)
+                 (t_var (nat_ j :: G) 0 (nat_ j) W1 (lookup_O G (nat_ j))))) as [d2].
+  destruct (proj1 (proj2 renaming) (nat_ j :: G) _ (UU k) d2
+              (C :: nat_ j :: G) shift (ren_ok_shift (nat_ j :: G) C)
+              (inhabits (w_cons (nat_ j :: G) C k W1 dC))) as [d3].
   rewrite <- nrec_succ_as in d3.
   exact (inhabits d3).
 Qed.
 
-Lemma funtm_nrec_succ G C k (W : wfc G) (dC : ty (nat_ :: G) C (univ k)) :
-  FunTm (C :: nat_ :: G) (nrec_succ C).
+Lemma funtm_nrec_succ G C k j (W : wfc G) (dC : ty (nat_ j :: G) C (UU k)) :
+  FunTm (C :: nat_ j :: G) (nrec_succ C).
 Proof.
-  destruct (ty_nrec_succ G C k W dC) as [d].
-  exact (FunTm_of_ty (C :: nat_ :: G) (nrec_succ C) k d).
+  destruct (ty_nrec_succ G C k j W dC) as [d].
+  exact (FunTm_of_ty (C :: nat_ j :: G) (nrec_succ C) k d).
 Qed.
 
 (* semrec_rel at two indices that are only PROVABLY equal, which is what the
@@ -4820,71 +5108,71 @@ Qed.
 (* The primed recursor's data: the motive is C', but the branches are typed at
    C's instances -- that is how the rule is stated -- so their values are the
    C-values moved along the motives' isomorphism. *)
-Lemma build_rec_data' G C C' z' s' k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dC' : ty (nat_ :: G) C' (univ k))
-  (dz' : ty G z' (C [zero..])) (ds' : ty (C :: nat_ :: G) s' (nrec_succ C))
-  (IHC : ITot (nat_ :: G) C (univ k)) (IHC' : ITot (nat_ :: G) C' (univ k))
-  (IHz' : ITot G z' (C [zero..])) (IHs' : ITot (C :: nat_ :: G) s' (nrec_succ C))
-  (IHcC : IRel (nat_ :: G) C C' (univ k))
+Lemma build_rec_data' G C C' z' s' k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dC' : ty (nat_ j :: G) C' (UU k))
+  (dz' : ty G z' (C [(zero j)..])) (ds' : ty (C :: nat_ j :: G) s' (nrec_succ C))
+  (IHC : ITot (nat_ j :: G) C (UU k)) (IHC' : ITot (nat_ j :: G) C' (UU k))
+  (IHz' : ITot G z' (C [(zero j)..])) (IHs' : ITot (C :: nat_ j :: G) s' (nrec_succ C))
+  (IHcC : IRel (nat_ j :: G) C C' (UU k))
   rho (Hrho : EnvITy G rho) :
-  { FC' : forall m (x : kElAt (natFam 0) m),
+  { FC' : forall m (x : kElAt (natFam j) m),
             kUFam k (subst_etm (scons m (rsub rho)) (er C')) &
-  { isoC' : forall m x m' x', kEqAt (natFam 0) m x m' x' ->
+  { isoC' : forall m x m' x', kEqAt (natFam j) m x m' x' ->
               iso (kAt (FC' m x)) (kAt (FC' m' x')) &
   { xz' : kElAt (FC' ezero (natE 0 NatAt_zero)) (ers rho z') &
-  { xs' : forall m (x : kElAt (natFam 0) m) w (y : kElAt (FC' m x) w),
+  { xs' : forall m (x : kElAt (natFam j) m) w (y : kElAt (FC' m x) w),
             kElAt (FC' (esucc m) (natSucc x))
-              (ers (ext (ext rho (natFam 0) m x) (FC' m x) w y) s') &
-    ((forall m x, ITy (ext rho (natFam 0) m x) C' k
+              (ers (ext (ext rho (natFam j) m x) (FC' m x) w y) s') &
+    ((forall m x, ITy (ext rho (natFam j) m x) C' k
                     (subst_etm (scons m (rsub rho)) (er C')) (FC' m x)) *
      ITm rho z' k (subst_etm (scons ezero (rsub rho)) (er C'))
          (FC' ezero (natE 0 NatAt_zero)) (ers rho z') xz' *
      (forall m x w y,
-        ITm (ext (ext rho (natFam 0) m x) (FC' m x) w y) s' k
+        ITm (ext (ext rho (natFam j) m x) (FC' m x) w y) s' k
             (subst_etm (scons (esucc m) (rsub rho)) (er C'))
             (FC' (esucc m) (natSucc x))
-            (ers (ext (ext rho (natFam 0) m x) (FC' m x) w y) s') (xs' m x w y)))%type
+            (ers (ext (ext rho (natFam j) m x) (FC' m x) w y) s') (xs' m x w y)))%type
   } } } }.
 Proof.
-  assert (HEm : forall m (x : kElAt (natFam 0) m),
-             EnvITy (nat_ :: G) (ext rho (natFam 0) m x)).
+  assert (HEm : forall m (x : kElAt (natFam j) m),
+             EnvITy (nat_ j :: G) (ext rho (natFam j) m x)).
   { intros m x.
-    exact (EnvITy_ext G rho nat_ 0 (natFam 0)
-             (ity_nat rho (ers rho nat_) eq_refl) m x Hrho). }
-  destruct (build_motive G C k W dC IHC rho Hrho) as [FC [DC isoC]].
-  destruct (build_motive G C' k W dC' IHC' rho Hrho) as [FC' [DC' isoC']].
+    exact (EnvITy_ext G rho (nat_ j) j (natFam j)
+             (ity_nat rho _ _ eq_refl) m x Hrho). }
+  destruct (build_motive G C k j W dC IHC rho Hrho) as [FC [DC isoC]].
+  destruct (build_motive G C' k j W dC' IHC' rho Hrho) as [FC' [DC' isoC']].
   assert (PCC : forall m x, iso (kAt (FC m x)) (kAt (FC' m x))).
   { intros m x.
-    exact (iso_of_IRel_at' (nat_ :: G) C C' k IHcC (ext rho (natFam 0) m x)
+    exact (iso_of_IRel_at' (nat_ j :: G) C C' k IHcC (ext rho (natFam j) m x)
              (HEm m x) _ (FC m x) (DC m x) _ (FC' m x) (DC' m x)). }
   (* the base branch *)
-  assert (E0 : subst_etm (scons ezero (rsub rho)) (er C) = ers rho (C [zero..]))
-    by exact (eq_sym (ers_sub1 rho C zero (natFam 0) (natE 0 NatAt_zero))).
-  pose proof (isubst_ITy rho zero 0 enat (natFam 0) ezero (natE 0 NatAt_zero)
-                eq_refl (i_zero rho) C k _ (FC ezero (natE 0 NatAt_zero))
+  assert (E0 : subst_etm (scons ezero (rsub rho)) (er C) = ers rho (C [(zero j)..]))
+    by exact (eq_sym (ers_sub1 rho C (zero j) (natFam j) (natE 0 NatAt_zero))).
+  pose proof (isubst_ITy rho (zero j) j enat (natFam j) ezero (natE 0 NatAt_zero)
+                eq_refl (i_zero rho j) C k _ (FC ezero (natE 0 NatAt_zero))
                 (DC ezero (natE 0 NatAt_zero))) as DCz.
   destruct (IHz' rho Hrho k (famCast E0 (FC ezero (natE 0 NatAt_zero)))
-              (ITy_cast rho (C [zero..]) k _ _ E0 _ DCz)) as [w0 Dw0].
+              (ITy_cast rho (C [(zero j)..]) k _ _ E0 _ DCz)) as [w0 Dw0].
   destruct (ITm_uncast rho z' k _ _ E0 (FC ezero (natE 0 NatAt_zero)) _ _ Dw0)
     as [xz0 Dz0].
   (* the step branch *)
-  assert (Hstep : forall m (x : kElAt (natFam 0) m) w (y : kElAt (FC' m x) w),
+  assert (Hstep : forall m (x : kElAt (natFam j) m) w (y : kElAt (FC' m x) w),
              { v : kElAt (FC' (esucc m) (natSucc x))
-                     (ers (ext (ext rho (natFam 0) m x) (FC' m x) w y) s') &
-               ITm (ext (ext rho (natFam 0) m x) (FC' m x) w y) s' k
+                     (ers (ext (ext rho (natFam j) m x) (FC' m x) w y) s') &
+               ITm (ext (ext rho (natFam j) m x) (FC' m x) w y) s' k
                    (subst_etm (scons (esucc m) (rsub rho)) (er C'))
                    (FC' (esucc m) (natSucc x))
-                   (ers (ext (ext rho (natFam 0) m x) (FC' m x) w y) s') v }).
+                   (ers (ext (ext rho (natFam j) m x) (FC' m x) w y) s') v }).
   { intros m x w y.
-    pose proof (EnvITy_ext_iso (nat_ :: G) (ext rho (natFam 0) m x) C k _
+    pose proof (EnvITy_ext_iso (nat_ j :: G) (ext rho (natFam j) m x) C k _
                   (FC' m x) (FC m x) (DC m x) (iso_sym _ _ (PCC m x)) w y (HEm m x))
       as HE1.
-    pose proof (ity_nrec_succ rho C k m x (FC (esucc m) (natSucc x))
+    pose proof (ity_nrec_succ rho C k j m x (FC (esucc m) (natSucc x))
                   (DC (esucc m) (natSucc x)) k _ (FC' m x) w y) as DS.
     assert (Es : subst_etm (scons (esucc m) (rsub rho)) (er C)
-                 = ers (ext (ext rho (natFam 0) m x) (FC' m x) w y) (nrec_succ C))
+                 = ers (ext (ext rho (natFam j) m x) (FC' m x) w y) (nrec_succ C))
       by exact (eq_sym (er_nrec_succ C (rsub rho) m w)).
-    destruct (IHs' (ext (ext rho (natFam 0) m x) (FC' m x) w y) HE1 k
+    destruct (IHs' (ext (ext rho (natFam j) m x) (FC' m x) w y) HE1 k
                 (famCast Es (FC (esucc m) (natSucc x)))
                 (ITy_cast _ (nrec_succ C) k _ _ Es _ DS)) as [v0 Dv0].
     destruct (ITm_uncast _ s' k _ _ Es (FC (esucc m) (natSucc x)) _ _ Dv0)
@@ -4914,88 +5202,96 @@ Proof. destruct E; apply iso_self. Qed.
      branches' relatedness -- each obtained in the two steps the conversion
      cases use: the induction hypothesis in one environment, then the
      right-hand branch's own functionality across the two. ---- *)
-Lemma isem_natrec_core G C C' z z' s s' n n' k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dC' : ty (nat_ :: G) C' (univ k))
-  (dz : ty G z (C [zero..])) (dz' : ty G z' (C [zero..]))
-  (ds : ty (C :: nat_ :: G) s (nrec_succ C))
-  (ds' : ty (C :: nat_ :: G) s' (nrec_succ C))
-  (dn : ty G n nat_) (dn' : ty G n' nat_)
-  (IHC : ITot (nat_ :: G) C (univ k)) (IHcC : IRel (nat_ :: G) C C' (univ k))
-  (IHz' : ITot G z' (C [zero..])) (IHcz : IRel G z z' (C [zero..]))
-  (IHs' : ITot (C :: nat_ :: G) s' (nrec_succ C))
-  (IHcs : IRel (C :: nat_ :: G) s s' (nrec_succ C))
-  (IHcn : IRel G n n' nat_)
+Lemma isem_natrec_core G C C' z z' s s' n n' k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dC' : ty (nat_ j :: G) C' (UU k))
+  (dz : ty G z (C [(zero j)..])) (dz' : ty G z' (C [(zero j)..]))
+  (ds : ty (C :: nat_ j :: G) s (nrec_succ C))
+  (ds' : ty (C :: nat_ j :: G) s' (nrec_succ C))
+  (dn : ty G n (nat_ j)) (dn' : ty G n' (nat_ j))
+  (IHC : ITot (nat_ j :: G) C (UU k)) (IHcC : IRel (nat_ j :: G) C C' (UU k))
+  (IHz' : ITot G z' (C [(zero j)..])) (IHcz : IRel G z z' (C [(zero j)..]))
+  (IHs' : ITot (C :: nat_ j :: G) s' (nrec_succ C))
+  (IHcs : IRel (C :: nat_ j :: G) s s' (nrec_succ C))
+  (IHcn : IRel G n n' (nat_ j))
+  (IHn : ITot G n (nat_ j)) (IHn' : ITot G n' (nat_ j))
   rho (Hrho : EnvITy G rho) k' Sy (F : kUFam k' Sy) x y
   (E : RecVal rho C z s n k' Sy F (ers rho (natrec C z s n)) x)
   (E' : RecVal rho C' z' s' n' k' Sy F (ers rho (natrec C' z' s' n')) y) :
   kEqAt F (ers rho (natrec C z s n)) x (ers rho (natrec C' z' s' n')) y.
 Proof.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-  pose proof (w_cons G nat_ 0 W (t_nat G W)) as W1.
-  pose proof (w_cons (nat_ :: G) C k W1 dC) as WC.
-  destruct E as [SC1 [FC1 [isoC1 [S01 [wz1 [xz1 [ws1 [xs1 [redS1 [wn1 [xn1
-    [[[[[Ep1 DC1] Dz1] Ds1] Dn1] Hv1]]]]]]]]]]]].
-  destruct E' as [SC2 [FC2 [isoC2 [S02 [wz2 [xz2 [ws2 [xs2 [redS2 [wn2 [xn2
-    [[[[[Ep2 DC2] Dz2] Ds2] Dn2] Hv2]]]]]]]]]]]].
+  pose proof (w_cons G (nat_ j) j W (t_nat G j W)) as W1.
+  pose proof (w_cons (nat_ j :: G) C k W1 dC) as WC.
+  destruct E as [j1 [SC1 [FC1 [isoC1 [S01 [wz1 [xz1 [ws1 [xs1 [redS1 [wn1 [xn1
+    [[[[[Ep1 DC1] Dz1] Ds1] Dn1] Hv1]]]]]]]]]]]]].
+  destruct E' as [j2 [SC2 [FC2 [isoC2 [S02 [wz2 [xz2 [ws2 [xs2 [redS2 [wn2 [xn2
+    [[[[[Ep2 DC2] Dz2] Ds2] Dn2] Hv2]]]]]]]]]]]]].
+  (* the scrutinee's level is the one its type records *)
+  pose proof (lvl_of_ITot G n (nat_ j) IHn rho Hrho j (natFam j)
+                (ity_nat rho _ _ eq_refl) NotPrfR_nat j1 _ _ _ xn1
+                NotPrfR_nat Dn1) as Ej1; subst j1.
+  pose proof (lvl_of_ITot G n' (nat_ j) IHn' rho Hrho j (natFam j)
+                (ity_nat rho _ _ eq_refl) NotPrfR_nat j2 _ _ _ xn2
+                NotPrfR_nat Dn2) as Ej2; subst j2.
   assert (En1 : wn1 = ers rho n) by exact (ers_of_ITm _ _ _ _ _ _ _ Dn1).
   assert (En2 : wn2 = ers rho n') by exact (ers_of_ITm _ _ _ _ _ _ _ Dn2).
   assert (Ez1 : wz1 = ers rho z) by exact (ers_of_ITm _ _ _ _ _ _ _ Dz1).
   assert (Ez2 : wz2 = ers rho z') by exact (ers_of_ITm _ _ _ _ _ _ _ Dz2).
   subst wn1 wn2 wz1 wz2.
-  assert (HEm : forall m (x0 : kElAt (natFam 0) m),
-             EnvITy (nat_ :: G) (ext rho (natFam 0) m x0)).
+  assert (HEm : forall m (x0 : kElAt (natFam j) m),
+             EnvITy (nat_ j :: G) (ext rho (natFam j) m x0)).
   { intros m x0.
-    exact (EnvITy_ext G rho nat_ 0 (natFam 0)
-             (ity_nat rho (ers rho nat_) eq_refl) m x0 Hrho). }
+    exact (EnvITy_ext G rho (nat_ j) j (natFam j)
+             (ity_nat rho _ _ eq_refl) m x0 Hrho). }
   (* the shapes' level is the motive's *)
-  destruct (build_motive G C k W dC IHC rho Hrho) as [FCc [DCc isoCc]].
-  pose proof (IHcn rho Hrho 0 (natFam 0) (ity_nat rho (ers rho nat_) eq_refl)
+  destruct (build_motive G C k j W dC IHC rho Hrho) as [FCc [DCc isoCc]].
+  pose proof (IHcn rho Hrho j (natFam j) (ity_nat rho _ _ eq_refl)
                 xn1 xn2 Dn1 Dn2) as Hnn.
   assert (Eidx : natIdx xn1 = natIdx xn2)
     by exact (proj1 (proj1 (natEq_iff xn1 xn2) Hnn)).
-  pose proof (ity_lvl (ext rho (natFam 0) (ers rho n) xn1)
-                (ext rho (natFam 0) (ers rho n) xn1) eq_refl C k _
+  pose proof (ity_lvl (ext rho (natFam j) (ers rho n) xn1)
+                (ext rho (natFam j) (ers rho n) xn1) eq_refl C k _
                 (FCc (ers rho n) xn1) k' _ (FC1 (ers rho n) xn1)
                 (DCc (ers rho n) xn1) (DC1 (ers rho n) xn1)) as Ek; subst k'.
   (* the motives' instances are isomorphic *)
   assert (PCC : forall m x0, iso (kAt (FC1 m x0)) (kAt (FC2 m x0))).
   { intros m x0.
-    exact (iso_of_IRel_at' (nat_ :: G) C C' k IHcC (ext rho (natFam 0) m x0)
+    exact (iso_of_IRel_at' (nat_ j :: G) C C' k IHcC (ext rho (natFam j) m x0)
              (HEm m x0) _ (FC1 m x0) (DC1 m x0) _ (FC2 m x0) (DC2 m x0)). }
-  assert (EC1 : forall m (x0 : kElAt (natFam 0) m),
-             SC1 m = ers (ext rho (natFam 0) m x0) C)
+  assert (EC1 : forall m (x0 : kElAt (natFam j) m),
+             SC1 m = ers (ext rho (natFam j) m x0) C)
     by (intros m x0; exact (ers_of_ITy _ _ _ _ _ (DC1 m x0))).
   (* the base branches *)
-  assert (E0 : SC1 ezero = ers rho (C [zero..])).
+  assert (E0 : SC1 ezero = ers rho (C [(zero j)..])).
   { rewrite (EC1 ezero (natE 0 NatAt_zero)).
-    exact (eq_sym (ers_sub1 rho C zero (natFam 0) (natE 0 NatAt_zero))). }
-  pose proof (isubst_ITy rho zero 0 enat (natFam 0) ezero (natE 0 NatAt_zero)
-                eq_refl (i_zero rho) C k _ (FC1 ezero (natE 0 NatAt_zero))
+    exact (eq_sym (ers_sub1 rho C (zero j) (natFam j) (natE 0 NatAt_zero))). }
+  pose proof (isubst_ITy rho (zero j) j enat (natFam j) ezero (natE 0 NatAt_zero)
+                eq_refl (i_zero rho j) C k _ (FC1 ezero (natE 0 NatAt_zero))
                 (DC1 ezero (natE 0 NatAt_zero))) as DCz1.
-  assert (fCz : FunTm G (C [zero..])).
-  { destruct (ty_subst1 G nat_ C (univ k) zero dC (t_zero G W)) as [d].
-    exact (FunTm_of_ty G (C [zero..]) k d). }
+  assert (fCz : FunTm G (C [(zero j)..])).
+  { destruct (ty_subst1 G (nat_ j) C (UU k) (zero j) dC (t_zero G j W)) as [dsub].
+    exact (FunTm_of_ty G (C [(zero j)..]) k dsub). }
   destruct (IHz' rho Hrho k (famCast E0 (FC1 ezero (natE 0 NatAt_zero)))
-              (ITy_cast rho (C [zero..]) k _ _ E0 _ DCz1)) as [w0 Dw0].
+              (ITy_cast rho (C [(zero j)..]) k _ _ E0 _ DCz1)) as [w0 Dw0].
   destruct (ITm_uncast rho z' k _ _ E0 (FC1 ezero (natE 0 NatAt_zero)) _ _ Dw0)
     as [xz0 Dz0].
   assert (Hz : kRel (FC1 ezero (natE 0 NatAt_zero)) (FC2 ezero (natE 0 NatAt_zero))
                  (ers rho z) xz1 (ers rho z') xz2).
   { eapply kRel_trans;
-      [ exact (kRel_of_IRel' G z z' (C [zero..]) IHcz fCz W rho Hrho k _ _ _ _
+      [ exact (kRel_of_IRel' G z z' (C [(zero j)..]) IHcz fCz W rho Hrho k _ _ _ _
                  DCz1 DCz1 _ xz1 _ xz0 Dz1 Dz0) |].
-    refine (funtm G z' (C [zero..]) dz' rho rho HEself k
+    refine (funtm G z' (C [(zero j)..]) dz' rho rho HEself k
               _ (FC1 ezero (natE 0 NatAt_zero)) _ xz0 Dz0
               _ (FC2 ezero (natE 0 NatAt_zero)) _ xz2 Dz2
               (PCC ezero (natE 0 NatAt_zero)) _).
     apply (Rel_tyeq (SC1 ezero) (SC2 ezero));
       [ exact (iso_ty (FC1 ezero (natE 0 NatAt_zero))
                  (FC2 ezero (natE 0 NatAt_zero)) (PCC ezero (natE 0 NatAt_zero)))
-      | rewrite E0; exact (LTm_of_ty G z' (C [zero..]) dz' rho rho HEself) ]. }
+      | rewrite E0; exact (LTm_of_ty G z' (C [(zero j)..]) dz' rho rho HEself) ]. }
   (* the step branches *)
-  assert (fS : FunTm (C :: nat_ :: G) (nrec_succ C))
-    by exact (funtm_nrec_succ G C k W dC).
-  assert (Hst : forall m x0 m' x0', kEqAt (natFam 0) m x0 m' x0' ->
+  assert (fS : FunTm (C :: nat_ j :: G) (nrec_succ C))
+    by exact (funtm_nrec_succ G C k j W dC).
+  assert (Hst : forall m x0 m' x0', kEqAt (natFam j) m x0 m' x0' ->
              forall w y0 w' y0', kRel (FC1 m x0) (FC2 m' x0') w y0 w' y0' ->
              kRel (FC1 (esucc m) (natSucc x0)) (FC2 (esucc m') (natSucc x0'))
                   (ws1 m x0 w y0) (xs1 m x0 w y0)
@@ -5004,48 +5300,48 @@ Proof.
     (* the interpretation of the step's type in the unprimed environment *)
     pose proof (ITy_uncast _ (nrec_succ C) k _ _ (EC1 (esucc m) (natSucc x0))
                   (FC1 (esucc m) (natSucc x0))
-                  (ity_nrec_succ rho C k m x0
+                  (ity_nrec_succ rho C k j m x0
                      (famCast (EC1 (esucc m) (natSucc x0))
                         (FC1 (esucc m) (natSucc x0)))
                      (ITy_cast _ C k _ _ (EC1 (esucc m) (natSucc x0)) _
                         (DC1 (esucc m) (natSucc x0)))
                      k _ (FC1 m x0) w y0)) as DS1.
     assert (Es1 : SC1 (esucc m)
-                  = ers (ext (ext rho (natFam 0) m x0) (FC1 m x0) w y0)
+                  = ers (ext (ext rho (natFam j) m x0) (FC1 m x0) w y0)
                       (nrec_succ C))
       by exact (eq_trans (EC1 (esucc m) (natSucc x0))
                   (eq_sym (er_nrec_succ C (rsub rho) m w))).
-    pose proof (EnvITy_ext_iso (nat_ :: G) (ext rho (natFam 0) m x0) C k _
+    pose proof (EnvITy_ext_iso (nat_ j :: G) (ext rho (natFam j) m x0) C k _
                   (FC1 m x0) (famCast (EC1 m x0) (FC1 m x0))
                   (ITy_cast _ C k _ _ (EC1 m x0) _ (DC1 m x0))
                   (iso_famCast (EC1 m x0) (FC1 m x0)) w y0 (HEm m x0)) as HE1.
-    destruct (IHs' (ext (ext rho (natFam 0) m x0) (FC1 m x0) w y0) HE1 k
+    destruct (IHs' (ext (ext rho (natFam j) m x0) (FC1 m x0) w y0) HE1 k
                 (famCast Es1 (FC1 (esucc m) (natSucc x0)))
                 (ITy_cast _ (nrec_succ C) k _ _ Es1 _ DS1)) as [v0 Dv0].
     destruct (ITm_uncast _ s' k _ _ Es1 (FC1 (esucc m) (natSucc x0)) _ _ Dv0)
       as [v1 Dv1].
     (* s against s' in the unprimed environment *)
-    pose proof (kRel_of_IRel' (C :: nat_ :: G) s s' (nrec_succ C) IHcs fS WC
-                  (ext (ext rho (natFam 0) m x0) (FC1 m x0) w y0) HE1 k
+    pose proof (kRel_of_IRel' (C :: nat_ j :: G) s s' (nrec_succ C) IHcs fS WC
+                  (ext (ext rho (natFam j) m x0) (FC1 m x0) w y0) HE1 k
                   _ (FC1 (esucc m) (natSucc x0)) _ (FC1 (esucc m) (natSucc x0))
                   DS1 DS1 _ (xs1 m x0 w y0) _ v1 (Ds1 m x0 w y0) Dv1) as Hb1.
     (* s' across the two environments *)
-    assert (HE0 : EnvRelOf (nat_ :: G) (ext rho (natFam 0) m x0)
-                    (ext rho (natFam 0) m' x0')).
-    { apply (EnvRelOf_ext G rho rho nat_ 0 (natFam 0) (natFam 0) m x0 m' x0'
+    assert (HE0 : EnvRelOf (nat_ j :: G) (ext rho (natFam j) m x0)
+                    (ext rho (natFam j) m' x0')).
+    { apply (EnvRelOf_ext G rho rho (nat_ j) j (natFam j) (natFam j) m x0 m' x0'
                HEself).
-      apply (proj1 (kRel_same (natFam 0) _ _ _ _)); exact Hm. }
-    assert (T1 : tyeq (SC1 m) (ers (ext rho (natFam 0) m x0) C)).
+      apply (proj1 (kRel_same (natFam j) _ _ _ _)); exact Hm. }
+    assert (T1 : tyeq (SC1 m) (ers (ext rho (natFam j) m x0) C)).
     { pose proof (uf_ty (FC1 m x0)) as U.
       rewrite (EC1 m x0) in U |- *; exists k; exact U. }
-    assert (T2 : tyeq (SC2 m') (ers (ext rho (natFam 0) m' x0') C)).
+    assert (T2 : tyeq (SC2 m') (ers (ext rho (natFam j) m' x0') C)).
     { rewrite <- (EC1 m' x0').
       apply tyeq_sym; exact (iso_ty (FC1 m' x0') (FC2 m' x0') (PCC m' x0')). }
-    assert (HEr : EnvRelOf (C :: nat_ :: G)
-                    (ext (ext rho (natFam 0) m x0) (FC1 m x0) w y0)
-                    (ext (ext rho (natFam 0) m' x0') (FC2 m' x0') w' y0')).
-    { apply (EnvRelOf_ext_ty (nat_ :: G) (ext rho (natFam 0) m x0)
-               (ext rho (natFam 0) m' x0') C k (SC1 m) (SC2 m')
+    assert (HEr : EnvRelOf (C :: nat_ j :: G)
+                    (ext (ext rho (natFam j) m x0) (FC1 m x0) w y0)
+                    (ext (ext rho (natFam j) m' x0') (FC2 m' x0') w' y0')).
+    { apply (EnvRelOf_ext_ty (nat_ j :: G) (ext rho (natFam j) m x0)
+               (ext rho (natFam j) m' x0') C k (SC1 m) (SC2 m')
                (FC1 m x0) (FC2 m' x0') w y0 w' y0' HE0 T1 T2 Hy). }
     assert (Q : iso (kAt (FC1 (esucc m) (natSucc x0)))
                     (kAt (FC2 (esucc m') (natSucc x0')))).
@@ -5053,17 +5349,17 @@ Proof.
       exact (isoC2 (esucc m) (natSucc x0) (esucc m') (natSucc x0')
                (natSucc_eq x0 x0' Hm)). }
     assert (Ew2 : ws2 m' x0' w' y0'
-                  = ers (ext (ext rho (natFam 0) m' x0') (FC2 m' x0') w' y0') s')
+                  = ers (ext (ext rho (natFam j) m' x0') (FC2 m' x0') w' y0') s')
       by exact (ers_of_ITm _ _ _ _ _ _ _ (Ds2 m' x0' w' y0')).
     assert (Hr : Rel (SC2 (esucc m'))
-                   (ers (ext (ext rho (natFam 0) m x0) (FC1 m x0) w y0) s')
+                   (ers (ext (ext rho (natFam j) m x0) (FC1 m x0) w y0) s')
                    (ws2 m' x0' w' y0')).
     { rewrite Ew2.
-      apply (Rel_tyeq (ers (ext (ext rho (natFam 0) m x0) (FC1 m x0) w y0)
+      apply (Rel_tyeq (ers (ext (ext rho (natFam j) m x0) (FC1 m x0) w y0)
                          (nrec_succ C)) (SC2 (esucc m'))).
       - rewrite <- Es1; exact (iso_ty _ _ Q).
-      - exact (LTm_of_ty (C :: nat_ :: G) s' (nrec_succ C) ds' _ _ HEr). }
-    pose proof (funtm (C :: nat_ :: G) s' (nrec_succ C) ds' _ _ HEr k
+      - exact (LTm_of_ty (C :: nat_ j :: G) s' (nrec_succ C) ds' _ _ HEr). }
+    pose proof (funtm (C :: nat_ j :: G) s' (nrec_succ C) ds' _ _ HEr k
                   _ (FC1 (esucc m) (natSucc x0)) _ v1 Dv1
                   _ (FC2 (esucc m') (natSucc x0')) _ (xs2 m' x0' w' y0')
                   (Ds2 m' x0' w' y0') Q Hr) as Hb2.
@@ -5079,39 +5375,39 @@ Proof.
 Qed.
 
 (* the primed recursor at the LEFT-hand type *)
-Lemma itot_natrec' G C C' z' s' n n' k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dC' : ty (nat_ :: G) C' (univ k))
-  (dz' : ty G z' (C [zero..])) (ds' : ty (C :: nat_ :: G) s' (nrec_succ C))
-  (dn : ty G n nat_) (dn' : ty G n' nat_)
-  (IHC : ITot (nat_ :: G) C (univ k)) (IHC' : ITot (nat_ :: G) C' (univ k))
-  (IHz' : ITot G z' (C [zero..])) (IHs' : ITot (C :: nat_ :: G) s' (nrec_succ C))
-  (IHcC : IRel (nat_ :: G) C C' (univ k))
-  (IHn : ITot G n nat_) (IHn' : ITot G n' nat_) (IHcn : IRel G n n' nat_) :
+Lemma itot_natrec' G C C' z' s' n n' k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dC' : ty (nat_ j :: G) C' (UU k))
+  (dz' : ty G z' (C [(zero j)..])) (ds' : ty (C :: nat_ j :: G) s' (nrec_succ C))
+  (dn : ty G n (nat_ j)) (dn' : ty G n' (nat_ j))
+  (IHC : ITot (nat_ j :: G) C (UU k)) (IHC' : ITot (nat_ j :: G) C' (UU k))
+  (IHz' : ITot G z' (C [(zero j)..])) (IHs' : ITot (C :: nat_ j :: G) s' (nrec_succ C))
+  (IHcC : IRel (nat_ j :: G) C C' (UU k))
+  (IHn : ITot G n (nat_ j)) (IHn' : ITot G n' (nat_ j)) (IHcn : IRel G n n' (nat_ j)) :
   ITot G (natrec C' z' s' n') (C [n..]).
 Proof.
   intros rho Hrho k' F DCn.
-  destruct (build_motive G C k W dC IHC rho Hrho) as [FC [DC isoC]].
-  destruct (build_rec_data' G C C' z' s' k W dC dC' dz' ds' IHC IHC' IHz' IHs'
+  destruct (build_motive G C k j W dC IHC rho Hrho) as [FC [DC isoC]].
+  destruct (build_rec_data' G C C' z' s' k j W dC dC' dz' ds' IHC IHC' IHz' IHs'
               IHcC rho Hrho) as [FC' [isoC' [xz' [xs' [[DC' Dz'] Ds']]]]].
-  assert (HEm : forall m (x : kElAt (natFam 0) m),
-             EnvITy (nat_ :: G) (ext rho (natFam 0) m x)).
+  assert (HEm : forall m (x : kElAt (natFam j) m),
+             EnvITy (nat_ j :: G) (ext rho (natFam j) m x)).
   { intros m x.
-    exact (EnvITy_ext G rho nat_ 0 (natFam 0)
-             (ity_nat rho (ers rho nat_) eq_refl) m x Hrho). }
+    exact (EnvITy_ext G rho (nat_ j) j (natFam j)
+             (ity_nat rho _ _ eq_refl) m x Hrho). }
   assert (PCC : forall m x, iso (kAt (FC m x)) (kAt (FC' m x))).
   { intros m x.
-    exact (iso_of_IRel_at' (nat_ :: G) C C' k IHcC (ext rho (natFam 0) m x)
+    exact (iso_of_IRel_at' (nat_ j :: G) C C' k IHcC (ext rho (natFam j) m x)
              (HEm m x) _ (FC m x) (DC m x) _ (FC' m x) (DC' m x)). }
-  destruct (IHn rho Hrho 0 (natFam 0) (ity_nat rho (ers rho nat_) eq_refl))
+  destruct (IHn rho Hrho j (natFam j) (ity_nat rho _ _ eq_refl))
     as [xn Dn].
-  destruct (IHn' rho Hrho 0 (natFam 0) (ity_nat rho (ers rho nat_) eq_refl))
+  destruct (IHn' rho Hrho j (natFam j) (ity_nat rho _ _ eq_refl))
     as [xn' Dn'].
-  pose proof (IHcn rho Hrho 0 (natFam 0) (ity_nat rho (ers rho nat_) eq_refl)
+  pose proof (IHcn rho Hrho j (natFam j) (ity_nat rho _ _ eq_refl)
                 xn xn' Dn Dn') as Hnn.
-  pose proof (i_natrec rho C' z' s' n' k
+  pose proof (i_natrec rho C' z' s' n' k j
                 (fun m => subst_etm (scons m (rsub rho)) (er C')) FC' isoC'
                 (ers rho (stepWrap s')) (ers rho z') xz'
-                (fun m x w y => ers (ext (ext rho (natFam 0) m x) (FC' m x) w y) s')
+                (fun m x w y => ers (ext (ext rho (natFam j) m x) (FC' m x) w y) s')
                 xs' (fun m x w y => reds_lam2_app (er s') (rsub rho) m w)
                 (ers rho n') xn' eq_refl DC' Dz' Ds' Dn') as Dnr'.
   assert (Q : iso (kAt (FC' (ers rho n') (natE (natIdx xn') (natSpec xn'))))
@@ -5123,12 +5419,12 @@ Proof.
   pose proof (i_conv rho (natrec C' z' s' n') k _ _ _ _ _ _ Q Dnr') as Dnr.
   assert (En : subst_etm (scons (ers rho n) (rsub rho)) (er C)
                = ers rho (C [n..]))
-    by exact (eq_sym (ers_sub1 rho C n (natFam 0) xn)).
-  pose proof (isubst_ITy rho n 0 enat (natFam 0) (ers rho n) xn eq_refl Dn
+    by exact (eq_sym (ers_sub1 rho C n (natFam j) xn)).
+  pose proof (isubst_ITy rho n j enat (natFam j) (ers rho n) xn eq_refl Dn
                 C k _ (FC (ers rho n) xn) (DC (ers rho n) xn)) as DCsub.
   pose proof (ITy_cast rho (C [n..]) k _ _ En _ DCsub) as DCc.
   assert (Hfun : FunTm G (C [n..])).
-  { destruct (ty_subst1 G nat_ C (univ k) n dC dn) as [d].
+  { destruct (ty_subst1 G (nat_ j) C (UU k) n dC dn) as [d].
     exact (FunTm_of_ty G (C [n..]) k d). }
   pose proof (ity_lvl rho rho eq_refl (C [n..]) k (ers rho (C [n..]))
                 (famCast En (FC (ers rho n) xn)) k' (ers rho (C [n..])) F DCc DCn)
@@ -5139,44 +5435,42 @@ Proof.
   exact Dnr.
 Qed.
 
-Lemma isem_natrec G C C' z z' s s' n n' k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dC' : ty (nat_ :: G) C' (univ k))
-  (cC : cv (nat_ :: G) C C' (univ k))
-  (dz : ty G z (C [zero..])) (dz' : ty G z' (C [zero..]))
-  (cz : cv G z z' (C [zero..]))
-  (ds : ty (C :: nat_ :: G) s (nrec_succ C))
-  (ds' : ty (C :: nat_ :: G) s' (nrec_succ C))
-  (cs : cv (C :: nat_ :: G) s s' (nrec_succ C))
-  (dn : ty G n nat_) (dn' : ty G n' nat_) (cn : cv G n n' nat_)
-  (IHC : ITot (nat_ :: G) C (univ k)) (IHC' : ITot (nat_ :: G) C' (univ k))
-  (IHcC : IRel (nat_ :: G) C C' (univ k))
-  (IHz : ITot G z (C [zero..])) (IHz' : ITot G z' (C [zero..]))
-  (IHcz : IRel G z z' (C [zero..]))
-  (IHs : ITot (C :: nat_ :: G) s (nrec_succ C))
-  (IHs' : ITot (C :: nat_ :: G) s' (nrec_succ C))
-  (IHcs : IRel (C :: nat_ :: G) s s' (nrec_succ C))
-  (IHn : ITot G n nat_) (IHn' : ITot G n' nat_) (IHcn : IRel G n n' nat_) :
+Lemma isem_natrec G C C' z z' s s' n n' k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dC' : ty (nat_ j :: G) C' (UU k))
+  (cC : cv (nat_ j :: G) C C' (UU k))
+  (dz : ty G z (C [(zero j)..])) (dz' : ty G z' (C [(zero j)..]))
+  (cz : cv G z z' (C [(zero j)..]))
+  (ds : ty (C :: nat_ j :: G) s (nrec_succ C))
+  (ds' : ty (C :: nat_ j :: G) s' (nrec_succ C))
+  (cs : cv (C :: nat_ j :: G) s s' (nrec_succ C))
+  (dn : ty G n (nat_ j)) (dn' : ty G n' (nat_ j)) (cn : cv G n n' (nat_ j))
+  (IHC : ITot (nat_ j :: G) C (UU k)) (IHC' : ITot (nat_ j :: G) C' (UU k))
+  (IHcC : IRel (nat_ j :: G) C C' (UU k))
+  (IHz : ITot G z (C [(zero j)..])) (IHz' : ITot G z' (C [(zero j)..]))
+  (IHcz : IRel G z z' (C [(zero j)..]))
+  (IHs : ITot (C :: nat_ j :: G) s (nrec_succ C))
+  (IHs' : ITot (C :: nat_ j :: G) s' (nrec_succ C))
+  (IHcs : IRel (C :: nat_ j :: G) s s' (nrec_succ C))
+  (IHn : ITot G n (nat_ j)) (IHn' : ITot G n' (nat_ j)) (IHcn : IRel G n n' (nat_ j)) :
   ISem G (natrec C z s n) (natrec C' z' s' n') (C [n..]).
 Proof.
   split;
-    [split; [exact (itot_natrec G C z s n k W dC dz ds dn IHC IHz IHs IHn)
-            | exact (itot_natrec' G C C' z' s' n n' k W dC dC' dz' ds' dn dn'
+    [split; [exact (itot_natrec G C z s n k j W dC dz ds dn IHC IHz IHs IHn)
+            | exact (itot_natrec' G C C' z' s' n n' k j W dC dC' dz' ds' dn dn'
                        IHC IHC' IHz' IHs' IHcC IHn IHn' IHcn)] |].
   intros rho Hrho k' F DCn x y Dx Dy.
   pose proof (LCv_of_cv G (natrec C z s n) (natrec C' z' s' n') (C [n..])
-                (c_natrec G C C' z z' s s' n n' k dC dC' cC dz dz' cz ds ds' cs
+                (c_natrec G C C' z z' s s' n n' k j dC dC' cC dz dz' cz ds ds' cs
                    dn dn' cn) rho rho (EnvRelOf_selfE G rho W Hrho)) as Hrel.
   pose proof (itm_inv rho (natrec C z s n) k' (ers rho (C [n..])) F
                 (ers rho (natrec C z s n)) x Dx) as E.
   pose proof (itm_inv rho (natrec C' z' s' n') k' (ers rho (C [n..])) F
                 (ers rho (natrec C' z' s' n')) y Dy) as E'.
-  destruct k' as [| k0]; cbn [TmInv] in E, E'.
-  - destruct E as [HT | E]; [exact (HT _ x _ y Hrel) |].
-    destruct E' as [HT' | E']; [exact (HT' _ x _ y Hrel) |].
-    exact (isem_natrec_core G C C' z z' s s' n n' k W dC dC' dz dz' ds ds' dn dn'
-             IHC IHcC IHz' IHcz IHs' IHcs IHcn rho Hrho 0 _ F x y E E').
-  - exact (isem_natrec_core G C C' z z' s s' n n' k W dC dC' dz dz' ds ds' dn dn'
-             IHC IHcC IHz' IHcz IHs' IHcs IHcn rho Hrho (S k0) _ F x y E E').
+  cbn [TmInv] in E, E'.
+  destruct E as [[HT _] | E]; [exact (HT _ x _ y Hrel) |].
+  destruct E' as [[HT' _] | E']; [exact (HT' _ x _ y Hrel) |].
+  exact (isem_natrec_core G C C' z z' s s' n n' k j W dC dC' dz dz' ds ds' dn dn'
+           IHC IHcC IHz' IHcz IHs' IHcs IHcn IHn IHn' rho Hrho k' _ F x y E E').
 Qed.
 
 Lemma kRel_ctoK {k u u'} (F : kUFam k u) (F' : kUFam k u')
@@ -5191,19 +5485,19 @@ Proof. intros D; exists x; split; [exact D | reflexivity]. Qed.
 
 (* The step rule's right-hand side is a two-place substitution instance, so its
    typing needs the substitution it performs to be well typed. *)
-Lemma sub_ok_rec_succ G C z s n k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dz : ty G z (C [zero..]))
-  (ds : ty (C :: nat_ :: G) s (nrec_succ C)) (dn : ty G n nat_) :
-  sub_ok ((natrec C z s n) .: n ..) (C :: nat_ :: G) G.
+Lemma sub_ok_rec_succ G C z s n k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dz : ty G z (C [(zero j)..]))
+  (ds : ty (C :: nat_ j :: G) s (nrec_succ C)) (dn : ty G n (nat_ j)) :
+  sub_ok ((natrec C z s n) .: n ..) (C :: nat_ j :: G) G.
 Proof.
   intros i A Hl; inversion Hl; subst.
   - replace ((C ⟨↑⟩) [(natrec C z s n) .: n ..]) with (C [n..])
       by (asimpl; reflexivity).
-    exact (inhabits (t_natrec G C z s n k dC dz ds dn)).
+    exact (inhabits (t_natrec G C z s n k j dC dz ds dn)).
   - match goal with
-    | H : lookup ?i0 (nat_ :: G) ?A0 |- _ => inversion H; subst
+    | H : lookup ?i0 (nat_ j :: G) ?A0 |- _ => inversion H; subst
     end.
-    + replace (((nat_ ⟨↑⟩) ⟨↑⟩) [(natrec C z s n) .: n ..]) with nat_
+    + replace ((((nat_ j) ⟨↑⟩) ⟨↑⟩) [(natrec C z s n) .: n ..]) with (nat_ j)
         by (asimpl; reflexivity).
       exact (inhabits dn).
     + match goal with
@@ -5214,14 +5508,14 @@ Proof.
       end.
 Qed.
 
-Lemma ty_rec_succ_rhs G C z s n k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dz : ty G z (C [zero..]))
-  (ds : ty (C :: nat_ :: G) s (nrec_succ C)) (dn : ty G n nat_) :
+Lemma ty_rec_succ_rhs G C z s n k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dz : ty G z (C [(zero j)..]))
+  (ds : ty (C :: nat_ j :: G) s (nrec_succ C)) (dn : ty G n (nat_ j)) :
   inhabited (ty G (s [(natrec C z s n) .: n ..]) (C [(succ n)..])).
 Proof.
-  destruct (proj1 (proj2 substitution) (C :: nat_ :: G) s (nrec_succ C) ds G
+  destruct (proj1 (proj2 substitution) (C :: nat_ j :: G) s (nrec_succ C) ds G
               ((natrec C z s n) .: n ..)
-              (sub_ok_rec_succ G C z s n k W dC dz ds dn) (inhabits W)) as [d].
+              (sub_ok_rec_succ G C z s n k j W dC dz ds dn) (inhabits W)) as [d].
   replace ((nrec_succ C) [(natrec C z s n) .: n ..]) with (C [(succ n)..]) in d
     by (unfold nrec_succ; asimpl; reflexivity).
   exact (inhabits d).
@@ -5250,11 +5544,11 @@ Proof.
 Qed.
 
 (* ---- the step rule ---- *)
-Lemma rec_succ_data G C z s n k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dz : ty G z (C [zero..]))
-  (ds : ty (C :: nat_ :: G) s (nrec_succ C)) (dn : ty G n nat_)
-  (IHC : ITot (nat_ :: G) C (univ k)) (IHz : ITot G z (C [zero..]))
-  (IHs : ITot (C :: nat_ :: G) s (nrec_succ C)) (IHn : ITot G n nat_)
+Lemma rec_succ_data G C z s n k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dz : ty G z (C [(zero j)..]))
+  (ds : ty (C :: nat_ j :: G) s (nrec_succ C)) (dn : ty G n (nat_ j))
+  (IHC : ITot (nat_ j :: G) C (UU k)) (IHz : ITot G z (C [(zero j)..]))
+  (IHs : ITot (C :: nat_ j :: G) s (nrec_succ C)) (IHn : ITot G n (nat_ j))
   rho (Hrho : EnvITy G rho) :
   { S1 : etm & { F1 : kUFam k S1 &
   { v1 : kElAt F1 (ers rho (natrec C z s (succ n))) &
@@ -5265,16 +5559,16 @@ Lemma rec_succ_data G C z s n k (W : wfc G)
      ITm rho (s [(natrec C z s n) .: n ..]) k S1 F1 w2 v2 *
      kEqAt F1 (ers rho (natrec C z s (succ n))) v1 w2 v2)%type } } } } }.
 Proof.
-  destruct (build_rec_data G C z s k W dC dz ds IHC IHz IHs rho Hrho)
+  destruct (build_rec_data G C z s k j W dC dz ds IHC IHz IHs rho Hrho)
     as [FC [isoC [xz [xs [[[DC Dz] Ds] Hfs]]]]].
-  destruct (IHn rho Hrho 0 (natFam 0) (ity_nat rho (ers rho nat_) eq_refl))
+  destruct (IHn rho Hrho j (natFam j) (ity_nat rho _ _ eq_refl))
     as [xn Dn].
-  pose (ws := fun m (x : kElAt (natFam 0) m) w (y : kElAt (FC m x) w) =>
-                ers (ext (ext rho (natFam 0) m x) (FC m x) w y) s).
-  pose (redS := fun m (x : kElAt (natFam 0) m) w (y : kElAt (FC m x) w) =>
+  pose (ws := fun m (x : kElAt (natFam j) m) w (y : kElAt (FC m x) w) =>
+                ers (ext (ext rho (natFam j) m x) (FC m x) w y) s).
+  pose (redS := fun m (x : kElAt (natFam j) m) w (y : kElAt (FC m x) w) =>
                   reds_lam2_app (er s) (rsub rho) m w).
   (* the recursive call, moved to the scrutinee's own value *)
-  pose proof (i_natrec rho C z s n k (fun m => subst_etm (scons m (rsub rho)) (er C))
+  pose proof (i_natrec rho C z s n k j (fun m => subst_etm (scons m (rsub rho)) (er C))
                 FC isoC (ers rho (stepWrap s)) (ers rho z) xz ws xs redS
                 (ers rho n) xn eq_refl DC Dz Ds Dn) as Dnr.
   pose proof (i_conv rho (natrec C z s n) k _ _ _ _ _ _
@@ -5284,7 +5578,7 @@ Proof.
     as [yrec [Dyrec Ey]].
   pose proof (Ds (ers rho n) xn (ers rho (natrec C z s n)) yrec) as Dstep.
   (* the two substitutions *)
-  pose proof (subst_ITm rho n (Build_Entry 0 enat (natFam 0) (ers rho n) xn)
+  pose proof (subst_ITm rho n (Build_Entry j enat (natFam j) (ers rho n) xn)
                 eq_refl Dn (subUniv_all rho n) _ s k _ _ _ _ Dstep
                 (Build_Entry k (subst_etm (scons (ers rho n) (rsub rho)) (er C))
                    (FC (ers rho n) xn) (ers rho (natrec C z s n)) yrec :: nil)
@@ -5300,13 +5594,13 @@ Proof.
   assert (D3 : ITm rho (s [(natrec C z s n) .: n ..]) k
                  (subst_etm (scons (esucc (ers rho n)) (rsub rho)) (er C))
                  (FC (esucc (ers rho n)) (natSucc xn))
-                 (ers (ext (ext rho (natFam 0) (ers rho n) xn) (FC (ers rho n) xn)
+                 (ers (ext (ext rho (natFam j) (ers rho n) xn) (FC (ers rho n) xn)
                          (ers rho (natrec C z s n)) yrec) s)
                  (xs (ers rho n) xn (ers rho (natrec C z s n)) yrec))
     by (rewrite <- Esub; exact D2).
   (* the left-hand side *)
-  pose proof (i_succ rho n (ers rho n) xn Dn) as Dsn.
-  pose proof (i_natrec rho C z s (succ n) k
+  pose proof (i_succ rho j n (ers rho n) xn Dn) as Dsn.
+  pose proof (i_natrec rho C z s (succ n) k j
                 (fun m => subst_etm (scons m (rsub rho)) (er C)) FC isoC
                 (ers rho (stepWrap s)) (ers rho z) xz ws xs redS
                 (esucc (ers rho n)) (natSucc xn) eq_refl DC Dz Ds Dsn) as Dlhs.
@@ -5314,11 +5608,11 @@ Proof.
               (FC (esucc (ers rho n)) (natSucc xn)) _ _ Dlhs) as [v1 [Dv1 Ev1]].
   exists (subst_etm (scons (esucc (ers rho n)) (rsub rho)) (er C)),
     (FC (esucc (ers rho n)) (natSucc xn)), v1,
-    (ers (ext (ext rho (natFam 0) (ers rho n) xn) (FC (ers rho n) xn)
+    (ers (ext (ext rho (natFam j) (ers rho n) xn) (FC (ers rho n) xn)
             (ers rho (natrec C z s n)) yrec) s),
     (xs (ers rho n) xn (ers rho (natrec C z s n)) yrec).
   split; [split; [split |] |].
-  - exact (isubst_ITy rho (succ n) 0 enat (natFam 0) (esucc (ers rho n))
+  - exact (isubst_ITy rho (succ n) j enat (natFam j) (esucc (ers rho n))
              (natSucc xn) eq_refl Dsn C k _
              (FC (esucc (ers rho n)) (natSucc xn))
              (DC (esucc (ers rho n)) (natSucc xn))).
@@ -5327,7 +5621,7 @@ Proof.
   - rewrite Ev1.
     apply (proj2 (kRel_same _ _ _ _ _)).
     eapply kRel_trans;
-      [ exact (semrec_succ_step k 0
+      [ exact (semrec_succ_step k j
                  (fun m => subst_etm (scons m (rsub rho)) (er C)) FC isoC
                  (ers rho z) (ers rho (stepWrap s)) xz
                  (fun m x w y =>
@@ -5341,36 +5635,36 @@ Proof.
     apply Hfs; [apply natEq_self | apply kRel_ctoK].
 Qed.
 
-Lemma isem_rec_succ G C z s n k (W : wfc G)
-  (dC : ty (nat_ :: G) C (univ k)) (dz : ty G z (C [zero..]))
-  (ds : ty (C :: nat_ :: G) s (nrec_succ C)) (dn : ty G n nat_)
-  (IHC : ITot (nat_ :: G) C (univ k)) (IHz : ITot G z (C [zero..]))
-  (IHs : ITot (C :: nat_ :: G) s (nrec_succ C)) (IHn : ITot G n nat_) :
+Lemma isem_rec_succ G C z s n k j (W : wfc G)
+  (dC : ty (nat_ j :: G) C (UU k)) (dz : ty G z (C [(zero j)..]))
+  (ds : ty (C :: nat_ j :: G) s (nrec_succ C)) (dn : ty G n (nat_ j))
+  (IHC : ITot (nat_ j :: G) C (UU k)) (IHz : ITot G z (C [(zero j)..]))
+  (IHs : ITot (C :: nat_ j :: G) s (nrec_succ C)) (IHn : ITot G n (nat_ j)) :
   ISem G (natrec C z s (succ n)) (s [(natrec C z s n) .: n ..]) (C [(succ n)..]).
 Proof.
   assert (fL : FunTm G (natrec C z s (succ n)))
     by exact (funtm G (natrec C z s (succ n)) (C [(succ n)..])
-                (t_natrec G C z s (succ n) k dC dz ds (t_succ G n dn))).
+                (t_natrec G C z s (succ n) k j dC dz ds (t_succ G j n dn))).
   assert (fR : FunTm G (s [(natrec C z s n) .: n ..])).
-  { destruct (ty_rec_succ_rhs G C z s n k W dC dz ds dn) as [d].
+  { destruct (ty_rec_succ_rhs G C z s n k j W dC dz ds dn) as [d].
     exact (funtm G (s [(natrec C z s n) .: n ..]) (C [(succ n)..]) d). }
   assert (fT : FunTm G (C [(succ n)..])).
-  { destruct (ty_subst1 G nat_ C (univ k) (succ n) dC (t_succ G n dn)) as [d].
+  { destruct (ty_subst1 G (nat_ j) C (UU k) (succ n) dC (t_succ G j n dn)) as [d].
     exact (FunTm_of_ty G (C [(succ n)..]) k d). }
   assert (gR : forall rho, EnvRelOf G rho rho ->
              Rel (ers rho (C [(succ n)..]))
                (ers rho (s [(natrec C z s n) .: n ..]))
                (ers rho (s [(natrec C z s n) .: n ..]))).
   { intros rho HE.
-    destruct (ty_rec_succ_rhs G C z s n k W dC dz ds dn) as [d].
+    destruct (ty_rec_succ_rhs G C z s n k j W dC dz ds dn) as [d].
     exact (LTm_of_ty G (s [(natrec C z s n) .: n ..]) (C [(succ n)..]) d
              rho rho HE). }
   split.
   - split.
-    + exact (itot_natrec G C z s (succ n) k W dC dz ds (t_succ G n dn)
-               IHC IHz IHs (itot_succ G W n IHn)).
+    + exact (itot_natrec G C z s (succ n) k j W dC dz ds (t_succ G j n dn)
+               IHC IHz IHs (itot_succ G W j n IHn)).
     + intros rho Hrho k' F DCn.
-      destruct (rec_succ_data G C z s n k W dC dz ds dn IHC IHz IHs IHn rho Hrho)
+      destruct (rec_succ_data G C z s n k j W dC dz ds dn IHC IHz IHs IHn rho Hrho)
         as [S1 [F1 [v1 [w2 [v2 [[[DT Dv1] Dv2] Hmid]]]]]].
       assert (ES1 : S1 = ers rho (C [(succ n)..]))
         by exact (ers_of_ITy _ _ _ _ _ DT).
@@ -5386,7 +5680,7 @@ Proof.
       exact (i_conv rho (s [(natrec C z s n) .: n ..]) k _ F1 _ F _ v2 P Dv2).
   - intros rho Hrho k' F DCn x y Dx Dy.
     pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-    destruct (rec_succ_data G C z s n k W dC dz ds dn IHC IHz IHs IHn rho Hrho)
+    destruct (rec_succ_data G C z s n k j W dC dz ds dn IHC IHz IHs IHn rho Hrho)
       as [S1 [F1 [v1 [w2 [v2 [[[DT Dv1] Dv2] Hmid]]]]]].
     assert (ES1 : S1 = ers rho (C [(succ n)..]))
       by exact (ers_of_ITy _ _ _ _ _ DT).
@@ -5399,7 +5693,7 @@ Proof.
     pose proof (ity_same_iso G (C [(succ n)..]) fT rho W Hrho k F F1 DCn DT) as P.
     pose proof (fL rho rho HEself k _ F _ x Dx _ F1 _ v1 Dv1 P
                   (LTm_of_ty G (natrec C z s (succ n)) (C [(succ n)..])
-                     (t_natrec G C z s (succ n) k dC dz ds (t_succ G n dn))
+                     (t_natrec G C z s (succ n) k j dC dz ds (t_succ G j n dn))
                      rho rho HEself)) as H1.
     pose proof (fR rho rho HEself k _ F1 _ v2 Dv2 _ F _ y Dy (iso_sym _ _ P)
                   (gR rho HEself)) as H2.
@@ -5413,95 +5707,95 @@ Qed.
      weakened (weaken_ITy / weaken1) and its value at every argument is the
      function's own application: piEl_of builds the lambda, and piEq_of
      compares it with the function. ---- *)
-Lemma ty_eta_lam G A B f k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (df : ty G f (pi A B)) :
-  inhabited (ty G (lam A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))
-               (pi A B)).
+Lemma ty_eta_lam G A B f d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (df : ty G f (pi (d + j) A B)) :
+  inhabited (ty G (lam (d + j) A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))
+               (pi (d + j) A B)).
 Proof.
-  pose proof (w_cons G A k W dA) as WA.
-  destruct (proj1 (proj2 renaming) G A (univ k) dA (A :: G) shift
+  pose proof (w_cons G A j W dA) as WA.
+  destruct (proj1 (proj2 renaming) G A (UU j) dA (A :: G) shift
               (ren_ok_shift G A) (inhabits WA)) as [dA1].
-  destruct (proj1 (proj2 renaming) (A :: G) B (univ k) dB ((A ⟨↑⟩) :: A :: G)
+  destruct (proj1 (proj2 renaming) (A :: G) B (UU j) dB ((A ⟨↑⟩) :: A :: G)
               (upRen_tm_tm shift)
               (ren_ok_up shift G (A :: G) A (ren_ok_shift G A))
-              (inhabits (w_cons (A :: G) (A ⟨↑⟩) k WA dA1))) as [dB1].
-  destruct (proj1 (proj2 renaming) G f (pi A B) df (A :: G) shift
+              (inhabits (w_cons (A :: G) (A ⟨↑⟩) j WA dA1))) as [dB1].
+  destruct (proj1 (proj2 renaming) G f (pi (d + j) A B) df (A :: G) shift
               (ren_ok_shift G A) (inhabits WA)) as [df1].
-  pose proof (t_app (A :: G) (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0) k
-                dA1 dB1 df1
+  pose proof (t_app (A :: G) (d + j) j (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩)
+                (var_tm 0) (Nat.le_add_l j d) dA1 dB1 df1
                 (t_var (A :: G) 0 (A ⟨↑⟩) WA (lookup_O G A))) as dap.
   replace ((B ⟨upRen_tm_tm shift⟩) [(var_tm 0)..]) with B in dap.
   2: { asimpl; symmetry; apply idSubst_tm; intros [| i]; reflexivity. }
-  exact (inhabits (t_lam G A B _ k dA dB dap)).
+  exact (inhabits (t_lam G (d + j) j A B _ (Nat.le_add_l j d) dA dB dap)).
 Qed.
 
-Lemma eta_value G A B f k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (df : ty G f (pi A B))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHf : ITot G f (pi A B)) rho (Hrho : EnvITy G rho) :
-  { S1 : etm & { F1 : kUFam k S1 &
-  { xl : kElAt F1 (ers rho (lam A B
+Lemma eta_value G A B f d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (df : ty G f (pi (d + j) A B))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHf : ITot G f (pi (d + j) A B)) rho (Hrho : EnvITy G rho) :
+  { S1 : etm & { F1 : kUFam (d + j) S1 &
+  { xl : kElAt F1 (ers rho (lam (d + j) A B
            (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))) &
   { xf : kElAt F1 (ers rho f) &
-    (ITy rho (pi A B) k S1 F1 *
-     ITm rho (lam A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))
-         k S1 F1 (ers rho (lam A B
+    (ITy rho (pi (d + j) A B) (d + j) S1 F1 *
+     ITm rho (lam (d + j) A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))
+         (d + j) S1 F1 (ers rho (lam (d + j) A B
            (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))) xl *
-     ITm rho f k S1 F1 (ers rho f) xf *
-     kEqAt F1 (ers rho (lam A B
+     ITm rho f (d + j) S1 F1 (ers rho f) xf *
+     kEqAt F1 (ers rho (lam (d + j) A B
            (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))) xl
            (ers rho f) xf)%type } } } }.
 Proof.
   pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-  destruct (build_fam_data G A B k W dA dB IHA IHB rho Hrho)
+  destruct (build_fam_data G A B j W dA dB IHA IHB rho Hrho)
     as [FA [FB [[DFA DB] isoB]]].
   pose (B0 := elam (subst_etm (up_etm_etm (rsub rho)) (er B))).
   pose (redB := fun u0 (x : kElAt FA u0) => reds_beta_sub (rsub rho) (er B) u0).
-  pose (gPi := LTyK_of_ty G (pi A B) k (t_pi G A B k dA dB) rho rho HEself).
-  pose proof (ity_pi rho A B k (ers rho A) FA B0
+  pose (gPi := LTyK_of_ty G (pi j A B) j (t_pi G j j A B (le_n j) dA dB) rho rho HEself).
+  pose proof (ity_pi rho A B d j (ers rho A) FA B0
                 (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
                 eq_refl DFA DB) as Dpi.
-  destruct (IHf rho Hrho k
-              (piFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
-                 redB isoB gPi) Dpi) as [xf Df].
+  pose (FP := piFam j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+                redB isoB gPi).
+  destruct (IHf rho Hrho (d + j) (famLiftN d FP) Dpi) as [xfl Df].
+  pose (xf := elUnliftN d FP (ers rho f) xfl).
   (* the body's data, weakened *)
   assert (Ep : forall u (y : kElAt FA u),
              epi (ers rho A) B0
-             = ers (ext rho FA u y) (pi (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩)))
+             = ers (ext rho FA u y) (pi (d + j) (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩)))
     by (intros u y;
-        exact (eq_sym (ers_shift_en (Build_Entry k (ers rho A) FA u y) rho
-                         (pi A B)))).
+        exact (eq_sym (ers_shift_en (Build_Entry j (ers rho A) FA u y) rho
+                         (pi (d + j) A B)))).
   assert (DAw : forall u (y : kElAt FA u),
-             ITy (ext rho FA u y) (A ⟨↑⟩) k (ers rho A) FA)
+             ITy (ext rho FA u y) (A ⟨↑⟩) j (ers rho A) FA)
     by (intros u y;
-        exact (weaken_ITy rho A k (ers rho A) FA DFA nil rho
-                 (Build_Entry k (ers rho A) FA u y) eq_refl)).
+        exact (weaken_ITy rho A j (ers rho A) FA DFA nil rho
+                 (Build_Entry j (ers rho A) FA u y) eq_refl)).
   assert (DBw : forall u (y : kElAt FA u) u' (y' : kElAt FA u'),
-             ITy (ext (ext rho FA u y) FA u' y') (B ⟨upRen_tm_tm shift⟩) k
+             ITy (ext (ext rho FA u y) FA u' y') (B ⟨upRen_tm_tm shift⟩) j
                  (ers (ext rho FA u' y') B) (FB u' y'))
     by (intros u y u' y';
-        exact (weaken_ITy (ext rho FA u' y') B k _ (FB u' y') (DB u' y')
-                 (Build_Entry k (ers rho A) FA u' y' :: nil) rho
-                 (Build_Entry k (ers rho A) FA u y) eq_refl)).
+        exact (weaken_ITy (ext rho FA u' y') B j _ (FB u' y') (DB u' y')
+                 (Build_Entry j (ers rho A) FA u' y' :: nil) rho
+                 (Build_Entry j (ers rho A) FA u y) eq_refl)).
   assert (Dfw : forall u (y : kElAt FA u),
-             ITm (ext rho FA u y) (f ⟨↑⟩) k (epi (ers rho A) B0)
-                 (piFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
-                    FB redB isoB gPi) (ers rho f) xf)
+             ITm (ext rho FA u y) (f ⟨↑⟩) (d + j) (epi (ers rho A) B0)
+                 (famLiftN d FP) (ers rho f) xfl)
     by (intros u y;
-        exact (weaken1 rho f k _ _ (ers rho f) xf
-                 (Build_Entry k (ers rho A) FA u y) Df)).
+        exact (weaken1 rho f (d + j) _ _ (ers rho f) xfl
+                 (Build_Entry j (ers rho A) FA u y) Df)).
   assert (Dbody : forall u (y : kElAt FA u),
              ITm (ext rho FA u y)
-                 (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)) k
+                 (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)) j
                  (ers (ext rho FA u y) B) (FB u y) (eapp (ers rho f) u)
-                 (piApp k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
+                 (piApp j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
                     FB redB isoB gPi (ers rho f) xf u y))
     by (intros u y;
         exact (i_app (ext rho FA u y) (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩)
-                 (var_tm 0) k (ers rho A) FA B0
+                 (var_tm 0) d j (ers rho A) FA B0
                  (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
-                 (ers rho f) xf u y (Ep u y) (DAw u y) (DBw u y) (Dfw u y)
-                 (i_var0 rho k (ers rho A) FA u y))).
+                 (ers rho f) xfl u y (Ep u y) (DAw u y) (DBw u y) (Dfw u y)
+                 (i_var0 rho j (ers rho A) FA u y))).
   (* the lambda's realiser beta-reduces to the application's *)
   assert (Ebody : forall u (y : kElAt FA u),
              ers (ext rho FA u y)
@@ -5509,9 +5803,9 @@ Proof.
              = eapp (ers rho f) u)
     by (intros u y;
         exact (f_equal (fun z => eapp z u)
-                 (ers_shift_en (Build_Entry k (ers rho A) FA u y) rho f))).
+                 (ers_shift_en (Build_Entry j (ers rho A) FA u y) rho f))).
   assert (redw : forall u (y : kElAt FA u),
-             reds (eapp (ers rho (lam A B
+             reds (eapp (ers rho (lam (d + j) A B
                      (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))) u)
                   (eapp (ers rho f) u)).
   { intros u y.
@@ -5521,109 +5815,419 @@ Proof.
   assert (Hfun : forall u y u' y', kEqAt FA u y u' y' ->
              kRel (FB u y) (FB u' y')
                   (eapp (ers rho f) u)
-                  (piApp k (ers rho A) B0 FA
+                  (piApp j (ers rho A) B0 FA
                      (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
                      (ers rho f) xf u y)
                   (eapp (ers rho f) u')
-                  (piApp k (ers rho A) B0 FA
+                  (piApp j (ers rho A) B0 FA
                      (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
                      (ers rho f) xf u' y')).
   { intros u y u' y' Hyy.
-    apply (piApp_eq k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
+    apply (piApp_eq j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B)
              FB redB isoB gPi);
-      [ apply kEqAt_refl | exact Hyy ]. }
+      [ apply kEqAt_refl_ | exact Hyy ]. }
   assert (gw : Good (epi (ers rho A) B0)
-                 (ers rho (lam A B
+                 (ers rho (lam (d + j) A B
                     (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))))).
-  { destruct (ty_eta_lam G A B f k W dA dB df) as [d].
-    exact (LTm_of_ty G _ (pi A B) d rho rho HEself). }
-  destruct (piEl_of k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+  { destruct (ty_eta_lam G A B f d j W dA dB df) as [dl].
+    exact (LTm_of_ty G _ (pi (d + j) A B) dl rho rho HEself). }
+  destruct (piEl_of j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
               redB isoB gPi
-              (ers rho (lam A B
+              (ers rho (lam (d + j) A B
                  (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))) gw
               (fun u y => eapp (ers rho f) u)
-              (fun u y => piApp k (ers rho A) B0 FA
+              (fun u y => piApp j (ers rho A) B0 FA
                             (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
                             (ers rho f) xf u y)
               redw Hfun) as [xl Hbeh].
-  pose proof (i_lam rho A B
-                (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)) k
-                (ers rho A) FA B0 (fun u0 x => ers (ext rho FA u0 x) B) FB
-                redB isoB gPi
-                (ers rho (lam A B
-                   (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))) xl
-                (fun u y => eapp (ers rho f) u)
-                (fun u y => piApp k (ers rho A) B0 FA
-                              (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB
-                              gPi (ers rho f) xf u y)
-                eq_refl eq_refl DFA DB Dbody Hbeh) as Dl.
-  exists (epi (ers rho A) B0),
-    (piFam k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB
-       gPi), xl, xf.
+  assert (Dl : ITm rho (lam (d + j) A B
+                  (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))
+                  (d + j) (epi (ers rho A) B0) (famLiftN d FP)
+                  (ers rho (lam (d + j) A B
+                     (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))))
+                  (elLiftN d FP _ xl)).
+  { refine (i_lam rho A B
+              (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)) d j
+              (ers rho A) FA B0 (fun u0 x => ers (ext rho FA u0 x) B) FB
+              redB isoB gPi
+              (ers rho (lam (d + j) A B
+                 (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))))
+              (elLiftN d FP _ xl)
+              (fun u y => eapp (ers rho f) u)
+              (fun u y => piApp j (ers rho A) B0 FA
+                            (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB
+                            gPi (ers rho f) xf u y)
+              eq_refl eq_refl DFA DB Dbody _).
+    intros u y.
+    eapply kEqC_trans; [| exact (Hbeh u y)].
+    apply (proj2 (kRel_same (FB u y) _ _ _ _)).
+    apply (piApp_eq j (ers rho A) B0 FA
+             (fun u0 x => ers (ext rho FA u0 x) B) FB redB isoB gPi
+             _ _ _ _ u y u y); [apply elUnliftN_elLiftN | apply kEqAt_refl_]. }
+  exists (epi (ers rho A) B0), (famLiftN d FP), (elLiftN d FP _ xl), xfl.
   split; [split; [split; [exact Dpi | exact Dl] | exact Df] |].
-  apply (piEq_of k (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
+  (* both values are lifts: compare them down at j *)
+  eapply kEqC_trans; [| apply elLiftN_elUnliftN].
+  apply (elLiftN_eq d FP).
+  apply (piEq_of j (ers rho A) B0 FA (fun u0 x => ers (ext rho FA u0 x) B) FB
            redB isoB gPi).
-  - exact (LCv_of_cv G _ f (pi A B) (c_eta G A B f k dA dB df) rho rho HEself).
+  - exact (LCv_of_cv G _ f (pi (d + j) A B)
+             (c_eta G (d + j) j A B f (Nat.le_add_l j d) dA dB df) rho rho HEself).
   - intros v y v' y' Hyy.
     eapply kRel_trans;
       [ apply (proj1 (kRel_same (FB v y) _ _ _ _)); exact (Hbeh v y) |].
     exact (Hfun v y v' y' Hyy).
 Qed.
 
-Lemma isem_eta G A B f k (W : wfc G) (dA : ty G A (univ k))
-  (dB : ty (A :: G) B (univ k)) (df : ty G f (pi A B))
-  (IHA : ITot G A (univ k)) (IHB : ITot (A :: G) B (univ k))
-  (IHf : ITot G f (pi A B)) :
-  ISem G (lam A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))) f
-    (pi A B).
+Lemma isem_eta G A B f d j (W : wfc G) (dA : ty G A (UU j))
+  (dB : ty (A :: G) B (UU j)) (df : ty G f (pi (d + j) A B))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j))
+  (IHf : ITot G f (pi (d + j) A B)) :
+  ISem G (lam (d + j) A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))) f
+    (pi (d + j) A B).
 Proof.
-  assert (fL : FunTm G (lam A B
+  assert (fL : FunTm G (lam (d + j) A B
                  (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0)))).
-  { destruct (ty_eta_lam G A B f k W dA dB df) as [d].
-    exact (funtm G _ (pi A B) d). }
+  { destruct (ty_eta_lam G A B f d j W dA dB df) as [dl].
+    exact (funtm G _ (pi (d + j) A B) dl). }
   assert (gL : forall rho, EnvRelOf G rho rho ->
-             Rel (ers rho (pi A B))
-               (ers rho (lam A B
+             Rel (ers rho (pi (d + j) A B))
+               (ers rho (lam (d + j) A B
                   (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))))
-               (ers rho (lam A B
+               (ers rho (lam (d + j) A B
                   (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))))).
   { intros rho HE.
-    destruct (ty_eta_lam G A B f k W dA dB df) as [d].
-    exact (LTm_of_ty G _ (pi A B) d rho rho HE). }
-  assert (fT : FunTm G (pi A B))
-    by exact (FunTm_of_ty G (pi A B) k (t_pi G A B k dA dB)).
+    destruct (ty_eta_lam G A B f d j W dA dB df) as [dl].
+    exact (LTm_of_ty G _ (pi (d + j) A B) dl rho rho HE). }
+  assert (fT : FunTm G (pi (d + j) A B))
+    by exact (FunTm_of_ty G (pi (d + j) A B) (d + j)
+                (t_pi G (d + j) j A B (Nat.le_add_l j d) dA dB)).
   split.
   - split.
     + intros rho Hrho k' F DPi.
-      destruct (eta_value G A B f k W dA dB df IHA IHB IHf rho Hrho)
+      destruct (eta_value G A B f d j W dA dB df IHA IHB IHf rho Hrho)
         as [S1 [F1 [xl [xf [[[DT Dl] Df] Hcv]]]]].
-      assert (ES1 : S1 = ers rho (pi A B)) by exact (ers_of_ITy _ _ _ _ _ DT).
+      assert (ES1 : S1 = ers rho (pi (d + j) A B)) by exact (ers_of_ITy _ _ _ _ _ DT).
       subst S1.
-      pose proof (ity_lvl rho rho eq_refl (pi A B) k _ F1 k' _ F DT DPi) as Ek;
+      pose proof (ity_lvl rho rho eq_refl (pi (d + j) A B) (d + j) _ F1 k' _ F DT DPi) as Ek;
         subst k'.
-      pose proof (ity_same_iso G (pi A B) fT rho W Hrho k F1 F DT DPi) as P.
+      pose proof (ity_same_iso G (pi (d + j) A B) fT rho W Hrho (d + j) F1 F DT DPi) as P.
       exists (ctoK _ _ P _ xl).
-      exact (i_conv rho _ k _ F1 _ F _ xl P Dl).
+      exact (i_conv rho _ (d + j) _ F1 _ F _ xl P Dl).
     + exact IHf.
   - intros rho Hrho k' F DPi x y Dx Dy.
     pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
-    destruct (eta_value G A B f k W dA dB df IHA IHB IHf rho Hrho)
+    destruct (eta_value G A B f d j W dA dB df IHA IHB IHf rho Hrho)
       as [S1 [F1 [xl [xf [[[DT Dl] Df] Hcv]]]]].
-    assert (ES1 : S1 = ers rho (pi A B)) by exact (ers_of_ITy _ _ _ _ _ DT).
+    assert (ES1 : S1 = ers rho (pi (d + j) A B)) by exact (ers_of_ITy _ _ _ _ _ DT).
     subst S1.
-    pose proof (ity_lvl rho rho eq_refl (pi A B) k _ F1 k' _ F DT DPi) as Ek;
+    pose proof (ity_lvl rho rho eq_refl (pi (d + j) A B) (d + j) _ F1 k' _ F DT DPi) as Ek;
       subst k'.
-    pose proof (ity_same_iso G (pi A B) fT rho W Hrho k F F1 DPi DT) as P.
-    pose proof (fL rho rho HEself k _ F _ x Dx _ F1 _ xl Dl P (gL rho HEself))
+    pose proof (ity_same_iso G (pi (d + j) A B) fT rho W Hrho (d + j) F F1 DPi DT) as P.
+    pose proof (fL rho rho HEself (d + j) _ F _ x Dx _ F1 _ xl Dl P (gL rho HEself))
       as H1.
-    pose proof (funtm G f (pi A B) df rho rho HEself k _ F1 _ xf Df _ F _ y Dy
-                  (iso_sym _ _ P) (LTm_of_ty G f (pi A B) df rho rho HEself))
+    pose proof (funtm G f (pi (d + j) A B) df rho rho HEself (d + j) _ F1 _ xf Df
+                  _ F _ y Dy
+                  (iso_sym _ _ P) (LTm_of_ty G f (pi (d + j) A B) df rho rho HEself))
       as H2.
     apply (proj2 (kRel_same F _ _ _ _)).
     eapply kRel_trans; [exact H1 |].
     eapply kRel_trans;
       [ apply (proj1 (kRel_same F1 _ _ _ _)); exact Hcv | exact H2 ].
 Qed.
+
+(* ================================================================== *)
+(* THE LIFT'S COMPUTATION RULES, SEMANTICALLY.                         *)
+(*                                                                    *)
+(* `up k X` and the lifted former have THE SAME REALISER -- the lift is *)
+(* invisible on realisers -- and, by the lift-outside reading of the     *)
+(* annotated formers, the same value: the interpretation of `up k X` is   *)
+(* famLiftK of X's, and X's lifted form is read at one more lift.  So     *)
+(* each rule only has to say why the lift of X's family is the family of  *)
+(* its lifted form, which at Pi and Sigma is a literal equality and at    *)
+(* the component-free formers is one of the three canonical isos.         *)
+(* ================================================================== *)
+
+(* The gap between a former's annotation and its components' level.  Every
+   Pi/Sigma rule states `j <= k` while every interpretation is given at
+   `d + j`, so the induction opens the annotation up once per case. *)
+Lemma lvl_gap j k (H : j <= k) : { d : nat & k = d + j }.
+Proof. exists (k - j); lia. Qed.
+
+Lemma lvl_gapS j k (H : j < k) : { d : nat & k = d + S j }.
+Proof. exists (k - S j); lia. Qed.
+
+(* The shape shared by the six rules. *)
+Lemma isem_up_former G k (X X' : tm) (W : wfc G) (dX : ty G X (UU k))
+  (HX : ITot G X (UU k)) (HX' : ITot G X' (UU (S k)))
+  (Hshu : forall rho k' Sy (F : kUFam k' Sy) w (x : kElAt F w),
+            TmShape rho X' k' Sy F w x -> TyVal rho X' k' Sy F w x)
+  (Hers : forall rho, ers rho (up k X) = ers rho X')
+  (Hiso : forall rho (Hrho : EnvITy G rho)
+            (F1 : kUFam k (ers rho (up k X))) (F2 : kUFam (S k) (ers rho X')),
+            ITy rho X k (ers rho (up k X)) F1 -> ITy rho X' (S k) (ers rho X') F2 ->
+            iso (kAt (famLiftK F1)) (kAt F2))
+  (Lc : LCv G (up k X) X' (UU (S k))) :
+  ISem G (up k X) X' (UU (S k)).
+Proof.
+  apply (isem_former_cv G (up k X) X' (S k) W
+           (itot_up G X k W dX HX) HX'
+           (fun rho k' Sy F w x H => H) Hshu); [| exact Lc].
+  intros rho Hrho F1 F2 D1 D2.
+  split.
+  - rewrite (Hers rho); exact (uf_ty F2).
+  - destruct (ity_up_inv rho (up k X) (S k) (ers rho (up k X)) F1 D1)
+      as [F1' [[_ DX] Hi1]].
+    eapply iso_trans; [exact Hi1 | exact (Hiso rho Hrho F1' F2 DX D2)].
+Qed.
+
+Lemma isem_up_nat G k (W : wfc G) :
+  ISem G (up k (nat_ k)) (nat_ (S k)) (UU (S k)).
+Proof.
+  apply (isem_up_former G k (nat_ k) (nat_ (S k)) W (t_nat G k W)
+           (itot_nat G W k) (itot_nat G W (S k))
+           (fun rho k' Sy F w x H => H) (fun rho => eq_refl));
+    [| exact (LCv_of_cv G _ _ _ (c_up_nat G k W))].
+  intros rho Hrho F1 F2 D1 D2.
+  pose proof (ity_nat_inv rho (nat_ k) k (ers rho (up k (nat_ k))) F1 D1) as Q1.
+  pose proof (ity_nat_inv rho (nat_ (S k)) (S k) (ers rho (nat_ (S k))) F2 D2)
+    as Q2.
+  cbn [NatDec] in Q1, Q2.
+  eapply iso_trans; [exact (famLiftK_iso F1 (natFam k) Q1) |].
+  eapply iso_trans; [apply famLiftK_natFam | apply iso_sym; exact Q2].
+Qed.
+
+Lemma isem_up_prop G k (W : wfc G) :
+  ISem G (up k (prop k)) (prop (S k)) (UU (S k)).
+Proof.
+  apply (isem_up_former G k (prop k) (prop (S k)) W (t_prop G k W)
+           (itot_prop G W k) (itot_prop G W (S k))
+           (fun rho k' Sy F w x H => H) (fun rho => eq_refl));
+    [| exact (LCv_of_cv G _ _ _ (c_up_prop G k W))].
+  intros rho Hrho F1 F2 D1 D2.
+  pose proof (ity_prop_inv rho (prop k) k (ers rho (up k (prop k))) F1 D1) as Q1.
+  pose proof (ity_prop_inv rho (prop (S k)) (S k) (ers rho (prop (S k))) F2 D2)
+    as Q2.
+  cbn [PropDec] in Q1, Q2.
+  eapply iso_trans; [exact (famLiftK_iso F1 (propFam k) Q1) |].
+  eapply iso_trans; [apply famLiftK_propFam | apply iso_sym; exact Q2].
+Qed.
+
+(* At a universe the two readings are lifts of the SAME universe family, so
+   the gaps are read off the annotations and the iso is the lift of the
+   identity. *)
+Lemma isem_up_univ G d j (W : wfc G) :
+  ISem G (up (d + S j) (univ (d + S j) j)) (univ (S (d + S j)) j)
+    (UU (S (d + S j))).
+Proof.
+  assert (Hj : j < d + S j) by lia.
+  assert (Hj2 : j < S (d + S j)) by lia.
+  apply (isem_up_former G (d + S j) (univ (d + S j) j) (univ (S (d + S j)) j) W
+           (t_univ G (d + S j) j Hj W)
+           (itot_univ G W d j Hj) (itot_univ G W (S d) j Hj2)
+           (fun rho k' Sy F w x H => H) (fun rho => eq_refl));
+    [| exact (LCv_of_cv G _ _ _ (c_up_univ G (d + S j) j Hj W))].
+  intros rho Hrho F1 F2 D1 D2.
+  destruct (ity_univ_iso rho (univ (d + S j) j) (d + S j)
+              (ers rho (up (d + S j) (univ (d + S j) j))) F1 D1) as [d1 [E1 Q1]].
+  (* the second reading is taken at `S d + S j`, not at `S (d + S j)`: the two
+     are convertible, and in that form the level equation the inversion hands
+     back is syntactically reflexive, so lvlCast_irr clears the cast. *)
+  destruct (ity_univ_iso rho (univ (S (d + S j)) j) (S d + S j)
+              (ers rho (univ (S (d + S j)) j)) F2 D2) as [d2 [E2 Q2]].
+  assert (Ed1 : d1 = d) by lia; subst d1.
+  assert (Ed2 : d2 = S d) by lia; subst d2.
+  rewrite (lvlCast_irr (eq_sym E1) F1) in Q1.
+  rewrite (lvlCast_irr (eq_sym E2) F2) in Q2.
+  eapply iso_trans; [exact (famLiftK_iso F1 _ Q1) |].
+  apply iso_sym; exact Q2.
+Qed.
+
+(* At Prf the proposition is untouched, so the two readings' values differ
+   only in the level the Prf-code records -- and the lift is precisely the
+   step that raises it. *)
+Lemma isem_up_prf G k j p (Hjk : j <= k) (W : wfc G) (dp : ty G p (prop j))
+  (IHp : ITot G p (prop j)) :
+  ISem G (up k (prf k p)) (prf (S k) p) (UU (S k)).
+Proof.
+  apply (isem_up_former G k (prf k p) (prf (S k) p) W (t_prf G k j p Hjk dp)
+           (itot_prf G k j p Hjk W dp IHp)
+           (itot_prf G (S k) j p (le_S j k Hjk) W dp IHp)
+           (fun rho k' Sy F w x H => H) (fun rho => eq_refl));
+    [| exact (LCv_of_cv G _ _ _ (c_up_prf G k j p Hjk dp))].
+  intros rho Hrho F1 F2 D1 D2.
+  pose proof (EnvRelOf_selfE G rho W Hrho) as HEself.
+  destruct (ity_prf_inv rho (prf k p) k (ers rho (up k (prf k p))) F1 D1)
+    as [j1 [wp [xp [Dp Hi1]]]].
+  destruct (ity_prf_inv rho (prf (S k) p) (S k) (ers rho (prf (S k) p)) F2 D2)
+    as [j2 [wp2 [xp2 [Dp2 Hi2]]]].
+  pose proof (itm_lvl p rho rho eq_refl _ _ _ _ _ NotPrfR_prop Dp
+                _ _ _ _ _ NotPrfR_prop Dp2) as Ej; subst j2.
+  assert (Ep : wp = ers rho p) by exact (ers_of_ITm _ _ _ _ _ _ _ Dp).
+  assert (Ep2 : wp2 = ers rho p) by exact (ers_of_ITm _ _ _ _ _ _ _ Dp2).
+  subst wp wp2.
+  assert (Hiff : propVal xp <-> propVal xp2).
+  { exact (proj1 (proj1 (propEq_iff xp xp2)
+                    (proj2 (kRel_same (propFam j1) _ _ _ _)
+                       (funtm G p (prop j) dp rho rho HEself j1 eprop
+                          (propFam j1) _ xp Dp eprop (propFam j1) _ xp2 Dp2
+                          (iso_self (propFam j1))
+                          (LTm_of_ty G p (prop j) dp rho rho HEself))))). }
+  assert (Hty : tyeq (eprf (ers rho p)) (eprf (ers rho p)))
+    by (exists (S k); exact (uf_ty (prfF (S k) xp))).
+  eapply iso_trans; [exact (famLiftK_iso F1 (prfF k xp) Hi1) |].
+  eapply iso_trans; [apply famLiftK_prfFam |].
+  eapply iso_trans;
+    [ exact (prfFam_iso (S k) j1 j1 _ xp _ xp2 Hty Hiff)
+    | apply iso_sym; exact Hi2 ].
+Qed.
+
+(* ---- the diagonal form of pi_data_iso / sig_data_iso: the two readings
+     are of ONE type in ONE environment, so the Pi-realisers' equality comes
+     from the readings' own pins and the domains' iso is functionality on the
+     diagonal.  These belong beside pi_data_iso, upstream in this file. ---- *)
+Lemma pi_data_iso_diag (G : ctx) (A B : tm)
+  (LB : LTy (A :: G) B) (IHA : FunTm G A) (IHB : FunTm (A :: G) B)
+  rho (W : wfc G) (Hrho : EnvITy G rho) k
+  wA (FA : kUFam k wA) B0 wB FB redB isoB gPi
+  wA' (FA' : kUFam k wA') B0' wB' FB' redB' isoB' gPi'
+  (Hty : tyeq (epi wA B0) (epi wA' B0'))
+  (DA : ITy rho A k wA FA) (DA' : ITy rho A k wA' FA')
+  (DB : forall u x, ITy (ext rho FA u x) B k (wB u x) (FB u x))
+  (DB' : forall u x, ITy (ext rho FA' u x) B k (wB' u x) (FB' u x)) :
+  iso (kAt (piFam k wA B0 FA wB FB redB isoB gPi))
+      (kAt (piFam k wA' B0' FA' wB' FB' redB' isoB' gPi')).
+Proof.
+  assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
+  assert (EA' : wA' = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA').
+  subst wA wA'.
+  apply piFam_iso; [exact Hty | |].
+  - exact (ity_same_iso G A IHA rho W Hrho k FA FA' DA DA').
+  - intros u x u' x' Hrel.
+    pose proof (EnvRelOf_ext G rho rho A k FA FA' u x u' x'
+                  (EnvRelOf_selfE G rho W Hrho) Hrel) as HEx.
+    assert (EB : wB u x = ers (ext rho FA u x) B)
+      by exact (ers_of_ITy _ _ _ _ _ (DB u x)).
+    assert (EB' : wB' u' x' = ers (ext rho FA' u' x') B)
+      by exact (ers_of_ITy _ _ _ _ _ (DB' u' x')).
+    refine (FunTy_of_FunTm (A :: G) B IHB _ _ HEx k _ (FB u x) _ (FB' u' x')
+              (DB u x) (DB' u' x') _).
+    apply (eqty_at_lvl k _ _ (uf_ty (FB u x)) (uf_ty (FB' u' x'))).
+    rewrite EB, EB'; exact (LB _ _ HEx).
+Qed.
+
+Lemma sig_data_iso_diag (G : ctx) (A B : tm)
+  (LB : LTy (A :: G) B) (IHA : FunTm G A) (IHB : FunTm (A :: G) B)
+  rho (W : wfc G) (Hrho : EnvITy G rho) k
+  wA (FA : kUFam k wA) B0 wB FB redB isoB gSig
+  wA' (FA' : kUFam k wA') B0' wB' FB' redB' isoB' gSig'
+  (Hty : tyeq (esig wA B0) (esig wA' B0'))
+  (DA : ITy rho A k wA FA) (DA' : ITy rho A k wA' FA')
+  (DB : forall u x, ITy (ext rho FA u x) B k (wB u x) (FB u x))
+  (DB' : forall u x, ITy (ext rho FA' u x) B k (wB' u x) (FB' u x)) :
+  iso (kAt (sigFam k wA B0 FA wB FB redB isoB gSig))
+      (kAt (sigFam k wA' B0' FA' wB' FB' redB' isoB' gSig')).
+Proof.
+  assert (EA : wA = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA).
+  assert (EA' : wA' = ers rho A) by exact (ers_of_ITy _ _ _ _ _ DA').
+  subst wA wA'.
+  apply sigFam_iso; [exact Hty | |].
+  - exact (ity_same_iso G A IHA rho W Hrho k FA FA' DA DA').
+  - intros u x u' x' Hrel.
+    pose proof (EnvRelOf_ext G rho rho A k FA FA' u x u' x'
+                  (EnvRelOf_selfE G rho W Hrho) Hrel) as HEx.
+    assert (EB : wB u x = ers (ext rho FA u x) B)
+      by exact (ers_of_ITy _ _ _ _ _ (DB u x)).
+    assert (EB' : wB' u' x' = ers (ext rho FA' u' x') B)
+      by exact (ers_of_ITy _ _ _ _ _ (DB' u' x')).
+    refine (FunTy_of_FunTm (A :: G) B IHB _ _ HEx k _ (FB u x) _ (FB' u' x')
+              (DB u x) (DB' u' x') _).
+    apply (eqty_at_lvl k _ _ (uf_ty (FB u x)) (uf_ty (FB' u' x'))).
+    rewrite EB, EB'; exact (LB _ _ HEx).
+Qed.
+
+Lemma isem_up_pi G A B d j (W : wfc G)
+  (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j)) :
+  ISem G (up (d + j) (pi (d + j) A B)) (pi (S (d + j)) A B) (UU (S (d + j))).
+Proof.
+  apply (isem_up_former G (d + j) (pi (d + j) A B) (pi (S (d + j)) A B) W
+           (t_pi G (d + j) j A B (Nat.le_add_l j d) dA dB)
+           (itot_pi G A B d j W dA dB IHA IHB)
+           (itot_pi G A B (S d) j W dA dB IHA IHB)
+           (fun rho k' Sy F w x H => H) (fun rho => eq_refl));
+    [| exact (LCv_of_cv G _ _ _
+                (c_up_pi G (d + j) j A B (Nat.le_add_l j d) dA dB)) ].
+  intros rho Hrho F1 F2 D1 D2.
+  destruct (ity_pi_inv rho (pi (d + j) A B) (d + j)
+              (ers rho (up (d + j) (pi (d + j) A B))) F1 D1) as [d1 [j1 [E1 H1]]].
+  destruct (ity_pi_inv rho (pi (S (d + j)) A B) (S d + j)
+              (ers rho (pi (S (d + j)) A B)) F2 D2) as [d2 [j2 [E2 H2]]].
+  destruct H1 as [wA [FA [B0 [wB [FB [redB [isoB [gPi [[[DA DB] Hw] Hiso]]]]]]]]].
+  destruct H2
+    as [wA2 [FA2 [B02 [wB2 [FB2 [redB2 [isoB2 [gPi2 [[[DA2 DB2] Hw2] Hiso2]]]]]]]]].
+  pose proof (ity_lvl rho rho eq_refl A j1 _ FA j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ej1; subst j1.
+  pose proof (ity_lvl rho rho eq_refl A j2 _ FA2 j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA2
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ej2; subst j2.
+  assert (Ed1 : d1 = d) by lia; subst d1.
+  assert (Ed2 : d2 = S d) by lia; subst d2.
+  rewrite (lvlCast_irr (eq_sym E1) F1) in Hiso.
+  rewrite (lvlCast_irr (eq_sym E2) F2) in Hiso2.
+  assert (Hty : tyeq (epi wA B0) (epi wA2 B02))
+    by (eapply tyeq_trans; [apply tyeq_sym; exact Hw | exact Hw2]).
+  eapply iso_trans; [exact (famLiftK_iso F1 _ Hiso) |].
+  eapply iso_trans; [| apply iso_sym; exact Hiso2].
+  apply (famLiftN_iso (S d)).
+  exact (pi_data_iso_diag G A B (LTy_of_ty (A :: G) B j dB)
+           (FunTm_of_ty G A j dA) (FunTm_of_ty (A :: G) B j dB)
+           rho W Hrho j wA FA B0 wB FB redB isoB gPi
+           wA2 FA2 B02 wB2 FB2 redB2 isoB2 gPi2 Hty DA DA2 DB DB2).
+Qed.
+
+Lemma isem_up_sig G A B d j (W : wfc G)
+  (dA : ty G A (UU j)) (dB : ty (A :: G) B (UU j))
+  (IHA : ITot G A (UU j)) (IHB : ITot (A :: G) B (UU j)) :
+  ISem G (up (d + j) (sig_ (d + j) A B)) (sig_ (S (d + j)) A B) (UU (S (d + j))).
+Proof.
+  apply (isem_up_former G (d + j) (sig_ (d + j) A B) (sig_ (S (d + j)) A B) W
+           (t_sig G (d + j) j A B (Nat.le_add_l j d) dA dB)
+           (itot_sig G A B d j W dA dB IHA IHB)
+           (itot_sig G A B (S d) j W dA dB IHA IHB)
+           (fun rho k' Sy F w x H => H) (fun rho => eq_refl));
+    [| exact (LCv_of_cv G _ _ _
+                (c_up_sig G (d + j) j A B (Nat.le_add_l j d) dA dB)) ].
+  intros rho Hrho F1 F2 D1 D2.
+  destruct (ity_sig_inv rho (sig_ (d + j) A B) (d + j)
+              (ers rho (up (d + j) (sig_ (d + j) A B))) F1 D1) as [d1 [j1 [E1 H1]]].
+  destruct (ity_sig_inv rho (sig_ (S (d + j)) A B) (S d + j)
+              (ers rho (sig_ (S (d + j)) A B)) F2 D2) as [d2 [j2 [E2 H2]]].
+  destruct H1 as [wA [FA [B0 [wB [FB [redB [isoB [gSig [[[DA DB] Hw] Hiso]]]]]]]]].
+  destruct H2
+    as [wA2 [FA2 [B02 [wB2 [FB2 [redB2 [isoB2 [gSig2 [[[DA2 DB2] Hw2] Hiso2]]]]]]]]].
+  pose proof (ity_lvl rho rho eq_refl A j1 _ FA j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ej1; subst j1.
+  pose proof (ity_lvl rho rho eq_refl A j2 _ FA2 j _
+                (projT1 (ityT_of_ITot G A j IHA rho Hrho)) DA2
+                (projT2 (ityT_of_ITot G A j IHA rho Hrho))) as Ej2; subst j2.
+  assert (Ed1 : d1 = d) by lia; subst d1.
+  assert (Ed2 : d2 = S d) by lia; subst d2.
+  rewrite (lvlCast_irr (eq_sym E1) F1) in Hiso.
+  rewrite (lvlCast_irr (eq_sym E2) F2) in Hiso2.
+  assert (Hty : tyeq (esig wA B0) (esig wA2 B02))
+    by (eapply tyeq_trans; [apply tyeq_sym; exact Hw | exact Hw2]).
+  eapply iso_trans; [exact (famLiftK_iso F1 _ Hiso) |].
+  eapply iso_trans; [| apply iso_sym; exact Hiso2].
+  apply (famLiftN_iso (S d)).
+  exact (sig_data_iso_diag G A B (LTy_of_ty (A :: G) B j dB)
+           (FunTm_of_ty G A j dA) (FunTm_of_ty (A :: G) B j dB)
+           rho W Hrho j wA FA B0 wB FB redB isoB gSig
+           wA2 FA2 B02 wB2 FB2 redB2 isoB2 gSig2 Hty DA DA2 DB DB2).
+Qed.
+
 
 (* ================================================================== *)
 (* THEOREM 9.2: the induction.                                         *)
@@ -5655,39 +6259,52 @@ Proof.
   - intros G i A W IHW Hl; exact (W, itot_var G i A W Hl).
   - intros G t A B k dt [W IHt] dA [_ IHA] dB [_ IHB] cAB [_ [[_ _] Hc]];
       exact (W, itot_conv G t A B k W dA dB IHt IHA IHB Hc).
-  - intros G k W IHW; exact (W, itot_univ G W k).
-  - intros G A k dA [W IHA]; exact (W, itot_up G A k W dA IHA).
-  - intros G A t k dA [W IHA] dt [_ IHt];
-      exact (W, itot_uptm G A t k W dA dt IHA IHt).
-  - intros G A B k dA [W IHA] dB [_ IHB];
-      exact (W, itot_pi G A B k W dA dB IHA IHB).
-  - intros G A B t k dA [W IHA] dB [_ IHB] dt [_ IHt];
-      exact (W, itot_lam G A B t k W dA dB dt IHA IHB IHt).
-  - intros G A B f u k dA [W IHA] dB [_ IHB] df [_ IHf] du [_ IHu];
-      exact (W, itot_app G A B f u k W dA dB df du IHA IHB IHf IHu).
-  - intros G A B k dA [W IHA] dB [_ IHB];
-      exact (W, itot_sig G A B k W dA dB IHA IHB).
-  - intros G A B t u k dA [W IHA] dB [_ IHB] dt [_ IHt] du [_ IHu];
-      exact (W, itot_pair G A B t u k W dA dB dt du IHA IHB IHt IHu).
-  - intros G A B p k dA [W IHA] dB [_ IHB] dp [_ IHp];
-      exact (W, itot_fst G A B p k W dA dB dp IHA IHB IHp).
-  - intros G A B p k dA [W IHA] dB [_ IHB] dp [_ IHp];
-      exact (W, itot_snd G A B p k W dA dB dp IHA IHB IHp).
-  - intros G W IHW; exact (W, itot_nat G W).
-  - intros G W IHW; exact (W, itot_zero G W).
-  - intros G n dn [W IHn]; exact (W, itot_succ G W n IHn).
-  - intros G C z s n k dC [_ IHC] dz [W IHz] ds [_ IHs] dn [_ IHn];
-      exact (W, itot_natrec G C z s n k W dC dz ds dn IHC IHz IHs IHn).
-  - intros G W IHW; exact (W, itot_prop G W).
-  - intros G p dp [W IHp]; exact (W, itot_prf G p W dp IHp).
-  - intros G A p k dA [W IHA] dp [_ IHp];
-      exact (W, itot_all G A p k W dA dp IHA IHp).
-  - intros G A p t k dA [W IHA] dp [_ IHp] dt [_ IHt];
-      exact (W, itot_plam G A p t k W dA dp dt IHA IHp IHt).
-  - intros G A p f u k dA [W IHA] dp [_ IHp] df [_ IHf] du [_ IHu];
-      exact (W, itot_papp G A p f u k W dA dp df du IHA IHp IHf IHu).
-  - intros G W IHW; exact (W, itot_false G W).
-  - intros G T e k dT [W IHT] de [_ IHe]; exact (W, itot_absurd G T e IHe).
+  (* the annotation of a universe is opened up as `d + S j`, which is the
+     shape the lift-outside reading gives it: the universe level S j adds,
+     lifted d times. *)
+  - intros G k j Hjk W IHW;
+      destruct (lvl_gapS j k Hjk) as [d Ed]; subst k;
+      exact (W, itot_univ G W d j Hjk).
+  - intros G j A dA [W IHA]; exact (W, itot_up G A j W dA IHA).
+  - intros G j A t dA [W IHA] dt [_ IHt];
+      exact (W, itot_uptm G A t j W dA dt IHA IHt).
+  (* and at Pi and Sigma as `d + j`, the components' level plus the gap *)
+  - intros G k j A B Hjk dA [W IHA] dB [_ IHB];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, itot_pi G A B d j W dA dB IHA IHB).
+  - intros G k j A B t Hjk dA [W IHA] dB [_ IHB] dt [_ IHt];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, itot_lam G A B t d j W dA dB dt IHA IHB IHt).
+  - intros G k j A B f u Hjk dA [W IHA] dB [_ IHB] df [_ IHf] du [_ IHu];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, itot_app G A B f u d j W dA dB df du IHA IHB IHf IHu).
+  - intros G k j A B Hjk dA [W IHA] dB [_ IHB];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, itot_sig G A B d j W dA dB IHA IHB).
+  - intros G k j A B t u Hjk dA [W IHA] dB [_ IHB] dt [_ IHt] du [_ IHu];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, itot_pair G A B t u d j W dA dB dt du IHA IHB IHt IHu).
+  - intros G k j A B p Hjk dA [W IHA] dB [_ IHB] dp [_ IHp];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, itot_fst G A B p d j W dA dB dp IHA IHB IHp).
+  - intros G k j A B p Hjk dA [W IHA] dB [_ IHB] dp [_ IHp];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, itot_snd G A B p d j W dA dB dp IHA IHB IHp).
+  - intros G k W IHW; exact (W, itot_nat G W k).
+  - intros G k W IHW; exact (W, itot_zero G W k).
+  - intros G k n dn [W IHn]; exact (W, itot_succ G W k n IHn).
+  - intros G C z s n k j dC [_ IHC] dz [W IHz] ds [_ IHs] dn [_ IHn];
+      exact (W, itot_natrec G C z s n k j W dC dz ds dn IHC IHz IHs IHn).
+  - intros G k W IHW; exact (W, itot_prop G W k).
+  - intros G k j p Hjk dp [W IHp]; exact (W, itot_prf G k j p Hjk W dp IHp).
+  - intros G A p j k dA [W IHA] dp [_ IHp];
+      exact (W, itot_all G A p j k W dA dp IHA IHp).
+  - intros G A p t j k dA [W IHA] dp [_ IHp] dt [_ IHt];
+      exact (W, itot_plam G A p t j k W dA dp dt IHA IHp IHt).
+  - intros G A p f u j k dA [W IHA] dp [_ IHp] df [_ IHf] du [_ IHu];
+      exact (W, itot_papp G A p f u j k W dA dp df du IHA IHp IHf IHu).
+  - intros G k W IHW; exact (W, itot_false G W k).
+  - intros G T e k j dT [W IHT] de [_ IHe]; exact (W, itot_absurd G T j e IHe).
   (* ---- cv ---- *)
   - intros G t A d [W IHd]; exact (W, isem_refl G t A d IHd).
   - intros G t u A c [W IHc]; exact (W, isem_sym G t u A IHc).
@@ -5695,66 +6312,93 @@ Proof.
       exact (W, isem_trans G t u v A IH1 IH2).
   - intros G t u A B k c [W IHc] dA [_ IHA] dB [_ IHB] cAB [_ [[_ _] Hc]];
       exact (W, isem_conv G t u A B k W dA dB IHc IHA IHB Hc).
-  - intros G p e e' dp [W IHp] de [_ IHe] de' [_ IHe'];
-      exact (W, isem_prf_irr G p e e' de de' IHe IHe').
-  - intros G A A' k dA [W IHA] dA' [_ IHA'] cA [_ [[_ _] HcA]];
-      exact (W, isem_up G A A' k W dA dA' cA IHA IHA' HcA).
-  - intros G A t t' k dA [W IHA] dt [_ IHt] dt' [_ IHt'] ct [_ [[_ _] Hct]];
-      exact (W, isem_uptm G A t t' k W dA dt dt' ct IHA IHt IHt' Hct).
-  - intros G A A' B B' k dA [W IHA] dB [_ IHB] dA' [_ IHA'] dB' [_ IHB']
+  - intros G j p e e' dp [W IHp] de [_ IHe] de' [_ IHe'];
+      exact (W, isem_prf_irr G j p e e' de de' IHe IHe').
+  - intros G j A A' dA [W IHA] dA' [_ IHA'] cA [_ [[_ _] HcA]];
+      exact (W, isem_up G A A' j W dA dA' cA IHA IHA' HcA).
+  - intros G j A t t' dA [W IHA] dt [_ IHt] dt' [_ IHt'] ct [_ [[_ _] Hct]];
+      exact (W, isem_uptm G A t t' j W dA dt dt' ct IHA IHt IHt' Hct).
+  (* ---- the lift's computation rules ---- *)
+  - intros G k j Hjk W IHW;
+      destruct (lvl_gapS j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_up_univ G d j W).
+  - intros G k W IHW; exact (W, isem_up_nat G k W).
+  - intros G k W IHW; exact (W, isem_up_prop G k W).
+  - intros G k j p Hjk dp [W IHp];
+      exact (W, isem_up_prf G k j p Hjk W dp IHp).
+  - intros G k j A B Hjk dA [W IHA] dB [_ IHB];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_up_pi G A B d j W dA dB IHA IHB).
+  - intros G k j A B Hjk dA [W IHA] dB [_ IHB];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_up_sig G A B d j W dA dB IHA IHB).
+  (* ---- the congruences ---- *)
+  - intros G k j A A' B B' Hjk dA [W IHA] dB [_ IHB] dA' [_ IHA'] dB' [_ IHB']
       cA [_ [[_ _] HcA]] cB [_ [[_ _] HcB]];
-      exact (W, isem_pi G A A' B B' k W dA dB dA' dB' cA cB
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_pi G A A' B B' d j W dA dB dA' dB' cA cB
                IHA IHB IHA' IHB' HcA HcB).
-  - intros G A A' B B' t t' k dA [W IHA] dB [_ IHB] dA' [_ IHA'] dB' [_ IHB']
+  - intros G k j A A' B B' t t' Hjk dA [W IHA] dB [_ IHB] dA' [_ IHA'] dB' [_ IHB']
       cA [_ [[_ _] HcA]] cB [_ [[_ _] HcB]] dt [_ IHt] dt' [_ IHt']
       ct [_ [[_ IHt2] Hct]];
-      exact (W, isem_lam G A A' B B' t t' k W dA dB dA' dB' cA cB dt dt' ct
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_lam G A A' B B' t t' d j W dA dB dA' dB' cA cB dt dt' ct
                IHA IHB IHA' IHB' HcA HcB IHt IHt2 IHt' Hct).
-  - intros G A B f f' u u' k dA [W IHA] dB [_ IHB] df [_ IHf] df' [_ IHf']
+  - intros G k j A B f f' u u' Hjk dA [W IHA] dB [_ IHB] df [_ IHf] df' [_ IHf']
       cf [_ [[_ _] Hcf]] du [_ IHu] du' [_ IHu'] cu [_ [[_ _] Hcu]];
-      exact (W, isem_app G A B f f' u u' k W dA dB df df' cf du du' cu
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_app G A B f f' u u' d j W dA dB df df' cf du du' cu
                IHA IHB IHf IHf' Hcf IHu IHu' Hcu).
-  - intros G A B t u k dA [W IHA] dB [_ IHB] dt [_ IHt] du [_ IHu];
-      exact (W, isem_beta G A B t u k W dA dB dt du IHA IHB IHt IHu).
-  - intros G A B f k dA [W IHA] dB [_ IHB] df [_ IHf];
-      exact (W, isem_eta G A B f k W dA dB df IHA IHB IHf).
-  - intros G A A' B B' k dA [W IHA] dB [_ IHB] dA' [_ IHA'] dB' [_ IHB']
+  - intros G k j A B t u Hjk dA [W IHA] dB [_ IHB] dt [_ IHt] du [_ IHu];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_beta G A B t u d j W dA dB dt du IHA IHB IHt IHu).
+  - intros G k j A B f Hjk dA [W IHA] dB [_ IHB] df [_ IHf];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_eta G A B f d j W dA dB df IHA IHB IHf).
+  - intros G k j A A' B B' Hjk dA [W IHA] dB [_ IHB] dA' [_ IHA'] dB' [_ IHB']
       cA [_ [[_ _] HcA]] cB [_ [[_ _] HcB]];
-      exact (W, isem_sig G A A' B B' k W dA dB dA' dB' cA cB
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_sig G A A' B B' d j W dA dB dA' dB' cA cB
                IHA IHB IHA' IHB' HcA HcB).
-  - intros G A B t t' u u' k dA [W IHA] dB [_ IHB] dt [_ IHt] dt' [_ IHt']
+  - intros G k j A B t t' u u' Hjk dA [W IHA] dB [_ IHB] dt [_ IHt] dt' [_ IHt']
       ct [_ [[_ _] Hct]] du [_ IHu] du' [_ IHu'] cu [_ [[_ _] Hcu]];
-      exact (W, isem_pair G A B t t' u u' k W dA dB dt dt' ct du du' cu
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_pair G A B t t' u u' d j W dA dB dt dt' ct du du' cu
                IHA IHB IHt IHt' Hct IHu IHu' Hcu).
-  - intros G A B p p' k dA [W IHA] dB [_ IHB] dp [_ IHp] dp' [_ IHp']
+  - intros G k j A B p p' Hjk dA [W IHA] dB [_ IHB] dp [_ IHp] dp' [_ IHp']
       cp [_ [[_ _] Hcp]];
-      exact (W, isem_fst G A B p p' k W dA dB dp dp' cp IHA IHB IHp IHp' Hcp).
-  - intros G A B p p' k dA [W IHA] dB [_ IHB] dp [_ IHp] dp' [_ IHp']
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_fst G A B p p' d j W dA dB dp dp' cp IHA IHB IHp IHp' Hcp).
+  - intros G k j A B p p' Hjk dA [W IHA] dB [_ IHB] dp [_ IHp] dp' [_ IHp']
       cp [_ [[_ _] Hcp]];
-      exact (W, isem_snd G A B p p' k W dA dB dp dp' cp IHA IHB IHp IHp' Hcp).
-  - intros G A B t u k dA [W IHA] dB [_ IHB] dt [_ IHt] du [_ IHu];
-      exact (W, isem_fst_beta G A B t u k W dA dB dt du IHA IHB IHt IHu).
-  - intros G A B t u k dA [W IHA] dB [_ IHB] dt [_ IHt] du [_ IHu];
-      exact (W, isem_snd_beta G A B t u k W dA dB dt du IHA IHB IHt IHu).
-  - intros G A B p k dA [W IHA] dB [_ IHB] dp [_ IHp];
-      exact (W, isem_surj G A B p k W dA dB dp IHA IHB IHp).
-  - intros G n n' dn [W IHn] dn' [_ IHn'] cn [_ [[_ _] Hcn]];
-      exact (W, isem_succ G n n' W dn dn' cn IHn IHn' Hcn).
-  - intros G C C' z z' s s' n n' k dC [_ IHC] dC' [_ IHC'] cC [_ [[_ _] HcC]]
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_snd G A B p p' d j W dA dB dp dp' cp IHA IHB IHp IHp' Hcp).
+  - intros G k j A B t u Hjk dA [W IHA] dB [_ IHB] dt [_ IHt] du [_ IHu];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_fst_beta G A B t u d j W dA dB dt du IHA IHB IHt IHu).
+  - intros G k j A B t u Hjk dA [W IHA] dB [_ IHB] dt [_ IHt] du [_ IHu];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_snd_beta G A B t u d j W dA dB dt du IHA IHB IHt IHu).
+  - intros G k j A B p Hjk dA [W IHA] dB [_ IHB] dp [_ IHp];
+      destruct (lvl_gap j k Hjk) as [d Ed]; subst k;
+      exact (W, isem_surj G A B p d j W dA dB dp IHA IHB IHp).
+  - intros G k n n' dn [W IHn] dn' [_ IHn'] cn [_ [[_ _] Hcn]];
+      exact (W, isem_succ G k n n' W dn dn' cn IHn IHn' Hcn).
+  - intros G C C' z z' s s' n n' k j dC [_ IHC] dC' [_ IHC'] cC [_ [[_ _] HcC]]
       dz [W IHz] dz' [_ IHz'] cz [_ [[_ _] Hcz]] ds [_ IHs] ds' [_ IHs']
       cs [_ [[_ _] Hcs]] dn [_ IHn] dn' [_ IHn'] cn [_ [[_ _] Hcn]];
-      exact (W, isem_natrec G C C' z z' s s' n n' k W dC dC' cC dz dz' cz
+      exact (W, isem_natrec G C C' z z' s s' n n' k j W dC dC' cC dz dz' cz
                ds ds' cs dn dn' cn IHC IHC' HcC IHz IHz' Hcz IHs IHs' Hcs
                IHn IHn' Hcn).
-  - intros G C z s k dC [_ IHC] dz [W IHz] ds [_ IHs];
-      exact (W, isem_rec_zero G C z s k W dC dz ds IHC IHz IHs).
-  - intros G C z s n k dC [_ IHC] dz [W IHz] ds [_ IHs] dn [_ IHn];
-      exact (W, isem_rec_succ G C z s n k W dC dz ds dn IHC IHz IHs IHn).
-  - intros G p p' dp [W IHp] dp' [_ IHp'] cp [_ [[_ _] Hcp]];
-      exact (W, isem_prf G p p' W dp dp' cp IHp IHp' Hcp).
-  - intros G A A' p p' k dA [W IHA] dp [_ IHp] dA' [_ IHA'] dp' [_ IHp']
+  - intros G C z s k j dC [_ IHC] dz [W IHz] ds [_ IHs];
+      exact (W, isem_rec_zero G C z s k j W dC dz ds IHC IHz IHs).
+  - intros G C z s n k j dC [_ IHC] dz [W IHz] ds [_ IHs] dn [_ IHn];
+      exact (W, isem_rec_succ G C z s n k j W dC dz ds dn IHC IHz IHs IHn).
+  - intros G k j p p' Hjk dp [W IHp] dp' [_ IHp'] cp [_ [[_ _] Hcp]];
+      exact (W, isem_prf G k j p p' Hjk W dp dp' cp IHp IHp' Hcp).
+  - intros G A A' p p' j k dA [W IHA] dp [_ IHp] dA' [_ IHA'] dp' [_ IHp']
       cA [_ [[_ _] HcA]] cp2 [_ [[_ _] Hcp]];
-      exact (W, isem_all G A A' p p' k W dA dp dA' dp' cA cp2
+      exact (W, isem_all G A A' p p' j k W dA dp dA' dp' cA cp2
                IHA IHp IHA' IHp' HcA Hcp).
 Qed.
 
@@ -5764,3 +6408,7 @@ Proof.
   destruct (fund_cv G t t A (c_refl G t A d)) as [W [[Ht _] _]].
   exact (W, Ht).
 Qed.
+
+(* The lift's other half -- `elUnlift`, its iteration `elUnliftN`, and the
+   isomorphisms that make the lift commute with the component-free formers --
+   lives in Interp/LiftN.v now, where the interpretation itself can use it. *)

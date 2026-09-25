@@ -25,44 +25,51 @@ Open Scope list_scope.
 (* no normalisation, just the totality half of the fundamental lemma.     *)
 (* ================================================================== *)
 
-(* the interpretation of `false_`, in any environment: the proposition False *)
-Definition falseVal (rho : Env) : kElAt (propFam 0) (ers rho false_) :=
-  propElem (ers rho false_) False good_false.
+(* the interpretation of `false_ j`, at its own level: the proposition False.
+   The realiser is the CONSTANT efalse -- the clause's index, not the free
+   realiser the equation ties to the environment -- so the family and its
+   element are environment-independent. *)
+Definition falseVal (j : nat) : kElAt (propFam j) efalse :=
+  propElem efalse False good_false.
 
-Lemma itm_false rho : ITm rho false_ 0 eprop (propFam 0) (ers rho false_)
-                        (falseVal rho).
-Proof. exact (i_false rho (ers rho false_) good_false eq_refl). Qed.
+Lemma itm_false rho j :
+  ITm rho (false_ j) j eprop (propFam j) efalse (falseVal j).
+Proof. exact (i_false rho j (ers rho (false_ j)) good_false eq_refl). Qed.
 
-Lemma ity_prf_false rho :
-  ITy rho (prf false_) 0 (ers rho (prf false_)) (prfF 0 (falseVal rho)).
+(* `prf k (false_ j)` for any j <= k: the Prf's own level says nothing about
+   where the proposition lives, so consistency holds at every pair. *)
+Lemma ity_prf_false rho k j :
+  ITy rho (prf k (false_ j)) k (eprf efalse) (prfF k (falseVal j)).
 Proof.
-  exact (ity_prf rho false_ (ers rho false_) (falseVal rho) (itm_false rho)).
+  exact (ity_prf rho k j (false_ j) efalse (falseVal j) (itm_false rho j)).
 Qed.
 
 (* A closed proof of `false_` is a proof of False. *)
-Theorem consistency (e : tm) (d : ty nil e (prf false_)) : False.
+Theorem consistency (k j : nat) (e : tm) (d : ty nil e (prf k (false_ j))) :
+  False.
 Proof.
-  destruct (fund_tot nil e (prf false_) d) as [W He].
-  destruct (He nil tt 0 (prfF 0 (falseVal nil)) (ity_prf_false nil)) as [x _].
+  destruct (fund_tot nil e (prf k (false_ j)) d) as [W He].
+  destruct (He nil tt k (prfF k (falseVal j)) (ity_prf_false nil k j)) as [x _].
   exact (prfVal x).
 Qed.
 
 (* The same, phrased as the blueprint's 9.3: `prf false_` is not inhabited in
    the empty context. *)
-Corollary consistency' : forall e : tm, ty nil e (prf false_) -> False.
+Corollary consistency' : forall k j (e : tm), ty nil e (prf k (false_ j)) -> False.
 Proof. exact consistency. Qed.
 
-Corollary no_proof_of_false : notT { e : tm & ty nil e (prf false_) }.
-Proof. intros [e d]; exact (consistency e d). Qed.
+Corollary no_proof_of_false k j :
+  notT { e : tm & ty nil e (prf k (false_ j)) }.
+Proof. intros [e d]; exact (consistency k j e d). Qed.
 
 (* Two sanity checks that the statement is not vacuous: the type it speaks of is
    a well-formed type of the empty context, and the empty context does type
    closed terms (so `ty nil` is not empty and `EnvITy nil nil` -- which is
    `unit` -- is a real environment). *)
-Example ty_prf_false : ty nil (prf false_) (univ 0) :=
-  t_prf nil false_ (t_false nil w_nil).
+Example ty_prf_false k : ty nil (prf k (false_ k)) (UU k) :=
+  t_prf nil k k (false_ k) (le_n k) (t_false nil k w_nil).
 
-Example ty_one : ty nil (succ zero) nat_ :=
-  t_succ nil zero (t_zero nil w_nil).
+Example ty_one k : ty nil (succ (zero k)) (nat_ k) :=
+  t_succ nil k (zero k) (t_zero nil k w_nil).
 
 Example env_nil : EnvITy nil nil := tt.

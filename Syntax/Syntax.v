@@ -810,38 +810,41 @@ Qed.
 
 Inductive tm : Type :=
   | var_tm : nat -> tm
-  | lam : tm -> tm -> tm -> tm
+  | lam : nat -> tm -> tm -> tm -> tm
   | plam : tm -> tm -> tm
   | app : tm -> tm -> tm -> tm -> tm
   | papp : tm -> tm -> tm
-  | pair : tm -> tm -> tm -> tm -> tm
+  | pair : nat -> tm -> tm -> tm -> tm -> tm
   | fst : tm -> tm -> tm -> tm
   | snd : tm -> tm -> tm -> tm
-  | pi : tm -> tm -> tm
-  | sig_ : tm -> tm -> tm
-  | nat_ : tm
-  | zero : tm
+  | pi : nat -> tm -> tm -> tm
+  | sig_ : nat -> tm -> tm -> tm
+  | nat_ : nat -> tm
+  | zero : nat -> tm
   | succ : tm -> tm
   | natrec : tm -> tm -> tm -> tm -> tm
-  | univ : nat -> tm
-  | up : tm -> tm -> tm
+  | univ : nat -> nat -> tm
+  | up : nat -> tm -> tm
   | uptm : tm -> tm -> tm
-  | prop : tm
-  | prf : tm -> tm
-  | all : tm -> tm -> tm
-  | false_ : tm
+  | prop : nat -> tm
+  | prf : nat -> tm -> tm
+  | all : nat -> tm -> tm -> tm
+  | false_ : nat -> tm
   | absurd : tm -> tm -> tm
   | eqty : tm -> tm -> tm -> tm
   | refl : tm -> tm -> tm
   | transp : tm -> tm -> tm -> tm -> tm -> tm -> tm.
 
-Lemma congr_lam {s0 : tm} {s1 : tm} {s2 : tm} {t0 : tm} {t1 : tm} {t2 : tm}
-  (H0 : s0 = t0) (H1 : s1 = t1) (H2 : s2 = t2) : lam s0 s1 s2 = lam t0 t1 t2.
+Lemma congr_lam {s0 : nat} {s1 : tm} {s2 : tm} {s3 : tm} {t0 : nat} {t1 : tm}
+  {t2 : tm} {t3 : tm} (H0 : s0 = t0) (H1 : s1 = t1) (H2 : s2 = t2)
+  (H3 : s3 = t3) : lam s0 s1 s2 s3 = lam t0 t1 t2 t3.
 Proof.
 exact (eq_trans
-         (eq_trans (eq_trans eq_refl (ap (fun x => lam x s1 s2) H0))
-            (ap (fun x => lam t0 x s2) H1))
-         (ap (fun x => lam t0 t1 x) H2)).
+         (eq_trans
+            (eq_trans (eq_trans eq_refl (ap (fun x => lam x s1 s2 s3) H0))
+               (ap (fun x => lam t0 x s2 s3) H1))
+            (ap (fun x => lam t0 t1 x s3) H2))
+         (ap (fun x => lam t0 t1 t2 x) H3)).
 Qed.
 
 Lemma congr_plam {s0 : tm} {s1 : tm} {t0 : tm} {t1 : tm} (H0 : s0 = t0)
@@ -870,16 +873,20 @@ exact (eq_trans (eq_trans eq_refl (ap (fun x => papp x s1) H0))
          (ap (fun x => papp t0 x) H1)).
 Qed.
 
-Lemma congr_pair {s0 : tm} {s1 : tm} {s2 : tm} {s3 : tm} {t0 : tm} {t1 : tm}
-  {t2 : tm} {t3 : tm} (H0 : s0 = t0) (H1 : s1 = t1) (H2 : s2 = t2)
-  (H3 : s3 = t3) : pair s0 s1 s2 s3 = pair t0 t1 t2 t3.
+Lemma congr_pair {s0 : nat} {s1 : tm} {s2 : tm} {s3 : tm} {s4 : tm}
+  {t0 : nat} {t1 : tm} {t2 : tm} {t3 : tm} {t4 : tm} (H0 : s0 = t0)
+  (H1 : s1 = t1) (H2 : s2 = t2) (H3 : s3 = t3) (H4 : s4 = t4) :
+  pair s0 s1 s2 s3 s4 = pair t0 t1 t2 t3 t4.
 Proof.
 exact (eq_trans
          (eq_trans
-            (eq_trans (eq_trans eq_refl (ap (fun x => pair x s1 s2 s3) H0))
-               (ap (fun x => pair t0 x s2 s3) H1))
-            (ap (fun x => pair t0 t1 x s3) H2))
-         (ap (fun x => pair t0 t1 t2 x) H3)).
+            (eq_trans
+               (eq_trans
+                  (eq_trans eq_refl (ap (fun x => pair x s1 s2 s3 s4) H0))
+                  (ap (fun x => pair t0 x s2 s3 s4) H1))
+               (ap (fun x => pair t0 t1 x s3 s4) H2))
+            (ap (fun x => pair t0 t1 t2 x s4) H3))
+         (ap (fun x => pair t0 t1 t2 t3 x) H4)).
 Qed.
 
 Lemma congr_fst {s0 : tm} {s1 : tm} {s2 : tm} {t0 : tm} {t1 : tm} {t2 : tm}
@@ -900,28 +907,33 @@ exact (eq_trans
          (ap (fun x => snd t0 t1 x) H2)).
 Qed.
 
-Lemma congr_pi {s0 : tm} {s1 : tm} {t0 : tm} {t1 : tm} (H0 : s0 = t0)
-  (H1 : s1 = t1) : pi s0 s1 = pi t0 t1.
+Lemma congr_pi {s0 : nat} {s1 : tm} {s2 : tm} {t0 : nat} {t1 : tm} {t2 : tm}
+  (H0 : s0 = t0) (H1 : s1 = t1) (H2 : s2 = t2) : pi s0 s1 s2 = pi t0 t1 t2.
 Proof.
-exact (eq_trans (eq_trans eq_refl (ap (fun x => pi x s1) H0))
-         (ap (fun x => pi t0 x) H1)).
+exact (eq_trans
+         (eq_trans (eq_trans eq_refl (ap (fun x => pi x s1 s2) H0))
+            (ap (fun x => pi t0 x s2) H1))
+         (ap (fun x => pi t0 t1 x) H2)).
 Qed.
 
-Lemma congr_sig_ {s0 : tm} {s1 : tm} {t0 : tm} {t1 : tm} (H0 : s0 = t0)
-  (H1 : s1 = t1) : sig_ s0 s1 = sig_ t0 t1.
+Lemma congr_sig_ {s0 : nat} {s1 : tm} {s2 : tm} {t0 : nat} {t1 : tm}
+  {t2 : tm} (H0 : s0 = t0) (H1 : s1 = t1) (H2 : s2 = t2) :
+  sig_ s0 s1 s2 = sig_ t0 t1 t2.
 Proof.
-exact (eq_trans (eq_trans eq_refl (ap (fun x => sig_ x s1) H0))
-         (ap (fun x => sig_ t0 x) H1)).
+exact (eq_trans
+         (eq_trans (eq_trans eq_refl (ap (fun x => sig_ x s1 s2) H0))
+            (ap (fun x => sig_ t0 x s2) H1))
+         (ap (fun x => sig_ t0 t1 x) H2)).
 Qed.
 
-Lemma congr_nat_ : nat_ = nat_.
+Lemma congr_nat_ {s0 : nat} {t0 : nat} (H0 : s0 = t0) : nat_ s0 = nat_ t0.
 Proof.
-exact (eq_refl).
+exact (eq_trans eq_refl (ap (fun x => nat_ x) H0)).
 Qed.
 
-Lemma congr_zero : zero = zero.
+Lemma congr_zero {s0 : nat} {t0 : nat} (H0 : s0 = t0) : zero s0 = zero t0.
 Proof.
-exact (eq_refl).
+exact (eq_trans eq_refl (ap (fun x => zero x) H0)).
 Qed.
 
 Lemma congr_succ {s0 : tm} {t0 : tm} (H0 : s0 = t0) : succ s0 = succ t0.
@@ -941,12 +953,14 @@ exact (eq_trans
          (ap (fun x => natrec t0 t1 t2 x) H3)).
 Qed.
 
-Lemma congr_univ {s0 : nat} {t0 : nat} (H0 : s0 = t0) : univ s0 = univ t0.
+Lemma congr_univ {s0 : nat} {s1 : nat} {t0 : nat} {t1 : nat} (H0 : s0 = t0)
+  (H1 : s1 = t1) : univ s0 s1 = univ t0 t1.
 Proof.
-exact (eq_trans eq_refl (ap (fun x => univ x) H0)).
+exact (eq_trans (eq_trans eq_refl (ap (fun x => univ x s1) H0))
+         (ap (fun x => univ t0 x) H1)).
 Qed.
 
-Lemma congr_up {s0 : tm} {s1 : tm} {t0 : tm} {t1 : tm} (H0 : s0 = t0)
+Lemma congr_up {s0 : nat} {s1 : tm} {t0 : nat} {t1 : tm} (H0 : s0 = t0)
   (H1 : s1 = t1) : up s0 s1 = up t0 t1.
 Proof.
 exact (eq_trans (eq_trans eq_refl (ap (fun x => up x s1) H0))
@@ -960,26 +974,31 @@ exact (eq_trans (eq_trans eq_refl (ap (fun x => uptm x s1) H0))
          (ap (fun x => uptm t0 x) H1)).
 Qed.
 
-Lemma congr_prop : prop = prop.
+Lemma congr_prop {s0 : nat} {t0 : nat} (H0 : s0 = t0) : prop s0 = prop t0.
 Proof.
-exact (eq_refl).
+exact (eq_trans eq_refl (ap (fun x => prop x) H0)).
 Qed.
 
-Lemma congr_prf {s0 : tm} {t0 : tm} (H0 : s0 = t0) : prf s0 = prf t0.
+Lemma congr_prf {s0 : nat} {s1 : tm} {t0 : nat} {t1 : tm} (H0 : s0 = t0)
+  (H1 : s1 = t1) : prf s0 s1 = prf t0 t1.
 Proof.
-exact (eq_trans eq_refl (ap (fun x => prf x) H0)).
+exact (eq_trans (eq_trans eq_refl (ap (fun x => prf x s1) H0))
+         (ap (fun x => prf t0 x) H1)).
 Qed.
 
-Lemma congr_all {s0 : tm} {s1 : tm} {t0 : tm} {t1 : tm} (H0 : s0 = t0)
-  (H1 : s1 = t1) : all s0 s1 = all t0 t1.
+Lemma congr_all {s0 : nat} {s1 : tm} {s2 : tm} {t0 : nat} {t1 : tm} {t2 : tm}
+  (H0 : s0 = t0) (H1 : s1 = t1) (H2 : s2 = t2) : all s0 s1 s2 = all t0 t1 t2.
 Proof.
-exact (eq_trans (eq_trans eq_refl (ap (fun x => all x s1) H0))
-         (ap (fun x => all t0 x) H1)).
+exact (eq_trans
+         (eq_trans (eq_trans eq_refl (ap (fun x => all x s1 s2) H0))
+            (ap (fun x => all t0 x s2) H1))
+         (ap (fun x => all t0 t1 x) H2)).
 Qed.
 
-Lemma congr_false_ : false_ = false_.
+Lemma congr_false_ {s0 : nat} {t0 : nat} (H0 : s0 = t0) :
+  false_ s0 = false_ t0.
 Proof.
-exact (eq_refl).
+exact (eq_trans eq_refl (ap (fun x => false_ x) H0)).
 Qed.
 
 Lemma congr_absurd {s0 : tm} {s1 : tm} {t0 : tm} {t1 : tm} (H0 : s0 = t0)
@@ -1033,36 +1052,37 @@ Defined.
 Fixpoint ren_tm (xi_tm : nat -> nat) (s : tm) {struct s} : tm :=
   match s with
   | var_tm s0 => var_tm (xi_tm s0)
-  | lam s0 s1 s2 =>
-      lam (ren_tm xi_tm s0) (ren_tm (upRen_tm_tm xi_tm) s1)
-        (ren_tm (upRen_tm_tm xi_tm) s2)
+  | lam s0 s1 s2 s3 =>
+      lam s0 (ren_tm xi_tm s1) (ren_tm (upRen_tm_tm xi_tm) s2)
+        (ren_tm (upRen_tm_tm xi_tm) s3)
   | plam s0 s1 => plam (ren_tm xi_tm s0) (ren_tm (upRen_tm_tm xi_tm) s1)
   | app s0 s1 s2 s3 =>
       app (ren_tm xi_tm s0) (ren_tm (upRen_tm_tm xi_tm) s1) (ren_tm xi_tm s2)
         (ren_tm xi_tm s3)
   | papp s0 s1 => papp (ren_tm xi_tm s0) (ren_tm xi_tm s1)
-  | pair s0 s1 s2 s3 =>
-      pair (ren_tm xi_tm s0) (ren_tm (upRen_tm_tm xi_tm) s1)
-        (ren_tm xi_tm s2) (ren_tm xi_tm s3)
+  | pair s0 s1 s2 s3 s4 =>
+      pair s0 (ren_tm xi_tm s1) (ren_tm (upRen_tm_tm xi_tm) s2)
+        (ren_tm xi_tm s3) (ren_tm xi_tm s4)
   | fst s0 s1 s2 =>
       fst (ren_tm xi_tm s0) (ren_tm (upRen_tm_tm xi_tm) s1) (ren_tm xi_tm s2)
   | snd s0 s1 s2 =>
       snd (ren_tm xi_tm s0) (ren_tm (upRen_tm_tm xi_tm) s1) (ren_tm xi_tm s2)
-  | pi s0 s1 => pi (ren_tm xi_tm s0) (ren_tm (upRen_tm_tm xi_tm) s1)
-  | sig_ s0 s1 => sig_ (ren_tm xi_tm s0) (ren_tm (upRen_tm_tm xi_tm) s1)
-  | nat_ => nat_
-  | zero => zero
+  | pi s0 s1 s2 => pi s0 (ren_tm xi_tm s1) (ren_tm (upRen_tm_tm xi_tm) s2)
+  | sig_ s0 s1 s2 =>
+      sig_ s0 (ren_tm xi_tm s1) (ren_tm (upRen_tm_tm xi_tm) s2)
+  | nat_ s0 => nat_ s0
+  | zero s0 => zero s0
   | succ s0 => succ (ren_tm xi_tm s0)
   | natrec s0 s1 s2 s3 =>
       natrec (ren_tm (upRen_tm_tm xi_tm) s0) (ren_tm xi_tm s1)
         (ren_tm (upRen_tm_tm (upRen_tm_tm xi_tm)) s2) (ren_tm xi_tm s3)
-  | univ s0 => univ s0
-  | up s0 s1 => up (ren_tm xi_tm s0) (ren_tm xi_tm s1)
+  | univ s0 s1 => univ s0 s1
+  | up s0 s1 => up s0 (ren_tm xi_tm s1)
   | uptm s0 s1 => uptm (ren_tm xi_tm s0) (ren_tm xi_tm s1)
-  | prop => prop
-  | prf s0 => prf (ren_tm xi_tm s0)
-  | all s0 s1 => all (ren_tm xi_tm s0) (ren_tm (upRen_tm_tm xi_tm) s1)
-  | false_ => false_
+  | prop s0 => prop s0
+  | prf s0 s1 => prf s0 (ren_tm xi_tm s1)
+  | all s0 s1 s2 => all s0 (ren_tm xi_tm s1) (ren_tm (upRen_tm_tm xi_tm) s2)
+  | false_ s0 => false_ s0
   | absurd s0 s1 => absurd (ren_tm xi_tm s0) (ren_tm xi_tm s1)
   | eqty s0 s1 s2 =>
       eqty (ren_tm xi_tm s0) (ren_tm xi_tm s1) (ren_tm xi_tm s2)
@@ -1081,40 +1101,42 @@ Defined.
 Fixpoint subst_tm (sigma_tm : nat -> tm) (s : tm) {struct s} : tm :=
   match s with
   | var_tm s0 => sigma_tm s0
-  | lam s0 s1 s2 =>
-      lam (subst_tm sigma_tm s0) (subst_tm (up_tm_tm sigma_tm) s1)
-        (subst_tm (up_tm_tm sigma_tm) s2)
+  | lam s0 s1 s2 s3 =>
+      lam s0 (subst_tm sigma_tm s1) (subst_tm (up_tm_tm sigma_tm) s2)
+        (subst_tm (up_tm_tm sigma_tm) s3)
   | plam s0 s1 =>
       plam (subst_tm sigma_tm s0) (subst_tm (up_tm_tm sigma_tm) s1)
   | app s0 s1 s2 s3 =>
       app (subst_tm sigma_tm s0) (subst_tm (up_tm_tm sigma_tm) s1)
         (subst_tm sigma_tm s2) (subst_tm sigma_tm s3)
   | papp s0 s1 => papp (subst_tm sigma_tm s0) (subst_tm sigma_tm s1)
-  | pair s0 s1 s2 s3 =>
-      pair (subst_tm sigma_tm s0) (subst_tm (up_tm_tm sigma_tm) s1)
-        (subst_tm sigma_tm s2) (subst_tm sigma_tm s3)
+  | pair s0 s1 s2 s3 s4 =>
+      pair s0 (subst_tm sigma_tm s1) (subst_tm (up_tm_tm sigma_tm) s2)
+        (subst_tm sigma_tm s3) (subst_tm sigma_tm s4)
   | fst s0 s1 s2 =>
       fst (subst_tm sigma_tm s0) (subst_tm (up_tm_tm sigma_tm) s1)
         (subst_tm sigma_tm s2)
   | snd s0 s1 s2 =>
       snd (subst_tm sigma_tm s0) (subst_tm (up_tm_tm sigma_tm) s1)
         (subst_tm sigma_tm s2)
-  | pi s0 s1 => pi (subst_tm sigma_tm s0) (subst_tm (up_tm_tm sigma_tm) s1)
-  | sig_ s0 s1 =>
-      sig_ (subst_tm sigma_tm s0) (subst_tm (up_tm_tm sigma_tm) s1)
-  | nat_ => nat_
-  | zero => zero
+  | pi s0 s1 s2 =>
+      pi s0 (subst_tm sigma_tm s1) (subst_tm (up_tm_tm sigma_tm) s2)
+  | sig_ s0 s1 s2 =>
+      sig_ s0 (subst_tm sigma_tm s1) (subst_tm (up_tm_tm sigma_tm) s2)
+  | nat_ s0 => nat_ s0
+  | zero s0 => zero s0
   | succ s0 => succ (subst_tm sigma_tm s0)
   | natrec s0 s1 s2 s3 =>
       natrec (subst_tm (up_tm_tm sigma_tm) s0) (subst_tm sigma_tm s1)
         (subst_tm (up_tm_tm (up_tm_tm sigma_tm)) s2) (subst_tm sigma_tm s3)
-  | univ s0 => univ s0
-  | up s0 s1 => up (subst_tm sigma_tm s0) (subst_tm sigma_tm s1)
+  | univ s0 s1 => univ s0 s1
+  | up s0 s1 => up s0 (subst_tm sigma_tm s1)
   | uptm s0 s1 => uptm (subst_tm sigma_tm s0) (subst_tm sigma_tm s1)
-  | prop => prop
-  | prf s0 => prf (subst_tm sigma_tm s0)
-  | all s0 s1 => all (subst_tm sigma_tm s0) (subst_tm (up_tm_tm sigma_tm) s1)
-  | false_ => false_
+  | prop s0 => prop s0
+  | prf s0 s1 => prf s0 (subst_tm sigma_tm s1)
+  | all s0 s1 s2 =>
+      all s0 (subst_tm sigma_tm s1) (subst_tm (up_tm_tm sigma_tm) s2)
+  | false_ s0 => false_ s0
   | absurd s0 s1 => absurd (subst_tm sigma_tm s0) (subst_tm sigma_tm s1)
   | eqty s0 s1 s2 =>
       eqty (subst_tm sigma_tm s0) (subst_tm sigma_tm s1)
@@ -1141,10 +1163,10 @@ Fixpoint idSubst_tm (sigma_tm : nat -> tm)
 subst_tm sigma_tm s = s :=
   match s with
   | var_tm s0 => Eq_tm s0
-  | lam s0 s1 s2 =>
-      congr_lam (idSubst_tm sigma_tm Eq_tm s0)
-        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s1)
+  | lam s0 s1 s2 s3 =>
+      congr_lam (eq_refl s0) (idSubst_tm sigma_tm Eq_tm s1)
         (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s2)
+        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s3)
   | plam s0 s1 =>
       congr_plam (idSubst_tm sigma_tm Eq_tm s0)
         (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s1)
@@ -1155,10 +1177,10 @@ subst_tm sigma_tm s = s :=
   | papp s0 s1 =>
       congr_papp (idSubst_tm sigma_tm Eq_tm s0)
         (idSubst_tm sigma_tm Eq_tm s1)
-  | pair s0 s1 s2 s3 =>
-      congr_pair (idSubst_tm sigma_tm Eq_tm s0)
-        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s1)
-        (idSubst_tm sigma_tm Eq_tm s2) (idSubst_tm sigma_tm Eq_tm s3)
+  | pair s0 s1 s2 s3 s4 =>
+      congr_pair (eq_refl s0) (idSubst_tm sigma_tm Eq_tm s1)
+        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s2)
+        (idSubst_tm sigma_tm Eq_tm s3) (idSubst_tm sigma_tm Eq_tm s4)
   | fst s0 s1 s2 =>
       congr_fst (idSubst_tm sigma_tm Eq_tm s0)
         (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s1)
@@ -1167,14 +1189,14 @@ subst_tm sigma_tm s = s :=
       congr_snd (idSubst_tm sigma_tm Eq_tm s0)
         (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s1)
         (idSubst_tm sigma_tm Eq_tm s2)
-  | pi s0 s1 =>
-      congr_pi (idSubst_tm sigma_tm Eq_tm s0)
-        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s1)
-  | sig_ s0 s1 =>
-      congr_sig_ (idSubst_tm sigma_tm Eq_tm s0)
-        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s1)
-  | nat_ => congr_nat_
-  | zero => congr_zero
+  | pi s0 s1 s2 =>
+      congr_pi (eq_refl s0) (idSubst_tm sigma_tm Eq_tm s1)
+        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s2)
+  | sig_ s0 s1 s2 =>
+      congr_sig_ (eq_refl s0) (idSubst_tm sigma_tm Eq_tm s1)
+        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s2)
+  | nat_ s0 => congr_nat_ (eq_refl s0)
+  | zero s0 => congr_zero (eq_refl s0)
   | succ s0 => congr_succ (idSubst_tm sigma_tm Eq_tm s0)
   | natrec s0 s1 s2 s3 =>
       congr_natrec (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s0)
@@ -1182,18 +1204,17 @@ subst_tm sigma_tm s = s :=
         (idSubst_tm (up_tm_tm (up_tm_tm sigma_tm))
            (upId_tm_tm _ (upId_tm_tm _ Eq_tm)) s2)
         (idSubst_tm sigma_tm Eq_tm s3)
-  | univ s0 => congr_univ (eq_refl s0)
-  | up s0 s1 =>
-      congr_up (idSubst_tm sigma_tm Eq_tm s0) (idSubst_tm sigma_tm Eq_tm s1)
+  | univ s0 s1 => congr_univ (eq_refl s0) (eq_refl s1)
+  | up s0 s1 => congr_up (eq_refl s0) (idSubst_tm sigma_tm Eq_tm s1)
   | uptm s0 s1 =>
       congr_uptm (idSubst_tm sigma_tm Eq_tm s0)
         (idSubst_tm sigma_tm Eq_tm s1)
-  | prop => congr_prop
-  | prf s0 => congr_prf (idSubst_tm sigma_tm Eq_tm s0)
-  | all s0 s1 =>
-      congr_all (idSubst_tm sigma_tm Eq_tm s0)
-        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s1)
-  | false_ => congr_false_
+  | prop s0 => congr_prop (eq_refl s0)
+  | prf s0 s1 => congr_prf (eq_refl s0) (idSubst_tm sigma_tm Eq_tm s1)
+  | all s0 s1 s2 =>
+      congr_all (eq_refl s0) (idSubst_tm sigma_tm Eq_tm s1)
+        (idSubst_tm (up_tm_tm sigma_tm) (upId_tm_tm _ Eq_tm) s2)
+  | false_ s0 => congr_false_ (eq_refl s0)
   | absurd s0 s1 =>
       congr_absurd (idSubst_tm sigma_tm Eq_tm s0)
         (idSubst_tm sigma_tm Eq_tm s1)
@@ -1225,12 +1246,12 @@ Fixpoint extRen_tm (xi_tm : nat -> nat) (zeta_tm : nat -> nat)
 ren_tm xi_tm s = ren_tm zeta_tm s :=
   match s with
   | var_tm s0 => ap (var_tm) (Eq_tm s0)
-  | lam s0 s1 s2 =>
-      congr_lam (extRen_tm xi_tm zeta_tm Eq_tm s0)
-        (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upExtRen_tm_tm _ _ Eq_tm) s1)
+  | lam s0 s1 s2 s3 =>
+      congr_lam (eq_refl s0) (extRen_tm xi_tm zeta_tm Eq_tm s1)
         (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
            (upExtRen_tm_tm _ _ Eq_tm) s2)
+        (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
+           (upExtRen_tm_tm _ _ Eq_tm) s3)
   | plam s0 s1 =>
       congr_plam (extRen_tm xi_tm zeta_tm Eq_tm s0)
         (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
@@ -1243,11 +1264,11 @@ ren_tm xi_tm s = ren_tm zeta_tm s :=
   | papp s0 s1 =>
       congr_papp (extRen_tm xi_tm zeta_tm Eq_tm s0)
         (extRen_tm xi_tm zeta_tm Eq_tm s1)
-  | pair s0 s1 s2 s3 =>
-      congr_pair (extRen_tm xi_tm zeta_tm Eq_tm s0)
+  | pair s0 s1 s2 s3 s4 =>
+      congr_pair (eq_refl s0) (extRen_tm xi_tm zeta_tm Eq_tm s1)
         (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upExtRen_tm_tm _ _ Eq_tm) s1)
-        (extRen_tm xi_tm zeta_tm Eq_tm s2) (extRen_tm xi_tm zeta_tm Eq_tm s3)
+           (upExtRen_tm_tm _ _ Eq_tm) s2)
+        (extRen_tm xi_tm zeta_tm Eq_tm s3) (extRen_tm xi_tm zeta_tm Eq_tm s4)
   | fst s0 s1 s2 =>
       congr_fst (extRen_tm xi_tm zeta_tm Eq_tm s0)
         (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
@@ -1258,16 +1279,16 @@ ren_tm xi_tm s = ren_tm zeta_tm s :=
         (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
            (upExtRen_tm_tm _ _ Eq_tm) s1)
         (extRen_tm xi_tm zeta_tm Eq_tm s2)
-  | pi s0 s1 =>
-      congr_pi (extRen_tm xi_tm zeta_tm Eq_tm s0)
+  | pi s0 s1 s2 =>
+      congr_pi (eq_refl s0) (extRen_tm xi_tm zeta_tm Eq_tm s1)
         (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upExtRen_tm_tm _ _ Eq_tm) s1)
-  | sig_ s0 s1 =>
-      congr_sig_ (extRen_tm xi_tm zeta_tm Eq_tm s0)
+           (upExtRen_tm_tm _ _ Eq_tm) s2)
+  | sig_ s0 s1 s2 =>
+      congr_sig_ (eq_refl s0) (extRen_tm xi_tm zeta_tm Eq_tm s1)
         (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upExtRen_tm_tm _ _ Eq_tm) s1)
-  | nat_ => congr_nat_
-  | zero => congr_zero
+           (upExtRen_tm_tm _ _ Eq_tm) s2)
+  | nat_ s0 => congr_nat_ (eq_refl s0)
+  | zero s0 => congr_zero (eq_refl s0)
   | succ s0 => congr_succ (extRen_tm xi_tm zeta_tm Eq_tm s0)
   | natrec s0 s1 s2 s3 =>
       congr_natrec
@@ -1278,20 +1299,18 @@ ren_tm xi_tm s = ren_tm zeta_tm s :=
            (upRen_tm_tm (upRen_tm_tm zeta_tm))
            (upExtRen_tm_tm _ _ (upExtRen_tm_tm _ _ Eq_tm)) s2)
         (extRen_tm xi_tm zeta_tm Eq_tm s3)
-  | univ s0 => congr_univ (eq_refl s0)
-  | up s0 s1 =>
-      congr_up (extRen_tm xi_tm zeta_tm Eq_tm s0)
-        (extRen_tm xi_tm zeta_tm Eq_tm s1)
+  | univ s0 s1 => congr_univ (eq_refl s0) (eq_refl s1)
+  | up s0 s1 => congr_up (eq_refl s0) (extRen_tm xi_tm zeta_tm Eq_tm s1)
   | uptm s0 s1 =>
       congr_uptm (extRen_tm xi_tm zeta_tm Eq_tm s0)
         (extRen_tm xi_tm zeta_tm Eq_tm s1)
-  | prop => congr_prop
-  | prf s0 => congr_prf (extRen_tm xi_tm zeta_tm Eq_tm s0)
-  | all s0 s1 =>
-      congr_all (extRen_tm xi_tm zeta_tm Eq_tm s0)
+  | prop s0 => congr_prop (eq_refl s0)
+  | prf s0 s1 => congr_prf (eq_refl s0) (extRen_tm xi_tm zeta_tm Eq_tm s1)
+  | all s0 s1 s2 =>
+      congr_all (eq_refl s0) (extRen_tm xi_tm zeta_tm Eq_tm s1)
         (extRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upExtRen_tm_tm _ _ Eq_tm) s1)
-  | false_ => congr_false_
+           (upExtRen_tm_tm _ _ Eq_tm) s2)
+  | false_ s0 => congr_false_ (eq_refl s0)
   | absurd s0 s1 =>
       congr_absurd (extRen_tm xi_tm zeta_tm Eq_tm s0)
         (extRen_tm xi_tm zeta_tm Eq_tm s1)
@@ -1325,12 +1344,12 @@ Fixpoint ext_tm (sigma_tm : nat -> tm) (tau_tm : nat -> tm)
 subst_tm sigma_tm s = subst_tm tau_tm s :=
   match s with
   | var_tm s0 => Eq_tm s0
-  | lam s0 s1 s2 =>
-      congr_lam (ext_tm sigma_tm tau_tm Eq_tm s0)
-        (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
-           s1)
+  | lam s0 s1 s2 s3 =>
+      congr_lam (eq_refl s0) (ext_tm sigma_tm tau_tm Eq_tm s1)
         (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
            s2)
+        (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
+           s3)
   | plam s0 s1 =>
       congr_plam (ext_tm sigma_tm tau_tm Eq_tm s0)
         (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
@@ -1343,11 +1362,11 @@ subst_tm sigma_tm s = subst_tm tau_tm s :=
   | papp s0 s1 =>
       congr_papp (ext_tm sigma_tm tau_tm Eq_tm s0)
         (ext_tm sigma_tm tau_tm Eq_tm s1)
-  | pair s0 s1 s2 s3 =>
-      congr_pair (ext_tm sigma_tm tau_tm Eq_tm s0)
+  | pair s0 s1 s2 s3 s4 =>
+      congr_pair (eq_refl s0) (ext_tm sigma_tm tau_tm Eq_tm s1)
         (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
-           s1)
-        (ext_tm sigma_tm tau_tm Eq_tm s2) (ext_tm sigma_tm tau_tm Eq_tm s3)
+           s2)
+        (ext_tm sigma_tm tau_tm Eq_tm s3) (ext_tm sigma_tm tau_tm Eq_tm s4)
   | fst s0 s1 s2 =>
       congr_fst (ext_tm sigma_tm tau_tm Eq_tm s0)
         (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
@@ -1358,16 +1377,16 @@ subst_tm sigma_tm s = subst_tm tau_tm s :=
         (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
            s1)
         (ext_tm sigma_tm tau_tm Eq_tm s2)
-  | pi s0 s1 =>
-      congr_pi (ext_tm sigma_tm tau_tm Eq_tm s0)
+  | pi s0 s1 s2 =>
+      congr_pi (eq_refl s0) (ext_tm sigma_tm tau_tm Eq_tm s1)
         (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
-           s1)
-  | sig_ s0 s1 =>
-      congr_sig_ (ext_tm sigma_tm tau_tm Eq_tm s0)
+           s2)
+  | sig_ s0 s1 s2 =>
+      congr_sig_ (eq_refl s0) (ext_tm sigma_tm tau_tm Eq_tm s1)
         (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
-           s1)
-  | nat_ => congr_nat_
-  | zero => congr_zero
+           s2)
+  | nat_ s0 => congr_nat_ (eq_refl s0)
+  | zero s0 => congr_zero (eq_refl s0)
   | succ s0 => congr_succ (ext_tm sigma_tm tau_tm Eq_tm s0)
   | natrec s0 s1 s2 s3 =>
       congr_natrec
@@ -1377,20 +1396,18 @@ subst_tm sigma_tm s = subst_tm tau_tm s :=
         (ext_tm (up_tm_tm (up_tm_tm sigma_tm)) (up_tm_tm (up_tm_tm tau_tm))
            (upExt_tm_tm _ _ (upExt_tm_tm _ _ Eq_tm)) s2)
         (ext_tm sigma_tm tau_tm Eq_tm s3)
-  | univ s0 => congr_univ (eq_refl s0)
-  | up s0 s1 =>
-      congr_up (ext_tm sigma_tm tau_tm Eq_tm s0)
-        (ext_tm sigma_tm tau_tm Eq_tm s1)
+  | univ s0 s1 => congr_univ (eq_refl s0) (eq_refl s1)
+  | up s0 s1 => congr_up (eq_refl s0) (ext_tm sigma_tm tau_tm Eq_tm s1)
   | uptm s0 s1 =>
       congr_uptm (ext_tm sigma_tm tau_tm Eq_tm s0)
         (ext_tm sigma_tm tau_tm Eq_tm s1)
-  | prop => congr_prop
-  | prf s0 => congr_prf (ext_tm sigma_tm tau_tm Eq_tm s0)
-  | all s0 s1 =>
-      congr_all (ext_tm sigma_tm tau_tm Eq_tm s0)
+  | prop s0 => congr_prop (eq_refl s0)
+  | prf s0 s1 => congr_prf (eq_refl s0) (ext_tm sigma_tm tau_tm Eq_tm s1)
+  | all s0 s1 s2 =>
+      congr_all (eq_refl s0) (ext_tm sigma_tm tau_tm Eq_tm s1)
         (ext_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm) (upExt_tm_tm _ _ Eq_tm)
-           s1)
-  | false_ => congr_false_
+           s2)
+  | false_ s0 => congr_false_ (eq_refl s0)
   | absurd s0 s1 =>
       congr_absurd (ext_tm sigma_tm tau_tm Eq_tm s0)
         (ext_tm sigma_tm tau_tm Eq_tm s1)
@@ -1420,12 +1437,12 @@ Fixpoint compRenRen_tm (xi_tm : nat -> nat) (zeta_tm : nat -> nat)
 (s : tm) {struct s} : ren_tm zeta_tm (ren_tm xi_tm s) = ren_tm rho_tm s :=
   match s with
   | var_tm s0 => ap (var_tm) (Eq_tm s0)
-  | lam s0 s1 s2 =>
-      congr_lam (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
-        (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s1)
+  | lam s0 s1 s2 s3 =>
+      congr_lam (eq_refl s0) (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
         (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
            (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s2)
+        (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
+           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s3)
   | plam s0 s1 =>
       congr_plam (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
         (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
@@ -1439,12 +1456,12 @@ Fixpoint compRenRen_tm (xi_tm : nat -> nat) (zeta_tm : nat -> nat)
   | papp s0 s1 =>
       congr_papp (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
         (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
-  | pair s0 s1 s2 s3 =>
-      congr_pair (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
+  | pair s0 s1 s2 s3 s4 =>
+      congr_pair (eq_refl s0) (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
         (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s1)
-        (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s2)
+           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s2)
         (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s3)
+        (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s4)
   | fst s0 s1 s2 =>
       congr_fst (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
         (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
@@ -1455,16 +1472,16 @@ Fixpoint compRenRen_tm (xi_tm : nat -> nat) (zeta_tm : nat -> nat)
         (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
            (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s1)
         (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s2)
-  | pi s0 s1 =>
-      congr_pi (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
+  | pi s0 s1 s2 =>
+      congr_pi (eq_refl s0) (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
         (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s1)
-  | sig_ s0 s1 =>
-      congr_sig_ (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
+           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s2)
+  | sig_ s0 s1 s2 =>
+      congr_sig_ (eq_refl s0) (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
         (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s1)
-  | nat_ => congr_nat_
-  | zero => congr_zero
+           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s2)
+  | nat_ s0 => congr_nat_ (eq_refl s0)
+  | zero s0 => congr_zero (eq_refl s0)
   | succ s0 => congr_succ (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
   | natrec s0 s1 s2 s3 =>
       congr_natrec
@@ -1476,20 +1493,20 @@ Fixpoint compRenRen_tm (xi_tm : nat -> nat) (zeta_tm : nat -> nat)
            (upRen_tm_tm (upRen_tm_tm rho_tm))
            (up_ren_ren _ _ _ (up_ren_ren _ _ _ Eq_tm)) s2)
         (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s3)
-  | univ s0 => congr_univ (eq_refl s0)
+  | univ s0 s1 => congr_univ (eq_refl s0) (eq_refl s1)
   | up s0 s1 =>
-      congr_up (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
-        (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
+      congr_up (eq_refl s0) (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
   | uptm s0 s1 =>
       congr_uptm (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
         (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
-  | prop => congr_prop
-  | prf s0 => congr_prf (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
-  | all s0 s1 =>
-      congr_all (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
+  | prop s0 => congr_prop (eq_refl s0)
+  | prf s0 s1 =>
+      congr_prf (eq_refl s0) (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
+  | all s0 s1 s2 =>
+      congr_all (eq_refl s0) (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
         (compRenRen_tm (upRen_tm_tm xi_tm) (upRen_tm_tm zeta_tm)
-           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s1)
-  | false_ => congr_false_
+           (upRen_tm_tm rho_tm) (up_ren_ren _ _ _ Eq_tm) s2)
+  | false_ s0 => congr_false_ (eq_refl s0)
   | absurd s0 s1 =>
       congr_absurd (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s0)
         (compRenRen_tm xi_tm zeta_tm rho_tm Eq_tm s1)
@@ -1527,12 +1544,12 @@ Fixpoint compRenSubst_tm (xi_tm : nat -> nat) (tau_tm : nat -> tm)
 subst_tm tau_tm (ren_tm xi_tm s) = subst_tm theta_tm s :=
   match s with
   | var_tm s0 => Eq_tm s0
-  | lam s0 s1 s2 =>
-      congr_lam (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
-        (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s1)
+  | lam s0 s1 s2 s3 =>
+      congr_lam (eq_refl s0) (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
         (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
            (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s2)
+        (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
+           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s3)
   | plam s0 s1 =>
       congr_plam (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
         (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
@@ -1546,12 +1563,13 @@ subst_tm tau_tm (ren_tm xi_tm s) = subst_tm theta_tm s :=
   | papp s0 s1 =>
       congr_papp (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
         (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
-  | pair s0 s1 s2 s3 =>
-      congr_pair (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
+  | pair s0 s1 s2 s3 s4 =>
+      congr_pair (eq_refl s0)
+        (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
         (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s1)
-        (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s2)
+           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s2)
         (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s3)
+        (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s4)
   | fst s0 s1 s2 =>
       congr_fst (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
         (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
@@ -1562,16 +1580,17 @@ subst_tm tau_tm (ren_tm xi_tm s) = subst_tm theta_tm s :=
         (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
            (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s1)
         (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s2)
-  | pi s0 s1 =>
-      congr_pi (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
+  | pi s0 s1 s2 =>
+      congr_pi (eq_refl s0) (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
         (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s1)
-  | sig_ s0 s1 =>
-      congr_sig_ (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
+           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s2)
+  | sig_ s0 s1 s2 =>
+      congr_sig_ (eq_refl s0)
+        (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
         (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s1)
-  | nat_ => congr_nat_
-  | zero => congr_zero
+           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s2)
+  | nat_ s0 => congr_nat_ (eq_refl s0)
+  | zero s0 => congr_zero (eq_refl s0)
   | succ s0 => congr_succ (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
   | natrec s0 s1 s2 s3 =>
       congr_natrec
@@ -1582,20 +1601,20 @@ subst_tm tau_tm (ren_tm xi_tm s) = subst_tm theta_tm s :=
            (up_tm_tm (up_tm_tm tau_tm)) (up_tm_tm (up_tm_tm theta_tm))
            (up_ren_subst_tm_tm _ _ _ (up_ren_subst_tm_tm _ _ _ Eq_tm)) s2)
         (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s3)
-  | univ s0 => congr_univ (eq_refl s0)
+  | univ s0 s1 => congr_univ (eq_refl s0) (eq_refl s1)
   | up s0 s1 =>
-      congr_up (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
-        (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
+      congr_up (eq_refl s0) (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
   | uptm s0 s1 =>
       congr_uptm (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
         (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
-  | prop => congr_prop
-  | prf s0 => congr_prf (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
-  | all s0 s1 =>
-      congr_all (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
+  | prop s0 => congr_prop (eq_refl s0)
+  | prf s0 s1 =>
+      congr_prf (eq_refl s0) (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
+  | all s0 s1 s2 =>
+      congr_all (eq_refl s0) (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
         (compRenSubst_tm (upRen_tm_tm xi_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s1)
-  | false_ => congr_false_
+           (up_tm_tm theta_tm) (up_ren_subst_tm_tm _ _ _ Eq_tm) s2)
+  | false_ s0 => congr_false_ (eq_refl s0)
   | absurd s0 s1 =>
       congr_absurd (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s0)
         (compRenSubst_tm xi_tm tau_tm theta_tm Eq_tm s1)
@@ -1645,12 +1664,13 @@ Fixpoint compSubstRen_tm (sigma_tm : nat -> tm) (zeta_tm : nat -> nat)
 ren_tm zeta_tm (subst_tm sigma_tm s) = subst_tm theta_tm s :=
   match s with
   | var_tm s0 => Eq_tm s0
-  | lam s0 s1 s2 =>
-      congr_lam (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
-        (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
-           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s1)
+  | lam s0 s1 s2 s3 =>
+      congr_lam (eq_refl s0)
+        (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
         (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
            (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s2)
+        (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
+           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s3)
   | plam s0 s1 =>
       congr_plam (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
         (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
@@ -1664,12 +1684,13 @@ ren_tm zeta_tm (subst_tm sigma_tm s) = subst_tm theta_tm s :=
   | papp s0 s1 =>
       congr_papp (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
         (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
-  | pair s0 s1 s2 s3 =>
-      congr_pair (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
+  | pair s0 s1 s2 s3 s4 =>
+      congr_pair (eq_refl s0)
+        (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
         (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
-           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s1)
-        (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s2)
+           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s2)
         (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s3)
+        (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s4)
   | fst s0 s1 s2 =>
       congr_fst (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
         (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
@@ -1680,16 +1701,18 @@ ren_tm zeta_tm (subst_tm sigma_tm s) = subst_tm theta_tm s :=
         (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
            (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s1)
         (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s2)
-  | pi s0 s1 =>
-      congr_pi (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
+  | pi s0 s1 s2 =>
+      congr_pi (eq_refl s0)
+        (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
         (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
-           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s1)
-  | sig_ s0 s1 =>
-      congr_sig_ (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
+           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s2)
+  | sig_ s0 s1 s2 =>
+      congr_sig_ (eq_refl s0)
+        (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
         (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
-           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s1)
-  | nat_ => congr_nat_
-  | zero => congr_zero
+           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s2)
+  | nat_ s0 => congr_nat_ (eq_refl s0)
+  | zero s0 => congr_zero (eq_refl s0)
   | succ s0 =>
       congr_succ (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
   | natrec s0 s1 s2 s3 =>
@@ -1701,20 +1724,23 @@ ren_tm zeta_tm (subst_tm sigma_tm s) = subst_tm theta_tm s :=
            (upRen_tm_tm (upRen_tm_tm zeta_tm)) (up_tm_tm (up_tm_tm theta_tm))
            (up_subst_ren_tm_tm _ _ _ (up_subst_ren_tm_tm _ _ _ Eq_tm)) s2)
         (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s3)
-  | univ s0 => congr_univ (eq_refl s0)
+  | univ s0 s1 => congr_univ (eq_refl s0) (eq_refl s1)
   | up s0 s1 =>
-      congr_up (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
+      congr_up (eq_refl s0)
         (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
   | uptm s0 s1 =>
       congr_uptm (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
         (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
-  | prop => congr_prop
-  | prf s0 => congr_prf (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
-  | all s0 s1 =>
-      congr_all (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
+  | prop s0 => congr_prop (eq_refl s0)
+  | prf s0 s1 =>
+      congr_prf (eq_refl s0)
+        (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
+  | all s0 s1 s2 =>
+      congr_all (eq_refl s0)
+        (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
         (compSubstRen_tm (up_tm_tm sigma_tm) (upRen_tm_tm zeta_tm)
-           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s1)
-  | false_ => congr_false_
+           (up_tm_tm theta_tm) (up_subst_ren_tm_tm _ _ _ Eq_tm) s2)
+  | false_ s0 => congr_false_ (eq_refl s0)
   | absurd s0 s1 =>
       congr_absurd (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s0)
         (compSubstRen_tm sigma_tm zeta_tm theta_tm Eq_tm s1)
@@ -1765,12 +1791,13 @@ Fixpoint compSubstSubst_tm (sigma_tm : nat -> tm) (tau_tm : nat -> tm)
 subst_tm tau_tm (subst_tm sigma_tm s) = subst_tm theta_tm s :=
   match s with
   | var_tm s0 => Eq_tm s0
-  | lam s0 s1 s2 =>
-      congr_lam (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
-        (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s1)
+  | lam s0 s1 s2 s3 =>
+      congr_lam (eq_refl s0)
+        (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
         (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
            (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s2)
+        (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
+           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s3)
   | plam s0 s1 =>
       congr_plam (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
         (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
@@ -1784,12 +1811,13 @@ subst_tm tau_tm (subst_tm sigma_tm s) = subst_tm theta_tm s :=
   | papp s0 s1 =>
       congr_papp (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
         (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
-  | pair s0 s1 s2 s3 =>
-      congr_pair (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
+  | pair s0 s1 s2 s3 s4 =>
+      congr_pair (eq_refl s0)
+        (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
         (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s1)
-        (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s2)
+           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s2)
         (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s3)
+        (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s4)
   | fst s0 s1 s2 =>
       congr_fst (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
         (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
@@ -1800,16 +1828,18 @@ subst_tm tau_tm (subst_tm sigma_tm s) = subst_tm theta_tm s :=
         (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
            (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s1)
         (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s2)
-  | pi s0 s1 =>
-      congr_pi (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
+  | pi s0 s1 s2 =>
+      congr_pi (eq_refl s0)
+        (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
         (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s1)
-  | sig_ s0 s1 =>
-      congr_sig_ (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
+           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s2)
+  | sig_ s0 s1 s2 =>
+      congr_sig_ (eq_refl s0)
+        (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
         (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s1)
-  | nat_ => congr_nat_
-  | zero => congr_zero
+           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s2)
+  | nat_ s0 => congr_nat_ (eq_refl s0)
+  | zero s0 => congr_zero (eq_refl s0)
   | succ s0 =>
       congr_succ (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
   | natrec s0 s1 s2 s3 =>
@@ -1821,20 +1851,23 @@ subst_tm tau_tm (subst_tm sigma_tm s) = subst_tm theta_tm s :=
            (up_tm_tm (up_tm_tm tau_tm)) (up_tm_tm (up_tm_tm theta_tm))
            (up_subst_subst_tm_tm _ _ _ (up_subst_subst_tm_tm _ _ _ Eq_tm)) s2)
         (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s3)
-  | univ s0 => congr_univ (eq_refl s0)
+  | univ s0 s1 => congr_univ (eq_refl s0) (eq_refl s1)
   | up s0 s1 =>
-      congr_up (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
+      congr_up (eq_refl s0)
         (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
   | uptm s0 s1 =>
       congr_uptm (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
         (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
-  | prop => congr_prop
-  | prf s0 => congr_prf (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
-  | all s0 s1 =>
-      congr_all (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
+  | prop s0 => congr_prop (eq_refl s0)
+  | prf s0 s1 =>
+      congr_prf (eq_refl s0)
+        (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
+  | all s0 s1 s2 =>
+      congr_all (eq_refl s0)
+        (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
         (compSubstSubst_tm (up_tm_tm sigma_tm) (up_tm_tm tau_tm)
-           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s1)
-  | false_ => congr_false_
+           (up_tm_tm theta_tm) (up_subst_subst_tm_tm _ _ _ Eq_tm) s2)
+  | false_ s0 => congr_false_ (eq_refl s0)
   | absurd s0 s1 =>
       congr_absurd (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s0)
         (compSubstSubst_tm sigma_tm tau_tm theta_tm Eq_tm s1)
@@ -1926,12 +1959,12 @@ Fixpoint rinst_inst_tm (xi_tm : nat -> nat) (sigma_tm : nat -> tm)
 ren_tm xi_tm s = subst_tm sigma_tm s :=
   match s with
   | var_tm s0 => Eq_tm s0
-  | lam s0 s1 s2 =>
-      congr_lam (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
-        (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
-           (rinstInst_up_tm_tm _ _ Eq_tm) s1)
+  | lam s0 s1 s2 s3 =>
+      congr_lam (eq_refl s0) (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
         (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
            (rinstInst_up_tm_tm _ _ Eq_tm) s2)
+        (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
+           (rinstInst_up_tm_tm _ _ Eq_tm) s3)
   | plam s0 s1 =>
       congr_plam (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
         (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
@@ -1945,12 +1978,12 @@ ren_tm xi_tm s = subst_tm sigma_tm s :=
   | papp s0 s1 =>
       congr_papp (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
         (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
-  | pair s0 s1 s2 s3 =>
-      congr_pair (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
+  | pair s0 s1 s2 s3 s4 =>
+      congr_pair (eq_refl s0) (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
         (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
-           (rinstInst_up_tm_tm _ _ Eq_tm) s1)
-        (rinst_inst_tm xi_tm sigma_tm Eq_tm s2)
+           (rinstInst_up_tm_tm _ _ Eq_tm) s2)
         (rinst_inst_tm xi_tm sigma_tm Eq_tm s3)
+        (rinst_inst_tm xi_tm sigma_tm Eq_tm s4)
   | fst s0 s1 s2 =>
       congr_fst (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
         (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
@@ -1961,16 +1994,16 @@ ren_tm xi_tm s = subst_tm sigma_tm s :=
         (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
            (rinstInst_up_tm_tm _ _ Eq_tm) s1)
         (rinst_inst_tm xi_tm sigma_tm Eq_tm s2)
-  | pi s0 s1 =>
-      congr_pi (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
+  | pi s0 s1 s2 =>
+      congr_pi (eq_refl s0) (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
         (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
-           (rinstInst_up_tm_tm _ _ Eq_tm) s1)
-  | sig_ s0 s1 =>
-      congr_sig_ (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
+           (rinstInst_up_tm_tm _ _ Eq_tm) s2)
+  | sig_ s0 s1 s2 =>
+      congr_sig_ (eq_refl s0) (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
         (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
-           (rinstInst_up_tm_tm _ _ Eq_tm) s1)
-  | nat_ => congr_nat_
-  | zero => congr_zero
+           (rinstInst_up_tm_tm _ _ Eq_tm) s2)
+  | nat_ s0 => congr_nat_ (eq_refl s0)
+  | zero s0 => congr_zero (eq_refl s0)
   | succ s0 => congr_succ (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
   | natrec s0 s1 s2 s3 =>
       congr_natrec
@@ -1981,20 +2014,19 @@ ren_tm xi_tm s = subst_tm sigma_tm s :=
            (up_tm_tm (up_tm_tm sigma_tm))
            (rinstInst_up_tm_tm _ _ (rinstInst_up_tm_tm _ _ Eq_tm)) s2)
         (rinst_inst_tm xi_tm sigma_tm Eq_tm s3)
-  | univ s0 => congr_univ (eq_refl s0)
-  | up s0 s1 =>
-      congr_up (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
-        (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
+  | univ s0 s1 => congr_univ (eq_refl s0) (eq_refl s1)
+  | up s0 s1 => congr_up (eq_refl s0) (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
   | uptm s0 s1 =>
       congr_uptm (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
         (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
-  | prop => congr_prop
-  | prf s0 => congr_prf (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
-  | all s0 s1 =>
-      congr_all (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
+  | prop s0 => congr_prop (eq_refl s0)
+  | prf s0 s1 =>
+      congr_prf (eq_refl s0) (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
+  | all s0 s1 s2 =>
+      congr_all (eq_refl s0) (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)
         (rinst_inst_tm (upRen_tm_tm xi_tm) (up_tm_tm sigma_tm)
-           (rinstInst_up_tm_tm _ _ Eq_tm) s1)
-  | false_ => congr_false_
+           (rinstInst_up_tm_tm _ _ Eq_tm) s2)
+  | false_ s0 => congr_false_ (eq_refl s0)
   | absurd s0 s1 =>
       congr_absurd (rinst_inst_tm xi_tm sigma_tm Eq_tm s0)
         (rinst_inst_tm xi_tm sigma_tm Eq_tm s1)

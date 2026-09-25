@@ -7,7 +7,7 @@ From CICM Require Import Codes.Def Codes.Sound Codes.EqPER Codes.Expand Codes.Is
   Codes.WF Codes.IsoPER Codes.Levels.
 From CICM Require Import Interp.Codes Interp.Stage Interp.Build Interp.Fam Interp.Lift
   Interp.PiFam Interp.SigFam Interp.Univ Interp.Env Interp.Elem Interp.PiEl Interp.SigEl
-  Interp.Rec Interp.Def Interp.Inv Interp.Ctx Interp.Subst.
+  Interp.Rec Interp.LiftN Interp.Def Interp.Inv Interp.Ctx Interp.Subst.
 From Stdlib Require Import Arith Lia.
 
 Import UnscopedNotations.
@@ -63,137 +63,44 @@ Proof. apply eval_whnf, whnf_prf. Qed.
 (* The clauses whose family is fixed by the clause itself.            *)
 (* ------------------------------------------------------------------ *)
 
-Lemma fun_nat rho k : FTy rho nat_ k enat (natFam k).
+Lemma fun_nat rho k : FTy rho (nat_ k) k enat (natFam k).
 Proof.
   intros rho' w' F' HR Hty D'; apply iso_sym.
-  exact (ity_nat_inv rho' nat_ k w' F' D').
+  exact (ity_nat_inv rho' (nat_ k) k w' F' D').
 Qed.
 
-Lemma fun_prop rho k : FTy rho prop k eprop (propFam k).
+Lemma fun_prop rho k : FTy rho (prop k) k eprop (propFam k).
 Proof.
   intros rho' w' F' HR Hty D'; apply iso_sym.
-  exact (ity_prop_inv rho' prop k w' F' D').
+  exact (ity_prop_inv rho' (prop k) k w' F' D').
 Qed.
 
-Lemma fun_univ rho m : FTy rho (univ m) (S m) (euniv m) (univFam m).
-Proof.
-  intros rho' w' F' HR Hty D'; apply iso_sym.
-  exact (ity_univ_iso rho' (univ m) (S m) w' F' D').
-Qed.
-
-(* Prf: the two truth values are the same because the two readings of the
-   proposition are related, and that is the induction hypothesis at p. *)
-Lemma fun_prf rho p k wp (xp : kElAt (propFam 0) wp)
-  (IHp : FTm rho p 0 eprop (propFam 0) wp xp) :
-  FTy rho (prf p) k (eprf wp) (prfF k xp).
+(* A universe: the reading is the d-fold lift of the universe its own level
+   adds, and the gap d is determined -- both readings are of the same syntax,
+   whose annotation IS d + S m. *)
+Lemma fun_univ rho d m :
+  FTy rho (univ (d + S m) m) (d + S m) (euniv m) (famLiftN d (univFam m)).
 Proof.
   intros rho' w' F' HR Hty D'.
-  destruct (ity_prf_inv rho' (prf p) k w' F' D') as [wp' [xp' [Dp' Hiso']]].
-  eapply iso_trans; [| apply iso_sym; exact Hiso'].
-  assert (Htp : tyeq (eprf wp) (eprf wp')).
-  { eapply tyeq_trans; [exact Hty | exact (iso_ty F' (prfF k xp') Hiso')]. }
-  destruct Htp as [n Hn].
-  assert (Hpr : PR wp wp')
-    by (eapply eqty_prf_inv; [exact Hn | apply ev_prf_self | apply ev_prf_self]).
-  assert (Hrel : Rel eprop wp wp')
-    by (apply Rel_prop_intro;
-        [exact good_ty_prop | apply eval_whnf, whnf_prop | exact Hpr]).
-  apply prfFam_iso; [exists n; exact Hn |].
-  exact (proj1 (proj1 (propEq_iff xp xp')
-                  (proj2 (kRel_same (propFam 0) _ _ _ _)
-                     (IHp rho' eprop (propFam 0) wp' xp' HR
-                        (iso_self (propFam 0)) Hrel Dp')))).
+  destruct (ity_univ_iso rho' (univ (d + S m) m) (d + S m) w' F' D')
+    as [d' [E H]].
+  assert (Ed : d' = d) by lia; subst d'.
+  rewrite (lvlCast_irr (eq_sym E) F') in H.
+  apply iso_sym; exact H.
 Qed.
 
 (* The universe lift: the level-agnostic hypothesis descends unchanged,
    because `up` leaves the realiser alone. *)
 Lemma fun_up rho A k w (F0 : kUFam k w) (IHA : FTy rho A k w F0) :
-  FTy rho (up (univ (S k)) A) (S k) w (famLiftK F0).
+  FTy rho (up k A) (S k) w (famLiftK F0).
 Proof.
   intros rho' w' F' HR Hty D'.
-  pose proof (ity_up_inv rho' (up (univ (S k)) A) (S k) w' F' D') as Hup.
+  pose proof (ity_up_inv rho' (up k A) (S k) w' F' D') as Hup.
   cbn [UpDec] in Hup.
   destruct Hup as [F1 [[Ej DA'] Hiso']].
   eapply iso_trans; [| apply iso_sym; exact Hiso'].
   apply famLiftK_iso.
   exact (IHA rho' w' F1 HR Hty DA').
-Qed.
-
-(* ------------------------------------------------------------------ *)
-(* Pi and Sigma.  The two components' hypotheses are exactly what the  *)
-(* heterogeneous layer-1 inversions produce, and the codomain's needs   *)
-(* the arguments to be layer-1 related -- which is kRel_rel, cast along *)
-(* the domains' own equality.                                          *)
-(* ------------------------------------------------------------------ *)
-
-Lemma fun_pi rho A B k wA (FA : kUFam k wA) B0
-  (wB : forall u, kElAt FA u -> etm)
-  (FB : forall u (x : kElAt FA u), kUFam k (wB u x))
-  (redB : forall u x, reds (eapp B0 u) (wB u x))
-  (isoB : forall u x u' x', kEqAt FA u x u' x' -> iso (kAt (FB u' x')) (kAt (FB u x)))
-  (gPi : eqty k (epi wA B0) (epi wA B0))
-  (IHA : FTy rho A k wA FA)
-  (IHB : forall u x, FTy (ext rho FA u x) B k (wB u x) (FB u x)) :
-  FTy rho (pi A B) k (epi wA B0) (piFam k wA B0 FA wB FB redB isoB gPi).
-Proof.
-  intros rho' w' F' HR Hty D'.
-  destruct (ity_pi_inv rho' (pi A B) k w' F' D')
-    as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi' [[[DA' DB'] Hw'] Hiso']]]]]]]]].
-  eapply iso_trans; [| apply iso_sym; exact Hiso'].
-  assert (Htp : tyeq (epi wA B0) (epi wA' B0'))
-    by (eapply tyeq_trans; [exact Hty | exact Hw']).
-  destruct Htp as [n Hn].
-  assert (HdA : eqty n wA wA')
-    by (eapply eqty_pi_dom; [exact Hn | apply ev_pi_self | apply ev_pi_self]).
-  apply piFam_iso.
-  - exists n; exact Hn.
-  - exact (IHA rho' wA' FA' HR (ex_intro _ n HdA) DA').
-  - intros u x u' x' Hrel.
-    apply (IHB u x (ext rho' FA' u' x') (wB' u' x') (FB' u' x')).
-    + apply EnvRel_ext; [exact HR | exact Hrel].
-    + exists n.
-      eapply eqty_red;
-        [ eapply eqty_pi_cod;
-            [ exact Hn | apply ev_pi_self | apply ev_pi_self
-            | apply (proj2 (Rel_resp n wA wA' HdA u u'));
-              exact (kRel_rel FA FA' u x u' x' Hrel) ]
-        | apply redB | apply redB' ].
-    + apply DB'.
-Qed.
-
-Lemma fun_sig rho A B k wA (FA : kUFam k wA) B0
-  (wB : forall u, kElAt FA u -> etm)
-  (FB : forall u (x : kElAt FA u), kUFam k (wB u x))
-  (redB : forall u x, reds (eapp B0 u) (wB u x))
-  (isoB : forall u x u' x', kEqAt FA u x u' x' -> iso (kAt (FB u' x')) (kAt (FB u x)))
-  (gSig : eqty k (esig wA B0) (esig wA B0))
-  (IHA : FTy rho A k wA FA)
-  (IHB : forall u x, FTy (ext rho FA u x) B k (wB u x) (FB u x)) :
-  FTy rho (sig_ A B) k (esig wA B0) (sigFam k wA B0 FA wB FB redB isoB gSig).
-Proof.
-  intros rho' w' F' HR Hty D'.
-  destruct (ity_sig_inv rho' (sig_ A B) k w' F' D')
-    as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig' [[[DA' DB'] Hw'] Hiso']]]]]]]]].
-  eapply iso_trans; [| apply iso_sym; exact Hiso'].
-  assert (Htp : tyeq (esig wA B0) (esig wA' B0'))
-    by (eapply tyeq_trans; [exact Hty | exact Hw']).
-  destruct Htp as [n Hn].
-  assert (HdA : eqty n wA wA')
-    by (eapply eqty_sig_dom; [exact Hn | apply ev_sig_self | apply ev_sig_self]).
-  apply sigFam_iso.
-  - exists n; exact Hn.
-  - exact (IHA rho' wA' FA' HR (ex_intro _ n HdA) DA').
-  - intros u x u' x' Hrel.
-    apply (IHB u x (ext rho' FA' u' x') (wB' u' x') (FB' u' x')).
-    + apply EnvRel_ext; [exact HR | exact Hrel].
-    + exists n.
-      eapply eqty_red;
-        [ eapply eqty_sig_cod;
-            [ exact Hn | apply ev_sig_self | apply ev_sig_self
-            | apply (proj2 (Rel_resp n wA wA' HdA u u'));
-              exact (kRel_rel FA FA' u x u' x' Hrel) ]
-        | apply redB | apply redB' ].
-    + apply DB'.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -243,7 +150,7 @@ Qed.
 Definition TotalFam {k u} (F : kUFam k u) : Prop :=
   forall w (x : kElAt F w) w' (x' : kElAt F w'), Rel u w w' -> kEqAt F w x w' x'.
 
-Lemma prf_total k wp (xp : kElAt (propFam 0) wp) : TotalFam (prfF k xp).
+Lemma prf_total k j wp (xp : kElAt (propFam j) wp) : TotalFam (prfF k xp).
 Proof. intros w x w' x' Hr; apply prfEq_of; exact Hr. Qed.
 
 (* Totality transfers along an isomorphism, which is what makes it usable
@@ -393,14 +300,12 @@ Definition UpTmVal (rho : Env) (A t0 : tm) (k : nat) (Sy : etm)
          IsVal F w x (famLiftK F1) w (elLift F1 w x1))%type } } }
   end.
 
-(* The TYPE lift: at a subject `up A t` whose annotation is not a universe no
-   clause applies at all. *)
-Definition UpShape (rho : Env) (Au t0 : tm) (k : nat) (Sy : etm)
+(* The TYPE lift is a type former like any other: its annotation is the level
+   of its subject, so there is nothing left to match on and the branch is
+   TyVal's. *)
+Definition UpShape (rho : Env) (j : nat) (t0 : tm) (k : nat) (Sy : etm)
   : forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type :=
-  match Au with
-  | univ i => TyVal rho (up (univ i) t0) k Sy
-  | _ => fun _ _ _ => Empty_set
-  end.
+  TyVal rho (up j t0) k Sy.
 
 (* Variables: the head entry for var 0, the tail's derivation for var (S i). *)
 Definition VarShape (rho : Env) (i : nat) (k : nat) (Sy : etm)
@@ -418,145 +323,173 @@ Definition NoVal (k : nat) (Sy : etm)
   : forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type :=
   fun _ _ _ => Empty_set.
 
-Definition ZeroVal (k : nat) (Sy : etm)
+(* The level-annotated constants: the annotation IS the level, and recording
+   that equation in the branch is what pins the level of a reading without any
+   recursion.  `natFam k` and `propFam k` exist at every level, so the branch
+   needs no lift and no cast. *)
+Definition ZeroVal (kk : nat) (k : nat) (Sy : etm)
   : forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type :=
-  match k return forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type with
-  | 0 => fun F w x => IsVal F w x (natFam 0) ezero (natE 0 NatAt_zero)
-  | S _ => fun _ _ _ => Empty_set
-  end.
+  fun F w x => ((kk = k) * IsVal F w x (natFam k) ezero (natE 0 NatAt_zero))%type.
 
 Definition SuccVal (rho : Env) (n : tm) (k : nat) (Sy : etm)
   : forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type :=
-  match k return forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type with
-  | 0 => fun F w x =>
-      { wn : etm & { xn : kElAt (natFam 0) wn &
-        (ITm rho n 0 enat (natFam 0) wn xn *
-         IsVal F w x (natFam 0) (esucc wn) (natSucc xn))%type } }
-  | S _ => fun _ _ _ => Empty_set
-  end.
+  fun F w x =>
+    { wn : etm & { xn : kElAt (natFam k) wn &
+      (ITm rho n k enat (natFam k) wn xn *
+       IsVal F w x (natFam k) (esucc wn) (natSucc xn))%type } }.
 
-Definition FalseVal (k : nat) (Sy : etm)
+Definition FalseVal (kk : nat) (k : nat) (Sy : etm)
   : forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type :=
-  match k return forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type with
-  | 0 => fun F w x =>
-      { g : Good eprop efalse &
-        IsVal F w x (propFam 0) efalse (propElem efalse False g) }
-  | S _ => fun _ _ _ => Empty_set
-  end.
+  fun F w x =>
+    { g : Good eprop efalse &
+      ((kk = k) * IsVal F w x (propFam k) efalse (propElem efalse False g))%type }.
 
 (* Impredicative forall.  The domain's level is free -- t_all quantifies over
    it -- so it is existential here, and it is the one level in the decoder that
    the subject does not determine. *)
-Definition AllVal (rho : Env) (A p : tm) (k : nat) (Sy : etm)
+Definition AllVal (rho : Env) (jj : nat) (A p : tm) (k : nat) (Sy : etm)
   : forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type :=
-  match k return forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type with
-  | 0 => fun F w x =>
-      { kA : nat & { wA : etm & { FA : kUFam kA wA &
-      { wp : forall u, kElAt FA u -> etm &
-      { xp : forall u (y : kElAt FA u), kElAt (propFam 0) (wp u y) &
-      { wv : etm & { g : Good eprop wv &
-        (ITy rho A kA wA FA *
-         (forall u y, ITm (ext rho FA u y) p 0 eprop (propFam 0) (wp u y) (xp u y)) *
-         IsVal F w x (propFam 0) wv
-           (propElem wv (forall u (y : kElAt FA u), propVal (xp u y)) g))%type
-      } } } } } } }
-  | S _ => fun _ _ _ => Empty_set
-  end.
+  fun F w x =>
+    { kA : nat & { wA : etm & { FA : kUFam kA wA &
+    { wp : forall u, kElAt FA u -> etm &
+    { xp : forall u (y : kElAt FA u), kElAt (propFam k) (wp u y) &
+    { wv : etm & { g : Good eprop wv &
+      ((jj = k) *
+       ITy rho A kA wA FA *
+       (forall u y, ITm (ext rho FA u y) p k eprop (propFam k) (wp u y) (xp u y)) *
+       IsVal F w x (propFam k) wv
+         (propElem wv (forall u (y : kElAt FA u), propVal (xp u y)) g))%type
+    } } } } } } }.
 
 (* Pi.  The codomain's syntax B is NOT part of the subject, so the branch does
    not mention it: what the functionality proof needs is the body's value at
    every argument and the behaviour equation, both of which speak of t alone. *)
-Definition LamVal (rho : Env) (A B t0 : tm) (k : nat) (Sy : etm)
+(* Pi.  The codomain's syntax B is NOT part of the subject, so the branch does
+   not mention it beyond its readings: what the functionality proof needs is the
+   body's value at every argument and the behaviour equation, both of which
+   speak of t alone.
+
+   The subject's annotation is the level, and the components live at j below it:
+   hence the gap d, the equation that ties it to the judgement's level -- and
+   the one cast, which a consumer destructs away before doing anything else. *)
+Definition LamVal (rho : Env) (kk : nat) (A B t0 : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) (w : etm) (x : kElAt F w) : Type :=
-  { wA : etm & { FA : kUFam k wA & { B0 : etm &
+  { d : nat & { j : nat & { E : d + j = k &
+  { wA : etm & { FA : kUFam j wA & { B0 : etm &
   { wB : forall u, kElAt FA u -> etm &
-  { FB : forall u (y : kElAt FA u), kUFam k (wB u y) &
+  { FB : forall u (y : kElAt FA u), kUFam j (wB u y) &
   { redB : forall u y, reds (eapp B0 u) (wB u y) &
   { isoB : forall u y u' y', kEqAt FA u y u' y' -> iso (kAt (FB u' y')) (kAt (FB u y)) &
-  { gPi : eqty k (epi wA B0) (epi wA B0) &
-  { wv : etm & { xv : kElAt (piFam k wA B0 FA wB FB redB isoB gPi) wv &
+  { gPi : eqty j (epi wA B0) (epi wA B0) &
+  { wv : etm & { xv : kElAt (famLiftN d (piFam j wA B0 FA wB FB redB isoB gPi)) wv &
   { wt : forall u, kElAt FA u -> etm &
   { xt : forall u (y : kElAt FA u), kElAt (FB u y) (wt u y) &
-    ((epi wA B0 = ers rho (pi A B)) *
-     ITy rho A k wA FA *
-     (forall u y, ITy (ext rho FA u y) B k (wB u y) (FB u y)) *
-     (forall u y, ITm (ext rho FA u y) t0 k (wB u y) (FB u y) (wt u y) (xt u y)) *
+    ((kk = (d + j)%nat) *
+     (epi wA B0 = ers rho (pi (d + j)%nat A B)) *
+     ITy rho A j wA FA *
+     (forall u y, ITy (ext rho FA u y) B j (wB u y) (FB u y)) *
+     (forall u y, ITm (ext rho FA u y) t0 j (wB u y) (FB u y) (wt u y) (xt u y)) *
      (forall u y, kEqAt (FB u y) (eapp wv u)
-        (piApp k wA B0 FA wB FB redB isoB gPi wv xv u y) (wt u y) (xt u y)) *
-     IsVal F w x (piFam k wA B0 FA wB FB redB isoB gPi) wv xv)%type
-  } } } } } } } } } } } }.
+        (piApp j wA B0 FA wB FB redB isoB gPi wv
+           (elUnliftN d (piFam j wA B0 FA wB FB redB isoB gPi) wv xv) u y)
+        (wt u y) (xt u y)) *
+     IsVal (lvlCast (eq_sym E) F) w (lvlCastEl (eq_sym E) F w x)
+       (famLiftN d (piFam j wA B0 FA wB FB redB isoB gPi)) wv xv)%type
+  } } } } } } } } } } } } } } }.
 
+(* Application.  Its level is the DOMAIN's -- the annotation A is part of the
+   subject, so the level is read off it -- and the function's is the annotation
+   of the Pi, which the subject does not record: hence the gap d is existential
+   here and the level needs no cast. *)
 Definition AppVal (rho : Env) (A B f a : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) (w : etm) (x : kElAt F w) : Type :=
+  { d : nat &
   { wA : etm & { FA : kUFam k wA & { B0 : etm &
   { wB : forall u, kElAt FA u -> etm &
   { FB : forall u (y : kElAt FA u), kUFam k (wB u y) &
   { redB : forall u y, reds (eapp B0 u) (wB u y) &
   { isoB : forall u y u' y', kEqAt FA u y u' y' -> iso (kAt (FB u' y')) (kAt (FB u y)) &
   { gPi : eqty k (epi wA B0) (epi wA B0) &
-  { wf : etm & { xf : kElAt (piFam k wA B0 FA wB FB redB isoB gPi) wf &
+  { wf : etm & { xf : kElAt (famLiftN d (piFam k wA B0 FA wB FB redB isoB gPi)) wf &
   { wa : etm & { xa : kElAt FA wa &
-    ((epi wA B0 = ers rho (pi A B)) *
+    ((epi wA B0 = ers rho (pi (d + k)%nat A B)) *
      ITy rho A k wA FA *
      (forall u y, ITy (ext rho FA u y) B k (wB u y) (FB u y)) *
-     ITm rho f k (epi wA B0) (piFam k wA B0 FA wB FB redB isoB gPi) wf xf *
+     ITm rho f (d + k)%nat (epi wA B0)
+         (famLiftN d (piFam k wA B0 FA wB FB redB isoB gPi)) wf xf *
      ITm rho a k wA FA wa xa *
      IsVal F w x (FB wa xa) (eapp wf wa)
-       (piApp k wA B0 FA wB FB redB isoB gPi wf xf wa xa))%type
-  } } } } } } } } } } } }.
+       (piApp k wA B0 FA wB FB redB isoB gPi wf
+          (elUnliftN d (piFam k wA B0 FA wB FB redB isoB gPi) wf xf) wa xa))%type
+  } } } } } } } } } } } } }.
 
-Definition PairVal (rho : Env) (A B t0 a : tm) (k : nat) (Sy : etm)
+Definition PairVal (rho : Env) (kk : nat) (A B t0 a : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) (w : etm) (x : kElAt F w) : Type :=
-  { wA : etm & { FA : kUFam k wA & { B0 : etm &
+  { d : nat & { j : nat & { E : d + j = k &
+  { wA : etm & { FA : kUFam j wA & { B0 : etm &
   { wB : forall u, kElAt FA u -> etm &
-  { FB : forall u (y : kElAt FA u), kUFam k (wB u y) &
+  { FB : forall u (y : kElAt FA u), kUFam j (wB u y) &
   { redB : forall u y, reds (eapp B0 u) (wB u y) &
   { isoB : forall u y u' y', kEqAt FA u y u' y' -> iso (kAt (FB u' y')) (kAt (FB u y)) &
-  { gSig : eqty k (esig wA B0) (esig wA B0) &
+  { gSig : eqty j (esig wA B0) (esig wA B0) &
   { wt : etm & { xt : kElAt FA wt &
   { wa : etm & { xa : kElAt (FB wt xt) wa &
   { g : Good (esig wA B0) (epair wt wa) &
-    ((esig wA B0 = ers rho (sig_ A B)) *
-     ITy rho A k wA FA *
-     (forall u y, ITy (ext rho FA u y) B k (wB u y) (FB u y)) *
-     ITm rho t0 k wA FA wt xt *
-     ITm rho a k (wB wt xt) (FB wt xt) wa xa *
-     IsVal F w x (sigFam k wA B0 FA wB FB redB isoB gSig) (epair wt wa)
-       (sigPair k wA B0 FA wB FB redB isoB gSig wt wa xt xa g))%type
-  } } } } } } } } } } } } }.
+    ((kk = (d + j)%nat) *
+     (esig wA B0 = ers rho (sig_ (d + j)%nat A B)) *
+     ITy rho A j wA FA *
+     (forall u y, ITy (ext rho FA u y) B j (wB u y) (FB u y)) *
+     ITm rho t0 j wA FA wt xt *
+     ITm rho a j (wB wt xt) (FB wt xt) wa xa *
+     IsVal (lvlCast (eq_sym E) F) w (lvlCastEl (eq_sym E) F w x)
+       (famLiftN d (sigFam j wA B0 FA wB FB redB isoB gSig)) (epair wt wa)
+       (elLiftN d (sigFam j wA B0 FA wB FB redB isoB gSig) (epair wt wa)
+          (sigPair j wA B0 FA wB FB redB isoB gSig wt wa xt xa g)))%type
+  } } } } } } } } } } } } } } } }.
 
 Definition FstVal (rho : Env) (A B p : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) (w : etm) (x : kElAt F w) : Type :=
+  { d : nat &
   { wA : etm & { FA : kUFam k wA & { B0 : etm &
   { wB : forall u, kElAt FA u -> etm &
   { FB : forall u (y : kElAt FA u), kUFam k (wB u y) &
   { redB : forall u y, reds (eapp B0 u) (wB u y) &
   { isoB : forall u y u' y', kEqAt FA u y u' y' -> iso (kAt (FB u' y')) (kAt (FB u y)) &
   { gSig : eqty k (esig wA B0) (esig wA B0) &
-  { wp : etm & { xp : kElAt (sigFam k wA B0 FA wB FB redB isoB gSig) wp &
-    ((esig wA B0 = ers rho (sig_ A B)) *
+  { wp : etm & { xp : kElAt (famLiftN d (sigFam k wA B0 FA wB FB redB isoB gSig)) wp &
+    ((esig wA B0 = ers rho (sig_ (d + k)%nat A B)) *
      ITy rho A k wA FA *
      (forall u y, ITy (ext rho FA u y) B k (wB u y) (FB u y)) *
-     ITm rho p k (esig wA B0) (sigFam k wA B0 FA wB FB redB isoB gSig) wp xp *
-     IsVal F w x FA (efst wp) (sigFst k wA B0 FA wB FB redB isoB gSig wp xp))%type
-  } } } } } } } } } }.
+     ITm rho p (d + k)%nat (esig wA B0)
+         (famLiftN d (sigFam k wA B0 FA wB FB redB isoB gSig)) wp xp *
+     IsVal F w x FA (efst wp)
+       (sigFst k wA B0 FA wB FB redB isoB gSig wp
+          (elUnliftN d (sigFam k wA B0 FA wB FB redB isoB gSig) wp xp)))%type
+  } } } } } } } } } } }.
 
 Definition SndVal (rho : Env) (A B p : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) (w : etm) (x : kElAt F w) : Type :=
+  { d : nat &
   { wA : etm & { FA : kUFam k wA & { B0 : etm &
   { wB : forall u, kElAt FA u -> etm &
   { FB : forall u (y : kElAt FA u), kUFam k (wB u y) &
   { redB : forall u y, reds (eapp B0 u) (wB u y) &
   { isoB : forall u y u' y', kEqAt FA u y u' y' -> iso (kAt (FB u' y')) (kAt (FB u y)) &
   { gSig : eqty k (esig wA B0) (esig wA B0) &
-  { wp : etm & { xp : kElAt (sigFam k wA B0 FA wB FB redB isoB gSig) wp &
-    ((esig wA B0 = ers rho (sig_ A B)) *
+  { wp : etm & { xp : kElAt (famLiftN d (sigFam k wA B0 FA wB FB redB isoB gSig)) wp &
+    ((esig wA B0 = ers rho (sig_ (d + k)%nat A B)) *
      ITy rho A k wA FA *
      (forall u y, ITy (ext rho FA u y) B k (wB u y) (FB u y)) *
-     ITm rho p k (esig wA B0) (sigFam k wA B0 FA wB FB redB isoB gSig) wp xp *
-     IsVal F w x (FB (efst wp) (sigFst k wA B0 FA wB FB redB isoB gSig wp xp))
-       (esnd wp) (sigSnd k wA B0 FA wB FB redB isoB gSig wp xp))%type
-  } } } } } } } } } }.
+     ITm rho p (d + k)%nat (esig wA B0)
+         (famLiftN d (sigFam k wA B0 FA wB FB redB isoB gSig)) wp xp *
+     IsVal F w x
+       (FB (efst wp)
+          (sigFst k wA B0 FA wB FB redB isoB gSig wp
+             (elUnliftN d (sigFam k wA B0 FA wB FB redB isoB gSig) wp xp)))
+       (esnd wp)
+       (sigSnd k wA B0 FA wB FB redB isoB gSig wp
+          (elUnliftN d (sigFam k wA B0 FA wB FB redB isoB gSig) wp xp)))%type
+  } } } } } } } } } } }.
 
 (* natrec.  Much smaller than it was: with the step term carrying its own
    binders there is no Pi-type for it, hence no B02, isoB2, gPi2, redB2 or
@@ -564,31 +497,32 @@ Definition SndVal (rho : Env) (A B p : tm) (k : nat) (Sy : etm)
    value. *)
 Definition RecVal (rho : Env) (C z s n : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) (w : etm) (x : kElAt F w) : Type :=
+  { j : nat &
   { SC : etm -> etm &
-  { FC : forall m (x0 : kElAt (natFam 0) m), kUFam k (SC m) &
-  { isoC : forall m x0 m' x0', kEqAt (natFam 0) m x0 m' x0' ->
+  { FC : forall m (x0 : kElAt (natFam j) m), kUFam k (SC m) &
+  { isoC : forall m x0 m' x0', kEqAt (natFam j) m x0 m' x0' ->
              iso (kAt (FC m x0)) (kAt (FC m' x0')) &
   { S0 : etm &
   { wz : etm & { xz : kElAt (FC ezero (natE 0 NatAt_zero)) wz &
-  { ws : forall m (x0 : kElAt (natFam 0) m) (w0 : etm) (y : kElAt (FC m x0) w0), etm &
+  { ws : forall m (x0 : kElAt (natFam j) m) (w0 : etm) (y : kElAt (FC m x0) w0), etm &
   { xs : forall m x0 w0 y, kElAt (FC (esucc m) (natSucc x0)) (ws m x0 w0 y) &
   { redS : forall m x0 w0 y, reds (eapp (eapp S0 m) w0) (ws m x0 w0 y) &
-  { wn : etm & { xn : kElAt (natFam 0) wn &
+  { wn : etm & { xn : kElAt (natFam j) wn &
     ((S0 = ers rho (stepWrap s)) *
-     (forall m x0, ITy (ext rho (natFam 0) m x0) C k (SC m) (FC m x0)) *
+     (forall m x0, ITy (ext rho (natFam j) m x0) C k (SC m) (FC m x0)) *
      ITm rho z k (SC ezero) (FC ezero (natE 0 NatAt_zero)) wz xz *
      (forall m x0 w0 y,
-        ITm (ext (ext rho (natFam 0) m x0) (FC m x0) w0 y) s k
+        ITm (ext (ext rho (natFam j) m x0) (FC m x0) w0 y) s k
             (SC (esucc m)) (FC (esucc m) (natSucc x0)) (ws m x0 w0 y) (xs m x0 w0 y)) *
-     ITm rho n 0 enat (natFam 0) wn xn *
+     ITm rho n j enat (natFam j) wn xn *
      IsVal F w x (FC wn (natE (natIdx xn) (natSpec xn))) (enatrec wz S0 wn)
-       (semrec k 0 SC FC isoC wz S0 xz
+       (semrec k j SC FC isoC wz S0 xz
           (fun m x0 w0 y =>
              moveTo (FC (esucc m) (natSucc x0)) (FC (esucc m) (natSucc x0))
                (iso_self (FC (esucc m) (natSucc x0)))
                (ws m x0 w0 y) (xs m x0 w0 y) (eapp (eapp S0 m) w0) (redS m x0 w0 y))
           (natIdx xn) wn (natSpec xn)))%type
-  } } } } } } } } } } }.
+  } } } } } } } } } } } }.
 
 (* And the decoder itself.  `Empty_set` at a shape means NO clause concludes
    there at that level: plam, papp and absurd have no clause of their own and
@@ -642,21 +576,20 @@ Proof.
   split; [exact Hp | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
 
-Lemma ZeroVal_conv (k : nat) (Sy Sy' : etm)
+Lemma ZeroVal_conv (kk : nat) (k : nat) (Sy Sy' : etm)
   (F : kUFam k Sy) (F' : kUFam k Sy') (P : iso (kAt F) (kAt F'))
   w (x : kElAt F w) :
-  ZeroVal k Sy F w x -> ZeroVal k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
+  ZeroVal kk k Sy F w x -> ZeroVal kk k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  destruct k as [| k0]; cbn [ZeroVal]; [| solve [intros []]].
-  intros Hv; apply IsVal_conv; exact Hv.
+  intros [Ek Hv]; split; [exact Ek | apply IsVal_conv; exact Hv].
 Qed.
 
-Lemma ZeroVal_resp (k : nat) (Sy : etm)
+Lemma ZeroVal_resp (kk : nat) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
-  kEqAt F w x w x2 -> ZeroVal k Sy F w x -> ZeroVal k Sy F w x2.
+  kEqAt F w x w x2 -> ZeroVal kk k Sy F w x -> ZeroVal kk k Sy F w x2.
 Proof.
-  destruct k as [| k0]; cbn [ZeroVal]; [| solve [intros _ []]].
-  intros HE Hv; eapply IsVal_resp; [exact HE | exact Hv].
+  intros HE [Ek Hv]; split;
+    [exact Ek | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
 
 Lemma SuccVal_conv (rho : Env) (n : tm) (k : nat) (Sy Sy' : etm)
@@ -664,7 +597,6 @@ Lemma SuccVal_conv (rho : Env) (n : tm) (k : nat) (Sy Sy' : etm)
   w (x : kElAt F w) :
   SuccVal rho n k Sy F w x -> SuccVal rho n k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  destruct k as [| k0]; cbn [SuccVal]; [| solve [intros []]].
   intros [wn [xn [Hp Hv]]].
   exists wn, xn.
   split; [exact Hp | apply IsVal_conv; exact Hv].
@@ -674,65 +606,66 @@ Lemma SuccVal_resp (rho : Env) (n : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
   kEqAt F w x w x2 -> SuccVal rho n k Sy F w x -> SuccVal rho n k Sy F w x2.
 Proof.
-  destruct k as [| k0]; cbn [SuccVal]; [| solve [intros _ []]].
   intros HE [wn [xn [Hp Hv]]].
   exists wn, xn.
   split; [exact Hp | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
 
-Lemma FalseVal_conv (k : nat) (Sy Sy' : etm)
+Lemma FalseVal_conv (kk : nat) (k : nat) (Sy Sy' : etm)
   (F : kUFam k Sy) (F' : kUFam k Sy') (P : iso (kAt F) (kAt F'))
   w (x : kElAt F w) :
-  FalseVal k Sy F w x -> FalseVal k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
+  FalseVal kk k Sy F w x -> FalseVal kk k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  destruct k as [| k0]; cbn [FalseVal]; [| solve [intros []]].
-  intros [g Hv]; exists g; apply IsVal_conv; exact Hv.
+  intros [g [Ek Hv]]; exists g; split; [exact Ek | apply IsVal_conv; exact Hv].
 Qed.
 
-Lemma FalseVal_resp (k : nat) (Sy : etm)
+Lemma FalseVal_resp (kk : nat) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
-  kEqAt F w x w x2 -> FalseVal k Sy F w x -> FalseVal k Sy F w x2.
+  kEqAt F w x w x2 -> FalseVal kk k Sy F w x -> FalseVal kk k Sy F w x2.
 Proof.
-  destruct k as [| k0]; cbn [FalseVal]; [| solve [intros _ []]].
-  intros HE [g Hv]; exists g; eapply IsVal_resp; [exact HE | exact Hv].
+  intros HE [g [Ek Hv]]; exists g; split;
+    [exact Ek | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
 
-Lemma AllVal_conv (rho : Env) (A p : tm) (k : nat) (Sy Sy' : etm)
+Lemma AllVal_conv (rho : Env) (jj : nat) (A p : tm) (k : nat) (Sy Sy' : etm)
   (F : kUFam k Sy) (F' : kUFam k Sy') (P : iso (kAt F) (kAt F'))
   w (x : kElAt F w) :
-  AllVal rho A p k Sy F w x -> AllVal rho A p k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
+  AllVal rho jj A p k Sy F w x ->
+  AllVal rho jj A p k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  destruct k as [| k0]; cbn [AllVal]; [| solve [intros []]].
   intros [kA [wA [FA [wp [xp [wv [g [Hp Hv]]]]]]]].
   exists kA, wA, FA, wp, xp, wv, g.
   split; [exact Hp | apply IsVal_conv; exact Hv].
 Qed.
 
-Lemma AllVal_resp (rho : Env) (A p : tm) (k : nat) (Sy : etm)
+Lemma AllVal_resp (rho : Env) (jj : nat) (A p : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
-  kEqAt F w x w x2 -> AllVal rho A p k Sy F w x -> AllVal rho A p k Sy F w x2.
+  kEqAt F w x w x2 -> AllVal rho jj A p k Sy F w x -> AllVal rho jj A p k Sy F w x2.
 Proof.
-  destruct k as [| k0]; cbn [AllVal]; [| solve [intros _ []]].
   intros HE [kA [wA [FA [wp [xp [wv [g [Hp Hv]]]]]]]].
   exists kA, wA, FA, wp, xp, wv, g.
   split; [exact Hp | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
 
-Lemma LamVal_conv (rho : Env) (A B t0 : tm) (k : nat) (Sy Sy' : etm)
+Lemma LamVal_conv (rho : Env) (kk : nat) (A B t0 : tm) (k : nat) (Sy Sy' : etm)
   (F : kUFam k Sy) (F' : kUFam k Sy') (P : iso (kAt F) (kAt F'))
   w (x : kElAt F w) :
-  LamVal rho A B t0 k Sy F w x -> LamVal rho A B t0 k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
+  LamVal rho kk A B t0 k Sy F w x -> LamVal rho kk A B t0 k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  intros [wA [FA [B0 [wB [FB [redB [isoB [gPi [wv [xv [wt [xt [Hp Hv]]]]]]]]]]]]].
+  intros [d [j [E H]]]; exists d, j, E; destruct E.
+  cbn [lvlCast eq_sym lvlCastEl] in H |- *.
+  destruct H as [wA [FA [B0 [wB [FB [redB [isoB [gPi [wv [xv [wt [xt [Hp Hv]]]]]]]]]]]]].
   exists wA, FA, B0, wB, FB, redB, isoB, gPi, wv, xv, wt, xt.
   split; [exact Hp | apply IsVal_conv; exact Hv].
 Qed.
 
-Lemma LamVal_resp (rho : Env) (A B t0 : tm) (k : nat) (Sy : etm)
+Lemma LamVal_resp (rho : Env) (kk : nat) (A B t0 : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
-  kEqAt F w x w x2 -> LamVal rho A B t0 k Sy F w x -> LamVal rho A B t0 k Sy F w x2.
+  kEqAt F w x w x2 -> LamVal rho kk A B t0 k Sy F w x -> LamVal rho kk A B t0 k Sy F w x2.
 Proof.
-  intros HE [wA [FA [B0 [wB [FB [redB [isoB [gPi [wv [xv [wt [xt [Hp Hv]]]]]]]]]]]]].
+  intros HE [d [j [E H]]]; exists d, j, E; destruct E.
+  cbn [lvlCast eq_sym lvlCastEl] in H |- *.
+  destruct H as [wA [FA [B0 [wB [FB [redB [isoB [gPi [wv [xv [wt [xt [Hp Hv]]]]]]]]]]]]].
   exists wA, FA, B0, wB, FB, redB, isoB, gPi, wv, xv, wt, xt.
   split; [exact Hp | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
@@ -742,8 +675,8 @@ Lemma AppVal_conv (rho : Env) (A B f a : tm) (k : nat) (Sy Sy' : etm)
   w (x : kElAt F w) :
   AppVal rho A B f a k Sy F w x -> AppVal rho A B f a k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  intros [wA [FA [B0 [wB [FB [redB [isoB [gPi [wf [xf [wa [xa [Hp Hv]]]]]]]]]]]]].
-  exists wA, FA, B0, wB, FB, redB, isoB, gPi, wf, xf, wa, xa.
+  intros [d [wA [FA [B0 [wB [FB [redB [isoB [gPi [wf [xf [wa [xa [Hp Hv]]]]]]]]]]]]]].
+  exists d, wA, FA, B0, wB, FB, redB, isoB, gPi, wf, xf, wa, xa.
   split; [exact Hp | apply IsVal_conv; exact Hv].
 Qed.
 
@@ -751,26 +684,30 @@ Lemma AppVal_resp (rho : Env) (A B f a : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
   kEqAt F w x w x2 -> AppVal rho A B f a k Sy F w x -> AppVal rho A B f a k Sy F w x2.
 Proof.
-  intros HE [wA [FA [B0 [wB [FB [redB [isoB [gPi [wf [xf [wa [xa [Hp Hv]]]]]]]]]]]]].
-  exists wA, FA, B0, wB, FB, redB, isoB, gPi, wf, xf, wa, xa.
+  intros HE [d [wA [FA [B0 [wB [FB [redB [isoB [gPi [wf [xf [wa [xa [Hp Hv]]]]]]]]]]]]]].
+  exists d, wA, FA, B0, wB, FB, redB, isoB, gPi, wf, xf, wa, xa.
   split; [exact Hp | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
 
-Lemma PairVal_conv (rho : Env) (A B t0 a : tm) (k : nat) (Sy Sy' : etm)
+Lemma PairVal_conv (rho : Env) (kk : nat) (A B t0 a : tm) (k : nat) (Sy Sy' : etm)
   (F : kUFam k Sy) (F' : kUFam k Sy') (P : iso (kAt F) (kAt F'))
   w (x : kElAt F w) :
-  PairVal rho A B t0 a k Sy F w x -> PairVal rho A B t0 a k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
+  PairVal rho kk A B t0 a k Sy F w x -> PairVal rho kk A B t0 a k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  intros [wA [FA [B0 [wB [FB [redB [isoB [gSig [wt [xt [wa [xa [g [Hp Hv]]]]]]]]]]]]]].
+  intros [d [j [E H]]]; exists d, j, E; destruct E.
+  cbn [lvlCast eq_sym lvlCastEl] in H |- *.
+  destruct H as [wA [FA [B0 [wB [FB [redB [isoB [gSig [wt [xt [wa [xa [g [Hp Hv]]]]]]]]]]]]]].
   exists wA, FA, B0, wB, FB, redB, isoB, gSig, wt, xt, wa, xa, g.
   split; [exact Hp | apply IsVal_conv; exact Hv].
 Qed.
 
-Lemma PairVal_resp (rho : Env) (A B t0 a : tm) (k : nat) (Sy : etm)
+Lemma PairVal_resp (rho : Env) (kk : nat) (A B t0 a : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
-  kEqAt F w x w x2 -> PairVal rho A B t0 a k Sy F w x -> PairVal rho A B t0 a k Sy F w x2.
+  kEqAt F w x w x2 -> PairVal rho kk A B t0 a k Sy F w x -> PairVal rho kk A B t0 a k Sy F w x2.
 Proof.
-  intros HE [wA [FA [B0 [wB [FB [redB [isoB [gSig [wt [xt [wa [xa [g [Hp Hv]]]]]]]]]]]]]].
+  intros HE [d [j [E H]]]; exists d, j, E; destruct E.
+  cbn [lvlCast eq_sym lvlCastEl] in H |- *.
+  destruct H as [wA [FA [B0 [wB [FB [redB [isoB [gSig [wt [xt [wa [xa [g [Hp Hv]]]]]]]]]]]]]].
   exists wA, FA, B0, wB, FB, redB, isoB, gSig, wt, xt, wa, xa, g.
   split; [exact Hp | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
@@ -780,8 +717,8 @@ Lemma FstVal_conv (rho : Env) (A B p : tm) (k : nat) (Sy Sy' : etm)
   w (x : kElAt F w) :
   FstVal rho A B p k Sy F w x -> FstVal rho A B p k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  intros [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [Hp Hv]]]]]]]]]]].
-  exists wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp.
+  intros [d [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [Hp Hv]]]]]]]]]]]].
+  exists d, wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp.
   split; [exact Hp | apply IsVal_conv; exact Hv].
 Qed.
 
@@ -789,8 +726,8 @@ Lemma FstVal_resp (rho : Env) (A B p : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
   kEqAt F w x w x2 -> FstVal rho A B p k Sy F w x -> FstVal rho A B p k Sy F w x2.
 Proof.
-  intros HE [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [Hp Hv]]]]]]]]]]].
-  exists wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp.
+  intros HE [d [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [Hp Hv]]]]]]]]]]]].
+  exists d, wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp.
   split; [exact Hp | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
 
@@ -799,8 +736,8 @@ Lemma SndVal_conv (rho : Env) (A B p : tm) (k : nat) (Sy Sy' : etm)
   w (x : kElAt F w) :
   SndVal rho A B p k Sy F w x -> SndVal rho A B p k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  intros [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [Hp Hv]]]]]]]]]]].
-  exists wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp.
+  intros [d [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [Hp Hv]]]]]]]]]]]].
+  exists d, wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp.
   split; [exact Hp | apply IsVal_conv; exact Hv].
 Qed.
 
@@ -808,8 +745,8 @@ Lemma SndVal_resp (rho : Env) (A B p : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
   kEqAt F w x w x2 -> SndVal rho A B p k Sy F w x -> SndVal rho A B p k Sy F w x2.
 Proof.
-  intros HE [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [Hp Hv]]]]]]]]]]].
-  exists wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp.
+  intros HE [d [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [Hp Hv]]]]]]]]]]]].
+  exists d, wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp.
   split; [exact Hp | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
 
@@ -818,8 +755,8 @@ Lemma RecVal_conv (rho : Env) (C z s n : tm) (k : nat) (Sy Sy' : etm)
   w (x : kElAt F w) :
   RecVal rho C z s n k Sy F w x -> RecVal rho C z s n k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  intros [SC [FC [isoC [S0 [wz [xz [ws [xs [redS [wn [xn [Hp Hv]]]]]]]]]]]].
-  exists SC, FC, isoC, S0, wz, xz, ws, xs, redS, wn, xn.
+  intros [j [SC [FC [isoC [S0 [wz [xz [ws [xs [redS [wn [xn [Hp Hv]]]]]]]]]]]]].
+  exists j, SC, FC, isoC, S0, wz, xz, ws, xs, redS, wn, xn.
   split; [exact Hp | apply IsVal_conv; exact Hv].
 Qed.
 
@@ -827,8 +764,8 @@ Lemma RecVal_resp (rho : Env) (C z s n : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
   kEqAt F w x w x2 -> RecVal rho C z s n k Sy F w x -> RecVal rho C z s n k Sy F w x2.
 Proof.
-  intros HE [SC [FC [isoC [S0 [wz [xz [ws [xs [redS [wn [xn [Hp Hv]]]]]]]]]]]].
-  exists SC, FC, isoC, S0, wz, xz, ws, xs, redS, wn, xn.
+  intros HE [j [SC [FC [isoC [S0 [wz [xz [ws [xs [redS [wn [xn [Hp Hv]]]]]]]]]]]]].
+  exists j, SC, FC, isoC, S0, wz, xz, ws, xs, redS, wn, xn.
   split; [exact Hp | eapply IsVal_resp; [exact HE | exact Hv]].
 Qed.
 
@@ -864,57 +801,57 @@ Proof.
     eapply kEqC_trans; [apply kEqC_sym; exact HE | exact HQ].
 Qed.
 
-Lemma UpShape_conv (rho : Env) (Au t0 : tm) (k : nat) (Sy Sy' : etm)
+Lemma UpShape_conv (rho : Env) (jj : nat) (t0 : tm) (k : nat) (Sy Sy' : etm)
   (F : kUFam k Sy) (F' : kUFam k Sy') (P : iso (kAt F) (kAt F'))
   w (x : kElAt F w) :
-  UpShape rho Au t0 k Sy F w x ->
-  UpShape rho Au t0 k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
-Proof.
-  destruct Au; cbn [UpShape]; try (solve [intros []]).
-  apply TyVal_conv.
+  UpShape rho jj t0 k Sy F w x ->
+  UpShape rho jj t0 k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
+Proof. apply TyVal_conv.
 Qed.
 
-Lemma UpShape_resp (rho : Env) (Au t0 : tm) (k : nat) (Sy : etm)
+Lemma UpShape_resp (rho : Env) (jj : nat) (t0 : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
-  kEqAt F w x w x2 -> UpShape rho Au t0 k Sy F w x -> UpShape rho Au t0 k Sy F w x2.
-Proof.
-  destruct Au; cbn [UpShape]; try (solve [intros _ []]).
-  apply TyVal_resp.
+  kEqAt F w x w x2 -> UpShape rho jj t0 k Sy F w x -> UpShape rho jj t0 k Sy F w x2.
+Proof. apply TyVal_resp.
 Qed.
 
 Definition TmShape (rho : Env) (t : tm) (k : nat) (Sy : etm)
   : forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type :=
   match t return forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type with
   | var_tm i => VarShape rho i k Sy
-  | nat_ => TyVal rho nat_ k Sy
-  | prop => TyVal rho prop k Sy
-  | univ m => TyVal rho (univ m) k Sy
-  | prf p => TyVal rho (prf p) k Sy
-  | pi A B => TyVal rho (pi A B) k Sy
-  | sig_ A B => TyVal rho (sig_ A B) k Sy
-  | up Au t0 => UpShape rho Au t0 k Sy
+  | nat_ kk => TyVal rho (nat_ kk) k Sy
+  | prop kk => TyVal rho (prop kk) k Sy
+  | univ kk m => TyVal rho (univ kk m) k Sy
+  | prf kk p => TyVal rho (prf kk p) k Sy
+  | pi kk A B => TyVal rho (pi kk A B) k Sy
+  | sig_ kk A B => TyVal rho (sig_ kk A B) k Sy
+  | up j t0 => UpShape rho j t0 k Sy
   | uptm A t0 => UpTmVal rho A t0 k Sy
-  | zero => ZeroVal k Sy
+  | zero kk => ZeroVal kk k Sy
   | succ n => SuccVal rho n k Sy
-  | lam A B t0 => LamVal rho A B t0 k Sy
+  | lam kk A B t0 => LamVal rho kk A B t0 k Sy
   | app A B f a => AppVal rho A B f a k Sy
-  | pair A B t0 a => PairVal rho A B t0 a k Sy
+  | pair kk A B t0 a => PairVal rho kk A B t0 a k Sy
   | fst A B p => FstVal rho A B p k Sy
   | snd A B p => SndVal rho A B p k Sy
   | natrec C z s n => RecVal rho C z s n k Sy
-  | false_ => FalseVal k Sy
-  | all A p => AllVal rho A p k Sy
+  | false_ kk => FalseVal kk k Sy
+  | all jj A p => AllVal rho jj A p k Sy
   | _ => NoVal k Sy
   end.
 
-(* The one universal alternative left is i_proof, and it lives at level 0
-   alone -- that is what pinning the levels bought. *)
+(* The one universal alternative is i_proof, and with Prf living at every level
+   it is available at every level too.  It carries TWO facts, and both are used:
+   the family relates all of its elements, which is what a functionality proof
+   needs, and its realiser is a Prf, which is what LEVEL functionality needs --
+   the proof clause is the only clause of ITm whose level the subject does not
+   determine, and this is what rules it out at a universe or a Prop. *)
+Definition ProofAlt {k Sy} (F : kUFam k Sy) : Type :=
+  (TotalFam F * { q : etm & tyeq Sy (eprf q) })%type.
+
 Definition TmInv (rho : Env) (t : tm) (k : nat) (Sy : etm)
   : forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type :=
-  match k return forall (F : kUFam k Sy) (w : etm), kElAt F w -> Type with
-  | 0 => fun F w x => (TotalFam F + TmShape rho t 0 Sy F w x)%type
-  | S k0 => fun F w x => TmShape rho t (S k0) Sy F w x
-  end.
+  fun F w x => (ProofAlt F + TmShape rho t k Sy F w x)%type.
 
 Lemma TmShape_conv (rho : Env) (t : tm) (k : nat) (Sy Sy' : etm)
   (F : kUFam k Sy) (F' : kUFam k Sy') (P : iso (kAt F) (kAt F'))
@@ -953,33 +890,25 @@ Lemma TmInv_conv (rho : Env) (t : tm) (k : nat) (Sy Sy' : etm)
   w (x : kElAt F w) :
   TmInv rho t k Sy F w x -> TmInv rho t k Sy' F' w (ctoK (kAt F) (kAt F') P w x).
 Proof.
-  destruct k as [| k0]; cbn [TmInv].
-  - intros [HT | Hs];
-      [ left; exact (TotalFam_iso F F' P HT)
-      | right; exact (TmShape_conv rho t 0 Sy Sy' F F' P w x Hs) ].
-  - exact (TmShape_conv rho t (S k0) Sy Sy' F F' P w x).
+  intros [[HT [q Hq]] | Hs].
+  - left; split; [exact (TotalFam_iso F F' P HT) |].
+    exists q; eapply tyeq_trans;
+      [apply tyeq_sym; exact (iso_ty F F' P) | exact Hq].
+  - right; exact (TmShape_conv rho t k Sy Sy' F F' P w x Hs).
 Qed.
 
 Lemma TmInv_resp (rho : Env) (t : tm) (k : nat) (Sy : etm)
   (F : kUFam k Sy) w (x x2 : kElAt F w) :
   kEqAt F w x w x2 -> TmInv rho t k Sy F w x -> TmInv rho t k Sy F w x2.
 Proof.
-  destruct k as [| k0]; cbn [TmInv].
-  - intros HE [HT | Hs];
-      [ left; exact HT
-      | right; exact (TmShape_resp rho t 0 Sy F w x x2 HE Hs) ].
-  - exact (TmShape_resp rho t (S k0) Sy F w x x2).
+  intros HE [HT | Hs];
+    [ left; exact HT | right; exact (TmShape_resp rho t k Sy F w x x2 HE Hs) ].
 Qed.
 
 (* A shape branch is a decoder value at every level: at 0 it is the right
    summand, above 0 the decoder IS the shape. *)
 Definition inShape {rho t k Sy} {F : kUFam k Sy} {w} {x : kElAt F w}
-  : TmShape rho t k Sy F w x -> TmInv rho t k Sy F w x :=
-  match k return forall (F0 : kUFam k Sy) (w0 : etm) (x0 : kElAt F0 w0),
-                 TmShape rho t k Sy F0 w0 x0 -> TmInv rho t k Sy F0 w0 x0 with
-  | 0 => fun _ _ _ H => inr H
-  | S _ => fun _ _ _ H => H
-  end F w x.
+  : TmShape rho t k Sy F w x -> TmInv rho t k Sy F w x := fun H => inr H.
 
 (* ------------------------------------------------------------------ *)
 (* The decoder is total.                                              *)
@@ -995,22 +924,23 @@ Definition inShape {rho t k Sy} {F : kUFam k Sy} {w} {x : kElAt F w}
 Definition TyD (rho : Env) (A : tm) (k : nat) (w : etm) (F : kUFam k w) : Type :=
   TmInv rho A (S k) (euniv k) (univFam k) w (famEl F).
 
-Ltac dc_ty c := cbn [TyD TmInv TmShape TyVal]; exists c; split;
+Ltac dc_ty c := cbn [TyD TmInv TmShape TyVal]; right; exists c; split;
   [ idtac | apply IsVal_self ].
 
-Ltac dc1 := intros rho w Ew; dc_ty (natFam 0); exact (ity_nat rho w Ew).
-Ltac dc2 := intros rho w Ew; dc_ty (propFam 0); exact (ity_prop rho w Ew).
-Ltac dc3 := intros rho m w Ew; dc_ty (univFam m); exact (ity_univ rho m w Ew).
-Ltac dc4 := intros rho p wp xp Dp IHp; dc_ty (prfF 0 xp);
-  exact (ity_prf rho p wp xp Dp).
-Ltac dc5 := intros rho A B k wA FA B0 wB FB redB isoB gPi Ew DA IHA DB IHB;
-  dc_ty (piFam k wA B0 FA wB FB redB isoB gPi);
-  exact (ity_pi rho A B k wA FA B0 wB FB redB isoB gPi Ew DA DB).
-Ltac dc6 := intros rho A B k wA FA B0 wB FB redB isoB gSig Ew DA IHA DB IHB;
-  dc_ty (sigFam k wA B0 FA wB FB redB isoB gSig);
-  exact (ity_sig rho A B k wA FA B0 wB FB redB isoB gSig Ew DA DB).
+Ltac dc1 := intros rho k w Ew; dc_ty (natFam k); exact (ity_nat rho k w Ew).
+Ltac dc2 := intros rho k w Ew; dc_ty (propFam k); exact (ity_prop rho k w Ew).
+Ltac dc3 := intros rho dl m w Ew; dc_ty (famLiftN dl (univFam m));
+  exact (ity_univ rho dl m w Ew).
+Ltac dc4 := intros rho k j p wp xp Dp IHp; dc_ty (prfF k xp);
+  exact (ity_prf rho k j p wp xp Dp).
+Ltac dc5 := intros rho A B dl j wA FA B0 wB FB redB isoB gPi Ew DA IHA DB IHB;
+  dc_ty (famLiftN dl (piFam j wA B0 FA wB FB redB isoB gPi));
+  exact (ity_pi rho A B dl j wA FA B0 wB FB redB isoB gPi Ew DA DB).
+Ltac dc6 := intros rho A B dl j wA FA B0 wB FB redB isoB gSig Ew DA IHA DB IHB;
+  dc_ty (famLiftN dl (sigFam j wA B0 FA wB FB redB isoB gSig));
+  exact (ity_sig rho A B dl j wA FA B0 wB FB redB isoB gSig Ew DA DB).
 Ltac dc7 := intros rho A k w F D IH;
-  cbn [TyD TmInv TmShape UpShape TyVal];
+  cbn [TyD TmInv TmShape UpShape TyVal]; right;
   exists (famLiftK F); split; [exact (ity_up rho A k w F D) | apply IsVal_self].
 Ltac dc8 := intros rho A k w v nf Dv IHv; unfold TyD in IHv |- *;
   eapply TmInv_resp; [apply kEqC_sym; apply famEl_elFam_rel | exact IHv].
@@ -1032,67 +962,79 @@ Ltac dc10 := intros rho k Sy F w x; apply inShape;
   cbn [TmShape VarShape ext]; apply EntryRel_refl.
 Ltac dc11 := intros rho en i k Sy F w x D IH; apply inShape;
   cbn [TmShape VarShape]; exists x; split; [exact D | apply kEqC_self].
-Ltac dc12 := intros rho; apply inShape; cbn [TmShape ZeroVal]; apply IsVal_self.
-Ltac dc13 := intros rho n wn x D IH; apply inShape; cbn [TmShape SuccVal];
+Ltac dc12 := intros rho k; apply inShape; cbn [TmShape ZeroVal];
+  split; [reflexivity | apply IsVal_self].
+Ltac dc13 := intros rho k n wn x D IH; apply inShape; cbn [TmShape SuccVal];
   exists wn, x; split; [exact D | apply IsVal_self].
-Ltac dc14 := intros rho A B t k wA FA B0 wB FB redB isoB gPi w x wt xt Ew Ep
+Ltac dc14 := intros rho A B t dl j wA FA B0 wB FB redB isoB gPi w x wt xt Ew Ep
     DA IHA DB IHB Dt IHt Hbeh;
   apply inShape; cbn [TmShape LamVal];
+  exists dl, j, eq_refl;
+  cbn [lvlCast eq_sym lvlCastEl];
   exists wA, FA, B0, wB, FB, redB, isoB, gPi, w, x, wt, xt;
   split;
   [ split;
-    [ split; [split; [split; [exact Ep | exact DA] | exact DB] | exact Dt]
+    [ split;
+      [ split;
+        [ split; [split; [reflexivity | exact Ep] | exact DA] | exact DB]
+      | exact Dt]
     | exact Hbeh]
   | apply IsVal_self ].
-Ltac dc15 := intros rho A B f a k wA FA B0 wB FB redB isoB gPi wf xf wa xa Ep
+Ltac dc15 := intros rho A B f a dl j wA FA B0 wB FB redB isoB gPi wf xf wa xa Ep
     DA IHA DB IHB Df IHf Da IHa;
   apply inShape; cbn [TmShape AppVal];
-  exists wA, FA, B0, wB, FB, redB, isoB, gPi, wf, xf, wa, xa;
+  exists dl, wA, FA, B0, wB, FB, redB, isoB, gPi, wf, xf, wa, xa;
   split;
   [ split;
     [ split; [split; [split; [exact Ep | exact DA] | exact DB] | exact Df]
     | exact Da]
   | apply IsVal_self ].
-Ltac dc16 := intros rho A B t a k wA FA B0 wB FB redB isoB gSig wt xt wa xa g Ep
+Ltac dc16 := intros rho A B t a dl j wA FA B0 wB FB redB isoB gSig wt xt wa xa g Ep
     DA IHA DB IHB Dt IHt Da IHa;
   apply inShape; cbn [TmShape PairVal];
+  exists dl, j, eq_refl;
+  cbn [lvlCast eq_sym lvlCastEl];
   exists wA, FA, B0, wB, FB, redB, isoB, gSig, wt, xt, wa, xa, g;
   split;
   [ split;
-    [ split; [split; [split; [exact Ep | exact DA] | exact DB] | exact Dt]
+    [ split;
+      [ split;
+        [ split; [split; [reflexivity | exact Ep] | exact DA] | exact DB]
+      | exact Dt]
     | exact Da]
   | apply IsVal_self ].
-Ltac dc17 := intros rho A B p k wA FA B0 wB FB redB isoB gSig wp xp Ep
+Ltac dc17 := intros rho A B p dl j wA FA B0 wB FB redB isoB gSig wp xp Ep
     DA IHA DB IHB Dp IHp;
   apply inShape; cbn [TmShape FstVal];
-  exists wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp;
+  exists dl, wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp;
   split;
   [ split; [split; [split; [exact Ep | exact DA] | exact DB] | exact Dp]
   | apply IsVal_self].
-Ltac dc18 := intros rho A B p k wA FA B0 wB FB redB isoB gSig wp xp Ep
+Ltac dc18 := intros rho A B p dl j wA FA B0 wB FB redB isoB gSig wp xp Ep
     DA IHA DB IHB Dp IHp;
   apply inShape; cbn [TmShape SndVal];
-  exists wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp;
+  exists dl, wA, FA, B0, wB, FB, redB, isoB, gSig, wp, xp;
   split;
   [ split; [split; [split; [exact Ep | exact DA] | exact DB] | exact Dp]
   | apply IsVal_self].
-Ltac dc19 := intros rho C z s n k SC FC isoC S0 wz xz ws xs redS wn xn
+Ltac dc19 := intros rho C z s n k j SC FC isoC S0 wz xz ws xs redS wn xn
     ES DC IHC Dz IHz Ds IHs Dn IHn;
   apply inShape; cbn [TmShape RecVal];
-  exists SC, FC, isoC, S0, wz, xz, ws, xs, redS, wn, xn;
+  exists j, SC, FC, isoC, S0, wz, xz, ws, xs, redS, wn, xn;
   split;
   [ split;
     [ split; [split; [split; [exact ES | exact DC] | exact Dz] | exact Ds]
     | exact Dn]
   | apply IsVal_self ].
-Ltac dc20 := intros rho w g Ew; apply inShape; cbn [TmShape FalseVal];
-  exists g; apply IsVal_self.
-Ltac dc21 := intros rho A p k wA FA wp xp w g Ew DA IHA Dp IHp;
+Ltac dc20 := intros rho k w g Ew; apply inShape; cbn [TmShape FalseVal];
+  exists g; split; [reflexivity | apply IsVal_self].
+Ltac dc21 := intros rho jj A p k wA FA wp xp w g Ew DA IHA Dp IHp;
   apply inShape; cbn [TmShape AllVal];
   exists k, wA, FA, wp, xp, w, g;
-  split; [split; [exact DA | exact Dp] | apply IsVal_self].
-Ltac dc22 := intros rho t p wp xp h w g Ew Dp IHp; cbn [TmInv]; left;
-  apply prf_total.
+  split;
+  [ split; [split; [reflexivity | exact DA] | exact Dp] | apply IsVal_self ].
+Ltac dc22 := intros rho t p k j wp xp h w g Ew Dp IHp; cbn [TmInv]; left;
+  split; [apply prf_total | exists wp; exists k; apply (uf_ty (prfF k xp))].
 Ltac dc23 := intros rho A t k Sy F w x DA IHA D IH; apply inShape;
   cbn [TmShape UpTmVal];
   exists Sy, F, x;
@@ -1151,157 +1093,232 @@ Lemma lvls_ext rho {k S0} (F : kUFam k S0) w (x : kElAt F w) :
   lvls (ext rho F w x) = k :: lvls rho.
 Proof. reflexivity. Qed.
 
+(* Related environments have the same levels. *)
+Lemma lvls_of_EnvRel : forall rho rho', EnvRel rho rho' -> lvls rho = lvls rho'.
+Proof.
+  induction rho as [| en r IH]; intros [| en' r'] H; cbn in H |- *;
+    try (solve [destruct H]); [reflexivity |].
+  destruct H as [HR HE]; f_equal;
+    [exact (EntryRel_k _ _ HE) | exact (IH r' HR)].
+Qed.
+
+(* ---- the side condition: not a Prf.  The proof clause is the ONE clause of
+     ITm whose level the subject does not determine -- `prf k p` is a type at
+     every k above the proposition's own level, and a proof term records
+     none of that -- so level functionality has to rule it out, and what rules
+     it out is the shape of the type's realiser.  Everything the induction
+     recurses into is read at a universe, at N or at Prop, so the condition
+     travels. ---- *)
+
+Definition NotPrfR (Sy : etm) : Prop := forall q, tyeq Sy (eprf q) -> False.
+
+Lemma tyeq_prf_eval T q : tyeq T (eprf q) -> exists p, eval T (eprf p).
+Proof.
+  intros H; destruct (tyeq_sym _ _ H) as [n [P HP]].
+  destruct (LR_inv_prf _ _ _ _ _ _ HP (eval_whnf _ (whnf_prf q))) as [p [Hp _]].
+  exists p; exact Hp.
+Qed.
+
+Lemma NotPrfR_nat : NotPrfR enat.
+Proof.
+  intros q Hq; destruct (tyeq_prf_eval _ q Hq) as [p Hp].
+  discriminate (eval_det _ _ _ (eval_whnf enat whnf_nat) Hp).
+Qed.
+
+Lemma NotPrfR_prop : NotPrfR eprop.
+Proof.
+  intros q Hq; destruct (tyeq_prf_eval _ q Hq) as [p Hp].
+  discriminate (eval_det _ _ _ (eval_whnf eprop whnf_prop) Hp).
+Qed.
+
+Lemma NotPrfR_univ m : NotPrfR (euniv m).
+Proof.
+  intros q Hq; destruct (tyeq_prf_eval _ q Hq) as [p Hp].
+  discriminate (eval_det _ _ _ (eval_whnf _ (whnf_univ m)) Hp).
+Qed.
+
+Lemma NotPrfR_pi A0 B0 : NotPrfR (epi A0 B0).
+Proof.
+  intros q Hq; destruct (tyeq_prf_eval _ q Hq) as [p Hp].
+  discriminate (eval_det _ _ _ (eval_whnf _ (whnf_pi A0 B0)) Hp).
+Qed.
+
+Lemma NotPrfR_sig A0 B0 : NotPrfR (esig A0 B0).
+Proof.
+  intros q Hq; destruct (tyeq_prf_eval _ q Hq) as [p Hp].
+  discriminate (eval_det _ _ _ (eval_whnf _ (whnf_sig A0 B0)) Hp).
+Qed.
+
 (* Variables: an induction on the INDEX, which the induction on the term
    cannot supply -- var_tm i is not a subterm of var_tm (S i). *)
 Lemma var_lvl : forall i rho rho', lvls rho = lvls rho' ->
-  forall j Sy (F : kUFam (S j) Sy) w (x : kElAt F w),
-    ITm rho (var_tm i) (S j) Sy F w x ->
-  forall j' Sy' (F' : kUFam (S j') Sy') w' (x' : kElAt F' w'),
-    ITm rho' (var_tm i) (S j') Sy' F' w' x' ->
-  j = j'.
+  forall k Sy (F : kUFam k Sy) w (x : kElAt F w), NotPrfR Sy ->
+    ITm rho (var_tm i) k Sy F w x ->
+  forall k' Sy' (F' : kUFam k' Sy') w' (x' : kElAt F' w'), NotPrfR Sy' ->
+    ITm rho' (var_tm i) k' Sy' F' w' x' ->
+  k = k'.
 Proof.
-  induction i as [| i IH]; intros rho rho' HL j Sy F w x D j' Sy' F' w' x' D';
+  induction i as [| i IH];
+    intros rho rho' HL k Sy F w x HN D k' Sy' F' w' x' HN' D';
     pose proof (itm_inv rho _ _ _ _ _ _ D) as E;
     pose proof (itm_inv rho' _ _ _ _ _ _ D') as E';
+    destruct E as [[_ [q0 Hq0]] | E]; try (solve [destruct (HN q0 Hq0)]);
+    destruct E' as [[_ [q0 Hq0]] | E']; try (solve [destruct (HN' q0 Hq0)]);
     destruct rho as [| en rho0]; destruct rho' as [| en' rho0'];
-    cbn [TmInv TmShape VarShape lvls] in E, E', HL;
+    cbn [TmShape VarShape lvls] in E, E', HL;
     try (solve [destruct E]); try (solve [destruct E']);
     injection HL as Hk HL0.
   - pose proof (EntryRel_k _ _ E) as Ee; pose proof (EntryRel_k _ _ E') as Ee'.
     cbn [en_k] in Ee, Ee'.
-    injection (eq_trans Ee (eq_trans Hk (eq_sym Ee'))) as Ej; exact Ej.
+    exact (eq_trans Ee (eq_trans Hk (eq_sym Ee'))).
   - destruct E as [x0 [D0 _]]; destruct E' as [x0' [D0' _]].
-    exact (IH rho0 rho0' HL0 j Sy F w x0 D0 j' Sy' F' w' x0' D0').
+    exact (IH rho0 rho0' HL0 k Sy F w x0 HN D0 k' Sy' F' w' x0' HN' D0').
 Qed.
 
-Ltac lvl_shapes D1 D2 :=
+Ltac lvl_shapes D1 D2 Hnp Hnp' :=
   pose proof (itm_inv _ _ _ _ _ _ _ D1) as E;
   pose proof (itm_inv _ _ _ _ _ _ _ D2) as E';
-  cbn [TmInv TmShape VarShape TyVal UpTmVal UpShape ZeroVal SuccVal FalseVal
+  destruct E as [[_ [q0 Hq0]] | E]; try (solve [destruct (Hnp q0 Hq0)]);
+  destruct E' as [[_ [q0 Hq0]] | E']; try (solve [destruct (Hnp' q0 Hq0)]);
+  cbn [TmShape VarShape TyVal UpTmVal UpShape ZeroVal SuccVal FalseVal
        AllVal LamVal AppVal PairVal FstVal SndVal RecVal NoVal] in E, E'.
 
+(* A type former, read as a term of the universe above it: its level is the
+   annotation, and Interp/Inv.v's LvlDec says so. *)
+Ltac lvl_by_dec ka kb Ea Eb :=
+  destruct ka as [| k0]; [solve [destruct Ea] |];
+  destruct kb as [| k0']; [solve [destruct Eb] |];
+  destruct Ea as [F0 [D0 Hv]]; destruct Eb as [F2 [D2 Hv2]];
+  pose proof (ity_lvl_dec _ _ _ _ F0 D0) as Ej;
+  pose proof (ity_lvl_dec _ _ _ _ F2 D2) as Ej';
+  cbn [LvlDec] in Ej, Ej'; lia.
+
 (* An induction on the TERM, with the decoder standing in for inversion at each
-   shape.  Only five shapes recurse: the three that read the level off a
-   subterm's own derivation (app, pair, fst/snd), lam and natrec, which read it
-   off a type's, and the formers pi and sig_, which read it off their domain.
-   Everything else either fixes the level outright or has no derivation at a
-   positive level at all. *)
+   shape.  Every clause but the proof clause reads its level either off an
+   ANNOTATION -- the formers, lam, pair, zero, false_, the forall -- or off a
+   subterm whose own reading the induction hypothesis covers: the domain
+   annotation at app, fst and snd, the motive at natrec, the lifted type at
+   uptm, the scrutinee at succ.  The proof clause is the one the NotPrfR
+   hypothesis is for. *)
 Lemma itm_lvl : forall t rho rho', lvls rho = lvls rho' ->
-  forall j Sy (F : kUFam (S j) Sy) w (x : kElAt F w), ITm rho t (S j) Sy F w x ->
-  forall j' Sy' (F' : kUFam (S j') Sy') w' (x' : kElAt F' w'),
-    ITm rho' t (S j') Sy' F' w' x' ->
-  j = j'.
+  forall k Sy (F : kUFam k Sy) w (x : kElAt F w), NotPrfR Sy ->
+    ITm rho t k Sy F w x ->
+  forall k' Sy' (F' : kUFam k' Sy') w' (x' : kElAt F' w'), NotPrfR Sy' ->
+    ITm rho' t k' Sy' F' w' x' ->
+  k = k'.
 Proof.
   induction t as
-    [ i | A IHA B IHB t1 IHt1 | A IHA t1 IHt1
-    | A IHA B IHB f IHf a IHa | f IHf a IHa
-    | A IHA B IHB t1 IHt1 a IHa | A IHA B IHB p IHp | A IHA B IHB p IHp
-    | A IHA B IHB | A IHA B IHB | |
-    | n IHn | C IHC z IHz s IHs n IHn | m | Au IHAu t1 IHt1
-    | A IHA t1 IHt1 | | p IHp
-    | A IHA p IHp | | T IHT e IHe | A IHA t1 IHt1 a IHa | A IHA a IHa
+    [ i
+    | kk A IHA B IHB t1 IHt1
+    | A IHA t1 IHt1
+    | A IHA B IHB f IHf a IHa
+    | f IHf a IHa
+    | kk A IHA B IHB t1 IHt1 a IHa
+    | A IHA B IHB p IHp
+    | A IHA B IHB p IHp
+    | kk A IHA B IHB
+    | kk A IHA B IHB
+    | kk | kk | n IHn
+    | C IHC z IHz s IHs n IHn
+    | kk m
+    | jj A IHA
+    | A IHA t1 IHt1
+    | kk
+    | kk p IHp
+    | jj A IHA p IHp
+    | kk
+    | T IHT e IHe
+    | A IHA t1 IHt1 a IHa
+    | A IHA a IHa
     | A IHA B IHB t1 IHt1 a IHa e IHe b IHb ];
-    intros rho rho' HL j Sy F w x D j' Sy' F' w' x' D'.
-  - (* var_tm *) exact (var_lvl i rho rho' HL j Sy F w x D j' Sy' F' w' x' D').
-  - (* lam *) lvl_shapes D D'.
-    destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gPi
-      [wv [xv [wt [xt [[[[[Ep DA] DB] Dt] Hb] Hv]]]]]]]]]]]]].
-    destruct E' as [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gPi2
-      [wv2 [xv2 [wt2 [xt2 [[[[[Ep2 DA2] DB2] Dt2] Hb2] Hv2]]]]]]]]]]]]].
-    assert (Eq := IHA rho rho' HL _ _ _ _ _ (i_ty _ _ _ _ _ DA)
-                      _ _ _ _ _ (i_ty _ _ _ _ _ DA2)).
+    intros rho rho' HL k Sy F w x HN D k' Sy' F' w' x' HN' D'.
+  - (* var_tm *)
+    exact (var_lvl i rho rho' HL k Sy F w x HN D k' Sy' F' w' x' HN' D').
+  - (* lam: the annotation *) lvl_shapes D D' HN HN'.
+    destruct E as [d [j [E0 [wA [FA [B0 [wB [FB [redB [isoB [gPi
+      [wv [xv [wt [xt [[[[[[Ekk Ep] DA] DB] Dt] Hb] Hv]]]]]]]]]]]]]]]].
+    destruct E' as [d2 [j2 [E2 [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gPi2
+      [wv2 [xv2 [wt2 [xt2 [[[[[[Ekk2 Ep2] DA2] DB2] Dt2] Hb2] Hv2]]]]]]]]]]]]]]]].
+    lia.
+  - (* plam *) lvl_shapes D D' HN HN'; destruct E.
+  - (* app: the domain annotation *) lvl_shapes D D' HN HN'.
+    destruct E as [d [wA [FA [B0 [wB [FB [redB [isoB [gPi
+      [wf [xf [wa [xa [[[[[Ep DA] DB] Df] Da] Hv]]]]]]]]]]]]]].
+    destruct E' as [d2 [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gPi2
+      [wf2 [xf2 [wa2 [xa2 [[[[[Ep2 DA2] DB2] Df2] Da2] Hv2]]]]]]]]]]]]]].
+    assert (Eq := IHA rho rho' HL _ _ _ _ _ (NotPrfR_univ k) (i_ty _ _ _ _ _ DA)
+                      _ _ _ _ _ (NotPrfR_univ k') (i_ty _ _ _ _ _ DA2)).
     injection Eq as Eq; exact Eq.
-  - (* plam *) lvl_shapes D D'; destruct E.
-  - (* app *) lvl_shapes D D'.
-    destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gPi
-      [wf [xf [wa [xa [[[[[Ep DA] DB] Df] Da] Hv]]]]]]]]]]]]].
-    destruct E' as [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gPi2
-      [wf2 [xf2 [wa2 [xa2 [[[[[Ep2 DA2] DB2] Df2] Da2] Hv2]]]]]]]]]]]]].
-    exact (IHf rho rho' HL _ _ _ _ _ Df _ _ _ _ _ Df2).
-  - (* papp *) lvl_shapes D D'; destruct E.
-  - (* pair *) lvl_shapes D D'.
-    destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gSig
-      [wt [xt [wa [xa [g [[[[[Ep DA] DB] Dt] Da] Hv]]]]]]]]]]]]]].
-    destruct E' as [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gSig2
-      [wt2 [xt2 [wa2 [xa2 [g2 [[[[[Ep2 DA2] DB2] Dt2] Da2] Hv2]]]]]]]]]]]]]].
-    exact (IHt1 rho rho' HL _ _ _ _ _ Dt _ _ _ _ _ Dt2).
-  - (* fst *) lvl_shapes D D'.
-    destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]].
-    destruct E' as [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gSig2
-      [wp2 [xp2 [[[[Ep2 DA2] DB2] Dp2] Hv2]]]]]]]]]]].
-    exact (IHp rho rho' HL _ _ _ _ _ Dp _ _ _ _ _ Dp2).
-  - (* snd *) lvl_shapes D D'.
-    destruct E as [wA [FA [B0 [wB [FB [redB [isoB [gSig [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]].
-    destruct E' as [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gSig2
-      [wp2 [xp2 [[[[Ep2 DA2] DB2] Dp2] Hv2]]]]]]]]]]].
-    exact (IHp rho rho' HL _ _ _ _ _ Dp _ _ _ _ _ Dp2).
-  - (* pi *) lvl_shapes D D'.
-    destruct E as [F0 [D0 Hv]]; destruct E' as [F2 [D2 Hv2]].
-    destruct (ity_pi_inv rho (pi A B) j w F0 D0) as
-      [wA [FA [B0 [wB [FB [redB [isoB [gPi [[[DA DB] Hty] Hiso]]]]]]]]].
-    destruct (ity_pi_inv rho' (pi A B) j' w' F2 D2) as
-      [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gPi2 [[[DA2 DB2] Hty2] Hiso2]]]]]]]]].
-    exact (IHA rho rho' HL _ _ _ _ _ (i_ty _ _ _ _ _ DA)
-                _ _ _ _ _ (i_ty _ _ _ _ _ DA2)).
-  - (* sig_ *) lvl_shapes D D'.
-    destruct E as [F0 [D0 Hv]]; destruct E' as [F2 [D2 Hv2]].
-    destruct (ity_sig_inv rho (sig_ A B) j w F0 D0) as
-      [wA [FA [B0 [wB [FB [redB [isoB [gSig [[[DA DB] Hty] Hiso]]]]]]]]].
-    destruct (ity_sig_inv rho' (sig_ A B) j' w' F2 D2) as
-      [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gSig2 [[[DA2 DB2] Hty2] Hiso2]]]]]]]]].
-    exact (IHA rho rho' HL _ _ _ _ _ (i_ty _ _ _ _ _ DA)
-                _ _ _ _ _ (i_ty _ _ _ _ _ DA2)).
-  - (* nat_ *) lvl_shapes D D'.
-    destruct E as [F0 [D0 Hv]]; destruct E' as [F2 [D2 Hv2]].
-    pose proof (ity_lvl_dec rho nat_ j w F0 D0) as Ej;
-      pose proof (ity_lvl_dec rho' nat_ j' w' F2 D2) as Ej';
-      cbn [LvlDec] in Ej, Ej'; exact (eq_trans Ej (eq_sym Ej')).
-  - (* zero *) lvl_shapes D D'; destruct E.
-  - (* succ *) lvl_shapes D D'; destruct E.
-  - (* natrec *) lvl_shapes D D'.
-    destruct E as [SC [FC [isoC [S0 [wz [xz [ws [xs [redS [wn [xn
-      [[[[[ES DC] Dz] Ds] Dn] Hv]]]]]]]]]]]].
-    destruct E' as [SC2 [FC2 [isoC2 [S2 [wz2 [xz2 [ws2 [xs2 [redS2 [wn2 [xn2
-      [[[[[ES2 DC2] Dz2] Ds2] Dn2] Hv2]]]]]]]]]]]].
-    assert (Eq := IHC (ext rho (natFam 0) ezero (natE 0 NatAt_zero))
-                      (ext rho' (natFam 0) ezero (natE 0 NatAt_zero))
-                      (f_equal (cons 0) HL) _ _ _ _ _
+  - (* papp *) lvl_shapes D D' HN HN'; destruct E.
+  - (* pair: the annotation *) lvl_shapes D D' HN HN'.
+    destruct E as [d [j [E0 [wA [FA [B0 [wB [FB [redB [isoB [gSig
+      [wt [xt [wa [xa [g [[[[[[Ekk Ep] DA] DB] Dt] Da] Hv]]]]]]]]]]]]]]]]].
+    destruct E' as [d2 [j2 [E2 [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gSig2
+      [wt2 [xt2 [wa2 [xa2 [g2 [[[[[[Ekk2 Ep2] DA2] DB2] Dt2] Da2] Hv2]]]]]]]]]]]]]]]]].
+    lia.
+  - (* fst: the domain annotation *) lvl_shapes D D' HN HN'.
+    destruct E as [d [wA [FA [B0 [wB [FB [redB [isoB [gSig
+      [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]]].
+    destruct E' as [d2 [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gSig2
+      [wp2 [xp2 [[[[Ep2 DA2] DB2] Dp2] Hv2]]]]]]]]]]]].
+    assert (Eq := IHA rho rho' HL _ _ _ _ _ (NotPrfR_univ k) (i_ty _ _ _ _ _ DA)
+                      _ _ _ _ _ (NotPrfR_univ k') (i_ty _ _ _ _ _ DA2)).
+    injection Eq as Eq; exact Eq.
+  - (* snd: the domain annotation *) lvl_shapes D D' HN HN'.
+    destruct E as [d [wA [FA [B0 [wB [FB [redB [isoB [gSig
+      [wp [xp [[[[Ep DA] DB] Dp] Hv]]]]]]]]]]]].
+    destruct E' as [d2 [wA2 [FA2 [B2 [wB2 [FB2 [redB2 [isoB2 [gSig2
+      [wp2 [xp2 [[[[Ep2 DA2] DB2] Dp2] Hv2]]]]]]]]]]]].
+    assert (Eq := IHA rho rho' HL _ _ _ _ _ (NotPrfR_univ k) (i_ty _ _ _ _ _ DA)
+                      _ _ _ _ _ (NotPrfR_univ k') (i_ty _ _ _ _ _ DA2)).
+    injection Eq as Eq; exact Eq.
+  - (* pi *) lvl_shapes D D' HN HN'; lvl_by_dec k k' E E'.
+  - (* sig_ *) lvl_shapes D D' HN HN'; lvl_by_dec k k' E E'.
+  - (* nat_ *) lvl_shapes D D' HN HN'; lvl_by_dec k k' E E'.
+  - (* zero: the annotation *) lvl_shapes D D' HN HN'.
+    destruct E as [Ek Hv]; destruct E' as [Ek' Hv']; lia.
+  - (* succ: the scrutinee *) lvl_shapes D D' HN HN'.
+    destruct E as [wn [xn [Dn Hv]]]; destruct E' as [wn2 [xn2 [Dn2 Hv2]]].
+    exact (IHn rho rho' HL _ _ _ _ _ NotPrfR_nat Dn
+                _ _ _ _ _ NotPrfR_nat Dn2).
+  - (* natrec: the motive, in environments extended at the scrutinee's level *)
+    lvl_shapes D D' HN HN'.
+    destruct E as [j [SC [FC [isoC [S0 [wz [xz [ws [xs [redS [wn [xn
+      [[[[[ES DC] Dz] Ds] Dn] Hv]]]]]]]]]]]]].
+    destruct E' as [j2 [SC2 [FC2 [isoC2 [S2 [wz2 [xz2 [ws2 [xs2 [redS2 [wn2 [xn2
+      [[[[[ES2 DC2] Dz2] Ds2] Dn2] Hv2]]]]]]]]]]]]].
+    pose proof (IHn rho rho' HL _ _ _ _ _ NotPrfR_nat Dn
+                     _ _ _ _ _ NotPrfR_nat Dn2) as Ej; subst j2.
+    assert (Eq := IHC (ext rho (natFam j) ezero (natE 0 NatAt_zero))
+                      (ext rho' (natFam j) ezero (natE 0 NatAt_zero))
+                      (f_equal (cons j) HL) _ _ _ _ _ (NotPrfR_univ k)
                       (i_ty _ _ _ _ _ (DC ezero (natE 0 NatAt_zero)))
-                      _ _ _ _ _ (i_ty _ _ _ _ _ (DC2 ezero (natE 0 NatAt_zero)))).
+                      _ _ _ _ _ (NotPrfR_univ k')
+                      (i_ty _ _ _ _ _ (DC2 ezero (natE 0 NatAt_zero)))).
     injection Eq as Eq; exact Eq.
-  - (* univ *) lvl_shapes D D'.
-    destruct E as [F0 [D0 Hv]]; destruct E' as [F2 [D2 Hv2]].
-    pose proof (ity_lvl_dec rho (univ m) j w F0 D0) as Ej;
-      pose proof (ity_lvl_dec rho' (univ m) j' w' F2 D2) as Ej';
-      cbn [LvlDec] in Ej, Ej'; exact (eq_trans Ej (eq_sym Ej')).
+  - (* univ *) lvl_shapes D D' HN HN'; lvl_by_dec k k' E E'.
   - (* up: the TYPE lift, whose level the annotation fixes *)
-    destruct Au; lvl_shapes D D'; try (solve [destruct E]).
-    destruct E as [F0 [D0 Hv]]; destruct E' as [F2 [D2 Hv2]].
-    pose proof (ity_lvl_dec rho (up (univ n) t1) j w F0 D0) as Ej;
-      pose proof (ity_lvl_dec rho' (up (univ n) t1) j' w' F2 D2) as Ej';
-      cbn [LvlDec] in Ej, Ej'; exact (eq_trans Ej (eq_sym Ej')).
+    lvl_shapes D D' HN HN'; lvl_by_dec k k' E E'.
   - (* uptm: the TERM lift, whose level is one above the recorded type's *)
-    lvl_shapes D D'.
+    lvl_shapes D D' HN HN'.
+    destruct k as [| k0]; [solve [destruct E] |];
+      destruct k' as [| k0']; [solve [destruct E'] |].
     destruct E as [Sy1 [F1 [x1 [[DA1 Dt1] Hv]]]].
     destruct E' as [Sy2 [F2 [x2 [[DA2 Dt2] Hv2]]]].
-    exact (IHA rho rho' HL _ _ _ _ _ (i_ty _ _ _ _ _ DA1)
-               _ _ _ _ _ (i_ty _ _ _ _ _ DA2)).
-  - (* prop *) lvl_shapes D D'.
-    destruct E as [F0 [D0 Hv]]; destruct E' as [F2 [D2 Hv2]].
-    pose proof (ity_lvl_dec rho prop j w F0 D0) as Ej;
-      pose proof (ity_lvl_dec rho' prop j' w' F2 D2) as Ej';
-      cbn [LvlDec] in Ej, Ej'; exact (eq_trans Ej (eq_sym Ej')).
-  - (* prf *) lvl_shapes D D'.
-    destruct E as [F0 [D0 Hv]]; destruct E' as [F2 [D2 Hv2]].
-    pose proof (ity_lvl_dec rho (prf p) j w F0 D0) as Ej;
-      pose proof (ity_lvl_dec rho' (prf p) j' w' F2 D2) as Ej';
-      cbn [LvlDec] in Ej, Ej'; exact (eq_trans Ej (eq_sym Ej')).
-  - (* all *) lvl_shapes D D'; destruct E.
-  - (* false_ *) lvl_shapes D D'; destruct E.
-  - (* absurd *) lvl_shapes D D'; destruct E.
-  - (* eqty *) lvl_shapes D D'; destruct E.
-  - (* refl *) lvl_shapes D D'; destruct E.
-  - (* transp *) lvl_shapes D D'; destruct E.
+    exact (IHA rho rho' HL _ _ _ _ _ (NotPrfR_univ k0) (i_ty _ _ _ _ _ DA1)
+               _ _ _ _ _ (NotPrfR_univ k0') (i_ty _ _ _ _ _ DA2)).
+  - (* prop *) lvl_shapes D D' HN HN'; lvl_by_dec k k' E E'.
+  - (* prf *) lvl_shapes D D' HN HN'; lvl_by_dec k k' E E'.
+  - (* all: the annotation *) lvl_shapes D D' HN HN'.
+    destruct E as [kA [wA [FA [wp [xp [wv [g [[[Ejj DA] Dp] Hv]]]]]]]].
+    destruct E' as [kA2 [wA2 [FA2 [wp2 [xp2 [wv2 [g2 [[[Ejj2 DA2] Dp2] Hv2]]]]]]]].
+    lia.
+  - (* false_: the annotation *) lvl_shapes D D' HN HN'.
+    destruct E as [g [Ek Hv]]; destruct E' as [g2 [Ek2 Hv2]]; lia.
+  - (* absurd *) lvl_shapes D D' HN HN'; destruct E.
+  - (* eqty *) lvl_shapes D D' HN HN'; destruct E.
+  - (* refl *) lvl_shapes D D' HN HN'; destruct E.
+  - (* transp *) lvl_shapes D D' HN HN'; destruct E.
 Qed.
 
 (* And the form the fundamental lemma uses: two readings of one type in
@@ -1311,9 +1328,141 @@ Lemma ity_lvl rho rho' (HL : lvls rho = lvls rho') A k w (F : kUFam k w)
   ITy rho A k w F -> ITy rho' A k' w' F' -> k = k'.
 Proof.
   intros D D'.
-  assert (Eq := itm_lvl A rho rho' HL _ _ _ _ _ (i_ty rho A k w F D)
-                        _ _ _ _ _ (i_ty rho' A k' w' F' D')).
-  exact Eq.
+  assert (Eq := itm_lvl A rho rho' HL _ _ _ _ _ (NotPrfR_univ k)
+                        (i_ty rho A k w F D)
+                        _ _ _ _ _ (NotPrfR_univ k') (i_ty rho' A k' w' F' D')).
+  injection Eq as Eq; exact Eq.
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Prf, Pi and Sigma, whose components' LEVELS the two readings have to  *)
+(* agree on before their families can even be compared: that is what     *)
+(* level functionality above is for, and it is why these three clauses    *)
+(* take the first derivation as well as its functionality hypothesis.     *)
+(* ------------------------------------------------------------------ *)
+
+(* Prf: the two truth values are the same because the two readings of the
+   proposition are related, and that is the induction hypothesis at p.  The
+   level at which the proposition was read is existential in the decoder --
+   a Prf at level k says nothing about it -- and level functionality pins it. *)
+Lemma fun_prf rho p k j wp (xp : kElAt (propFam j) wp)
+  (Dp : ITm rho p j eprop (propFam j) wp xp)
+  (IHp : FTm rho p j eprop (propFam j) wp xp) :
+  FTy rho (prf k p) k (eprf wp) (prfF k xp).
+Proof.
+  intros rho' w' F' HR Hty D'.
+  destruct (ity_prf_inv rho' (prf k p) k w' F' D') as [j' [wp' [xp' [Dp' Hiso']]]].
+  pose proof (itm_lvl p rho rho' (lvls_of_EnvRel _ _ HR) _ _ _ _ _
+                NotPrfR_prop Dp _ _ _ _ _ NotPrfR_prop Dp') as Ej.
+  subst j'.
+  eapply iso_trans; [| apply iso_sym; exact Hiso'].
+  assert (Htp : tyeq (eprf wp) (eprf wp')).
+  { eapply tyeq_trans; [exact Hty | exact (iso_ty F' (prfF k xp') Hiso')]. }
+  destruct Htp as [n Hn].
+  assert (Hpr : PR wp wp')
+    by (eapply eqty_prf_inv; [exact Hn | apply ev_prf_self | apply ev_prf_self]).
+  assert (Hrel : Rel eprop wp wp')
+    by (apply Rel_prop_intro;
+        [exact good_ty_prop | apply eval_whnf, whnf_prop | exact Hpr]).
+  apply prfFam_iso; [exists n; exact Hn |].
+  exact (proj1 (proj1 (propEq_iff xp xp')
+                  (proj2 (kRel_same (propFam j) _ _ _ _)
+                     (IHp rho' eprop (propFam j) wp' xp' HR
+                        (iso_self (propFam j)) Hrel Dp')))).
+Qed.
+
+(* Pi and Sigma.  The two components' hypotheses are exactly what the
+   heterogeneous layer-1 inversions produce, and the codomain's needs the
+   arguments to be layer-1 related -- which is kRel_rel, cast along the
+   domains' own equality.  The GAP d between the components' level and the
+   annotation is determined once the components' level is, by cancellation. *)
+Lemma fun_pi rho A B d j wA (FA : kUFam j wA) B0
+  (wB : forall u, kElAt FA u -> etm)
+  (FB : forall u (x : kElAt FA u), kUFam j (wB u x))
+  (redB : forall u x, reds (eapp B0 u) (wB u x))
+  (isoB : forall u x u' x', kEqAt FA u x u' x' -> iso (kAt (FB u' x')) (kAt (FB u x)))
+  (gPi : eqty j (epi wA B0) (epi wA B0))
+  (DA : ITy rho A j wA FA)
+  (IHA : FTy rho A j wA FA)
+  (IHB : forall u x, FTy (ext rho FA u x) B j (wB u x) (FB u x)) :
+  FTy rho (pi (d + j) A B) (d + j) (epi wA B0)
+      (famLiftN d (piFam j wA B0 FA wB FB redB isoB gPi)).
+Proof.
+  intros rho' w' F' HR Hty D'.
+  destruct (ity_pi_inv rho' (pi (d + j) A B) (d + j) w' F' D') as [d2 [j2 [E Hd]]].
+  destruct Hd as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi'
+    [[[DA' DB'] Hw'] Hiso']]]]]]]]].
+  pose proof (ity_lvl rho rho' (lvls_of_EnvRel _ _ HR) A j wA FA j2 wA' FA' DA DA')
+    as Ej.
+  subst j2.
+  assert (Ed : d2 = d) by lia; subst d2.
+  rewrite (lvlCast_irr (eq_sym E) F') in Hiso'.
+  eapply iso_trans; [| apply iso_sym; exact Hiso'].
+  apply famLiftN_iso.
+  assert (Htp : tyeq (epi wA B0) (epi wA' B0'))
+    by (eapply tyeq_trans; [exact Hty | exact Hw']).
+  destruct Htp as [n Hn].
+  assert (HdA : eqty n wA wA')
+    by (eapply eqty_pi_dom; [exact Hn | apply ev_pi_self | apply ev_pi_self]).
+  apply piFam_iso.
+  - exists n; exact Hn.
+  - exact (IHA rho' wA' FA' HR (ex_intro _ n HdA) DA').
+  - intros u x u' x' Hrel.
+    apply (IHB u x (ext rho' FA' u' x') (wB' u' x') (FB' u' x')).
+    + apply EnvRel_ext; [exact HR | exact Hrel].
+    + exists n.
+      eapply eqty_red;
+        [ eapply eqty_pi_cod;
+            [ exact Hn | apply ev_pi_self | apply ev_pi_self
+            | apply (proj2 (Rel_resp n wA wA' HdA u u'));
+              exact (kRel_rel FA FA' u x u' x' Hrel) ]
+        | apply redB | apply redB' ].
+    + apply DB'.
+Qed.
+
+Lemma fun_sig rho A B d j wA (FA : kUFam j wA) B0
+  (wB : forall u, kElAt FA u -> etm)
+  (FB : forall u (x : kElAt FA u), kUFam j (wB u x))
+  (redB : forall u x, reds (eapp B0 u) (wB u x))
+  (isoB : forall u x u' x', kEqAt FA u x u' x' -> iso (kAt (FB u' x')) (kAt (FB u x)))
+  (gSig : eqty j (esig wA B0) (esig wA B0))
+  (DA : ITy rho A j wA FA)
+  (IHA : FTy rho A j wA FA)
+  (IHB : forall u x, FTy (ext rho FA u x) B j (wB u x) (FB u x)) :
+  FTy rho (sig_ (d + j) A B) (d + j) (esig wA B0)
+      (famLiftN d (sigFam j wA B0 FA wB FB redB isoB gSig)).
+Proof.
+  intros rho' w' F' HR Hty D'.
+  destruct (ity_sig_inv rho' (sig_ (d + j) A B) (d + j) w' F' D')
+    as [d2 [j2 [E Hd]]].
+  destruct Hd as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig'
+    [[[DA' DB'] Hw'] Hiso']]]]]]]]].
+  pose proof (ity_lvl rho rho' (lvls_of_EnvRel _ _ HR) A j wA FA j2 wA' FA' DA DA')
+    as Ej.
+  subst j2.
+  assert (Ed : d2 = d) by lia; subst d2.
+  rewrite (lvlCast_irr (eq_sym E) F') in Hiso'.
+  eapply iso_trans; [| apply iso_sym; exact Hiso'].
+  apply famLiftN_iso.
+  assert (Htp : tyeq (esig wA B0) (esig wA' B0'))
+    by (eapply tyeq_trans; [exact Hty | exact Hw']).
+  destruct Htp as [n Hn].
+  assert (HdA : eqty n wA wA')
+    by (eapply eqty_sig_dom; [exact Hn | apply ev_sig_self | apply ev_sig_self]).
+  apply sigFam_iso.
+  - exists n; exact Hn.
+  - exact (IHA rho' wA' FA' HR (ex_intro _ n HdA) DA').
+  - intros u x u' x' Hrel.
+    apply (IHB u x (ext rho' FA' u' x') (wB' u' x') (FB' u' x')).
+    + apply EnvRel_ext; [exact HR | exact Hrel].
+    + exists n.
+      eapply eqty_red;
+        [ eapply eqty_sig_cod;
+            [ exact Hn | apply ev_sig_self | apply ev_sig_self
+            | apply (proj2 (Rel_resp n wA wA' HdA u u'));
+              exact (kRel_rel FA FA' u x u' x' Hrel) ]
+        | apply redB | apply redB' ].
+    + apply DB'.
 Qed.
 
 (* ------------------------------------------------------------------ *)
@@ -1378,25 +1527,24 @@ Lemma itm_univ_ty rho A k Sy (F : kUFam (S k) Sy) w (x : kElAt F w)
     kEqAt (univFam k) w (ctoK (kAt F) (kAt (univFam k)) P w x) w (famEl F0))%type }.
 Proof.
   destruct A as
-    [ i | A1 B1 t1 | A1 t1 | A1 B1 f a | f a | A1 B1 t1 a | A1 B1 q | A1 B1 q
-    | A1 B1 | A1 B1 | |
-    | n | C z s n | m | Au t1 | A1 t1 | | q | A1 p1 | | T e | A1 t1 a | A1 a
-    | A1 B1 t1 a e b ];
+    [ i | kk A1 B1 t1 | A1 t1 | A1 B1 f a | f a | kk A1 B1 t1 a | A1 B1 q | A1 B1 q
+    | kk A1 B1 | kk A1 B1 | kk | kk
+    | n | C z s n | kk m | jj t1 | A1 t1 | kk | kk q | jj A1 p1 | kk | T e
+    | A1 t1 a | A1 a | A1 B1 t1 a e b ];
     try (exists (elFam (ctoK (kAt F) (kAt (univFam k)) P w x)); split;
          [ apply ity_of;
            [ exact I
            | exact (i_conv rho _ (S k) Sy F (euniv k) (univFam k) w x P D) ]
          | apply kEqC_sym; apply famEl_elFam_rel ]).
   all: pose proof (itm_inv _ _ _ _ _ _ _ D) as E;
-       try (cbn [TmInv TmShape TyVal] in E;
-            destruct E as [F0 [D0 [Q HQ]]];
-            exists F0; split;
-            [ exact D0 | eapply kEqC_trans; [apply ctoK_irr | exact HQ] ]).
-  (* only the lift is left *)
-  destruct Au; cbn [TmInv TmShape UpShape TyVal] in E;
-    try (solve [destruct E]).
-  destruct E as [F0 [D0 [Q HQ]]].
-  exists F0; split; [exact D0 | eapply kEqC_trans; [apply ctoK_irr | exact HQ]].
+       destruct E as [[_ [q0 Hq0]] | E];
+       [ solve [exfalso; refine (NotPrfR_univ k q0 _);
+                eapply tyeq_trans;
+                  [apply tyeq_sym; exact (iso_ty F (univFam k) P) | exact Hq0]] |];
+       cbn [TmShape TyVal UpShape] in E;
+       destruct E as [F0 [D0 [Q HQ]]];
+       exists F0; split;
+       [ exact D0 | eapply kEqC_trans; [apply ctoK_irr | exact HQ] ].
 Qed.
 
 (* ---- the clauses that are pure bookkeeping ---- *)
@@ -1404,13 +1552,13 @@ Qed.
 (* Proof terms.  A Prf-family relates all of its elements, so nothing about the
    subject is needed: the layer-1 relatedness of the two realisers, which FTm
    carries, is the whole argument. *)
-Lemma fun_proof rho t wp (xp : kElAt (propFam 0) wp) (h : propVal xp)
+Lemma fun_proof rho t k j wp (xp : kElAt (propFam j) wp) (h : propVal xp)
   w (g : Good (eprf wp) w) :
-  FTm rho t 0 (eprf wp) (prfF 0 xp) w (prfElem w h g).
+  FTm rho t k (eprf wp) (prfF k xp) w (prfElem w h g).
 Proof.
   intros rho' Sy' F' w' x' HR Piso Hrel D'.
-  exact (kRel_of_total (prfF 0 xp) F' Piso
-           (TotalFam_iso (prfF 0 xp) F' Piso (prf_total 0 wp xp)) w _ w' x' Hrel).
+  exact (kRel_of_total (prfF k xp) F' Piso
+           (TotalFam_iso (prfF k xp) F' Piso (prf_total k j wp xp)) w _ w' x' Hrel).
 Qed.
 
 (* Conversion of the type: compose the transport with the hypothesis. *)
@@ -1435,11 +1583,9 @@ Proof.
   pose proof (itm_inv _ _ _ _ _ _ _ D') as E.
   destruct rho' as [| en' rho0']; [cbn [ext EnvRel] in HR; destruct HR |].
   cbn [ext EnvRel] in HR; destruct HR as [_ Hen].
-  destruct k as [| k0]; cbn [TmInv TmShape VarShape] in E.
-  - destruct E as [HT | E].
-    + exact (kRel_of_total F F' Piso HT w x w' x' Hrel).
-    + eapply EntryRel_at; eapply EntryRel_trans;
-        [exact Hen | apply EntryRel_sym; exact E].
+  cbn [TmInv TmShape VarShape] in E.
+  destruct E as [[HT _] | E].
+  - exact (kRel_of_total F F' Piso HT w x w' x' Hrel).
   - eapply EntryRel_at; eapply EntryRel_trans;
       [exact Hen | apply EntryRel_sym; exact E].
 Qed.
@@ -1452,24 +1598,21 @@ Proof.
   pose proof (itm_inv _ _ _ _ _ _ _ D') as E.
   destruct rho' as [| en' rho0']; [cbn [EnvRel] in HR; destruct HR |].
   cbn [EnvRel] in HR; destruct HR as [HR0 _].
-  destruct k as [| k0]; cbn [TmInv TmShape VarShape] in E.
-  - destruct E as [HT | [x0 [D0 HE]]].
-    + exact (kRel_of_total F F' Piso HT w x w' x' Hrel).
-    + eapply hetC_eq_r;
-        [exact (IH rho0' Sy' F' w' x0 HR0 Piso Hrel D0)
-        | apply kEqC_sym; exact HE].
-  - destruct E as [x0 [D0 HE]].
-    eapply hetC_eq_r;
+  cbn [TmInv TmShape VarShape] in E.
+  destruct E as [[HT _] | [x0 [D0 HE]]].
+  - exact (kRel_of_total F F' Piso HT w x w' x' Hrel).
+  - eapply hetC_eq_r;
       [exact (IH rho0' Sy' F' w' x0 HR0 Piso Hrel D0)
       | apply kEqC_sym; exact HE].
 Qed.
 
-Lemma fun_zero rho : FTm rho zero 0 enat (natFam 0) ezero (natE 0 NatAt_zero).
+Lemma fun_zero rho k :
+  FTm rho (zero k) k enat (natFam k) ezero (natE 0 NatAt_zero).
 Proof.
   intros rho' Sy' F' w' x' HR Piso Hrel D'.
   pose proof (itm_inv _ _ _ _ _ _ _ D') as E; cbn [TmInv TmShape ZeroVal] in E.
-  destruct E as [HT | Hv].
-  - exact (kRel_of_total (natFam 0) F' Piso HT ezero _ w' x' Hrel).
+  destruct E as [[HT _] | [Ek Hv]].
+  - exact (kRel_of_total (natFam k) F' Piso HT ezero _ w' x' Hrel).
   - eapply kRel_of_IsVal; [exact Hv | apply kRel_refl].
 Qed.
 
@@ -1497,15 +1640,15 @@ Proof.
   eapply iso_trans; [exact Hiso | apply uf_coh].
 Qed.
 
-Lemma fun_false rho (g : Good eprop efalse) :
-  FTm rho false_ 0 eprop (propFam 0) efalse (propElem efalse False g).
+Lemma fun_false rho k (g : Good eprop efalse) :
+  FTm rho (false_ k) k eprop (propFam k) efalse (propElem efalse False g).
 Proof.
   intros rho' Sy' F' w' x' HR Piso Hrel D'.
   pose proof (itm_inv _ _ _ _ _ _ _ D') as E; cbn [TmInv TmShape FalseVal] in E.
-  destruct E as [HT | [g' Hv]].
-  - exact (kRel_of_total (propFam 0) F' Piso HT efalse _ w' x' Hrel).
+  destruct E as [[HT _] | [g' [Ek Hv]]].
+  - exact (kRel_of_total (propFam k) F' Piso HT efalse _ w' x' Hrel).
   - eapply kRel_of_IsVal; [exact Hv |].
-    apply (proj1 (kRel_same (propFam 0) _ _ _ _)).
+    apply (proj1 (kRel_same (propFam k) _ _ _ _)).
     apply propEq_iff; split; [split; exact (fun h => h) | exact g].
 Qed.
 
@@ -1525,34 +1668,34 @@ Proof.
     exact (stuck_not_value _ Hst (v_succ a)).
 Qed.
 
-Lemma fun_succ rho n wn (x : kElAt (natFam 0) wn)
-  (IH : FTm rho n 0 enat (natFam 0) wn x) :
-  FTm rho (succ n) 0 enat (natFam 0) (esucc wn) (natSucc x).
+Lemma fun_succ rho k n wn (x : kElAt (natFam k) wn)
+  (IH : FTm rho n k enat (natFam k) wn x) :
+  FTm rho (succ n) k enat (natFam k) (esucc wn) (natSucc x).
 Proof.
   intros rho' Sy' F' w' x' HR Piso Hrel D'.
   pose proof (itm_inv _ _ _ _ _ _ _ D') as E; cbn [TmInv TmShape SuccVal] in E.
-  destruct E as [HT | [wn' [xn' [Dn' Hv]]]].
-  - exact (kRel_of_total (natFam 0) F' Piso HT (esucc wn) _ w' x' Hrel).
+  destruct E as [[HT _] | [wn' [xn' [Dn' Hv]]]].
+  - exact (kRel_of_total (natFam k) F' Piso HT (esucc wn) _ w' x' Hrel).
   - (* the second realiser is a successor too, so layer 1 peels *)
     assert (Hs : Rel enat (esucc wn) (esucc wn')).
     { destruct Hv as [Q HQ].
       eapply Rel_trans;
         [ apply (Rel_tyeq Sy' enat (esucc wn) w');
-            [ apply tyeq_sym; exact (iso_ty (natFam 0) F' Piso) | exact Hrel ]
+            [ apply tyeq_sym; exact (iso_ty (natFam k) F' Piso) | exact Hrel ]
         | exact (proj2 (proj1 (natEq_iff _ _) HQ)) ]. }
     assert (Hn : Rel enat wn wn')
       by (apply Rel_nat_intro;
           [ apply gt_nat | apply ev_nat
           | apply (NatPer_succ_inv (esucc wn) (esucc wn') wn wn' eq_refl eq_refl);
             exact (Rel_nat_elim enat (esucc wn) (esucc wn') ev_nat Hs) ]).
-    pose proof (IH rho' enat (natFam 0) wn' xn' HR (iso_self (natFam 0)) Hn Dn') as Hx.
+    pose proof (IH rho' enat (natFam k) wn' xn' HR (iso_self (natFam k)) Hn Dn') as Hx.
     eapply kRel_of_IsVal; [exact Hv |].
-    apply (proj1 (kRel_same (natFam 0) _ _ _ _)).
+    apply (proj1 (kRel_same (natFam k) _ _ _ _)).
     apply natEq_iff; split;
       [ unfold natSucc; rewrite !natIdx_natE;
         exact (f_equal S
                  (proj1 (proj1 (natEq_iff _ _)
-                           (proj2 (kRel_same (natFam 0) _ _ _ _) Hx))))
+                           (proj2 (kRel_same (natFam k) _ _ _ _) Hx))))
       | exact Hs ].
 Qed.
 
@@ -1587,10 +1730,10 @@ Proof.
   - (* ity_nat *) reflexivity.
   - (* ity_prop *) reflexivity.
   - (* ity_univ *) reflexivity.
-  - (* ity_prf *) intros rho p wp xp Dp IHp; exact (f_equal eprf IHp).
-  - (* ity_pi *) intros rho A B k wA FA B0 wB FB redB isoB gPi Ew DA IHA DB IHB;
+  - (* ity_prf *) intros rho k j p wp xp Dp IHp; exact (f_equal eprf IHp).
+  - (* ity_pi *) intros rho A B dl j wA FA B0 wB FB redB isoB gPi Ew DA IHA DB IHB;
       exact Ew.
-  - (* ity_sig *) intros rho A B k wA FA B0 wB FB redB isoB gSig Ew DA IHA DB IHB;
+  - (* ity_sig *) intros rho A B dl j wA FA B0 wB FB redB isoB gSig Ew DA IHA DB IHB;
       exact Ew.
   - (* ity_up *) intros rho A k w F D IH; exact IH.
   - (* ity_of *) intros rho A k w v nf Dv IHv; exact IHv.
@@ -1599,23 +1742,23 @@ Proof.
   - (* i_var0 *) reflexivity.
   - (* i_varS *) intros rho en i k Sy F w x D IH; exact IH.
   - (* i_zero *) reflexivity.
-  - (* i_succ *) intros rho n wn x D IH; exact (f_equal esucc IH).
-  - (* i_lam *) intros rho A B t k wA FA B0 wB FB redB isoB gPi w x wt xt Ew Ep
+  - (* i_succ *) intros rho k n wn x D IH; exact (f_equal esucc IH).
+  - (* i_lam *) intros rho A B t dl j wA FA B0 wB FB redB isoB gPi w x wt xt Ew Ep
       DA IHA DB IHB Dt IHt Hbeh; exact Ew.
-  - (* i_app *) intros rho A B f a k wA FA B0 wB FB redB isoB gPi wf xf wa xa Ep
+  - (* i_app *) intros rho A B f a dl j wA FA B0 wB FB redB isoB gPi wf xf wa xa Ep
       DA IHA DB IHB Df IHf Da IHa; exact (f_equal2 eapp IHf IHa).
-  - (* i_pair *) intros rho A B t a k wA FA B0 wB FB redB isoB gSig wt xt wa xa g Ep
+  - (* i_pair *) intros rho A B t a dl j wA FA B0 wB FB redB isoB gSig wt xt wa xa g Ep
       DA IHA DB IHB Dt IHt Da IHa; exact (f_equal2 epair IHt IHa).
-  - (* i_fst *) intros rho A B p k wA FA B0 wB FB redB isoB gSig wp xp Ep
+  - (* i_fst *) intros rho A B p dl j wA FA B0 wB FB redB isoB gSig wp xp Ep
       DA IHA DB IHB Dp IHp; exact (f_equal efst IHp).
-  - (* i_snd *) intros rho A B p k wA FA B0 wB FB redB isoB gSig wp xp Ep
+  - (* i_snd *) intros rho A B p dl j wA FA B0 wB FB redB isoB gSig wp xp Ep
       DA IHA DB IHB Dp IHp; exact (f_equal esnd IHp).
-  - (* i_natrec *) intros rho C z s n k SC FC isoC S0 wz xz ws xs redS wn xn
+  - (* i_natrec *) intros rho C z s n k j SC FC isoC S0 wz xz ws xs redS wn xn
       ES DC IHC Dz IHz Ds IHs Dn IHn.
     rewrite IHz, IHn, ES; reflexivity.
   - (* i_false *) reflexivity.
-  - (* i_all *) intros rho A p k wA FA wp xp w g Ew DA IHA Dp IHp; exact Ew.
-  - (* i_proof *) intros rho t p wp xp h w g Ew Dp IHp; exact Ew.
+  - (* i_all *) intros rho jj A p k wA FA wp xp w g Ew DA IHA Dp IHp; exact Ew.
+  - (* i_proof *) intros rho t p k j wp xp h w g Ew Dp IHp; exact Ew.
   - (* i_up_tm *) intros rho A t k Sy F w x DA IHA D IH; exact IH.
   - (* i_conv *) intros rho t k Sy F Sy' F' w x P D IH; exact IH.
 Qed.

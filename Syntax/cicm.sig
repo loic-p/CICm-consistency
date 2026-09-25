@@ -7,6 +7,19 @@
 
 nat : Type
 
+-- LEVEL ANNOTATIONS.  Every type former carries THE LEVEL IT LIVES AT, and its
+-- components may sit at any level below: `pi k A B : univ (S k) k` for
+-- A, B : univ (S j) j with j <= k.  The universe lift is then one step on the
+-- annotation -- `up k (pi k A B) == pi (S k) A B`, `up k (nat_ k) == nat_ (S k)`
+-- -- so `up` computes on every closed type expression and is stuck only on a
+-- variable.  `univ k j` is the universe of level-j types, living at level k
+-- (j < k), so `univ k j : univ (S k) k`.
+--
+-- Annotations are carried exactly where nothing else determines the level:
+-- `lam`/`pair` (their types are the annotated Pi/Sigma), `zero`, and the type
+-- formers themselves.  `succ`, `natrec`, `app`, `fst`, `snd`, `prf`'s
+-- subject, `plam`, `papp`, `absurd` and `uptm` need none: a premise fixes it.
+
 -- the annotated syntax
 
 tm : Type
@@ -31,17 +44,17 @@ tm : Type
 --
 -- plam and papp are NOT annotated: a proof term is interpreted by i_proof,
 -- which says nothing about the subject, so there is nothing to reconstruct.
-lam    : tm -> (bind tm in tm) -> (bind tm in tm) -> tm
+lam    : nat -> tm -> (bind tm in tm) -> (bind tm in tm) -> tm
 plam   : tm -> (bind tm in tm) -> tm
 app    : tm -> (bind tm in tm) -> tm -> tm -> tm
 papp   : tm -> tm -> tm
-pair   : tm -> (bind tm in tm) -> tm -> tm -> tm
+pair   : nat -> tm -> (bind tm in tm) -> tm -> tm -> tm
 fst    : tm -> (bind tm in tm) -> tm -> tm
 snd    : tm -> (bind tm in tm) -> tm -> tm
-pi     : tm -> (bind tm in tm) -> tm
-sig_   : tm -> (bind tm in tm) -> tm
-nat_   : tm
-zero   : tm
+pi     : nat -> tm -> (bind tm in tm) -> tm
+sig_   : nat -> tm -> (bind tm in tm) -> tm
+nat_   : nat -> tm
+zero   : nat -> tm
 succ   : tm -> tm
 -- natrec C z s n.  The step term carries its OWN binders rather than being a
 -- function: s lives in the context extended by the scrutinee (var 1) and the
@@ -52,16 +65,22 @@ succ   : tm -> tm
 -- and large elimination is available everywhere.  Erasure still emits the
 -- function form (elam (elam .)), so the ERASED calculus is unchanged.
 natrec : (bind tm in tm) -> tm -> (bind tm, tm in tm) -> tm -> tm
-univ   : nat -> tm
+univ   : nat -> nat -> tm
 -- The TYPE lift, annotated with the universe its subject's type lives in.
-up     : tm -> tm -> tm
+up     : nat -> tm -> tm
 -- The TERM lift, annotated with the type it lifts.  The level is then
 -- redundant -- it is the level of that type -- so it is not carried.
 uptm   : tm -> tm -> tm
-prop   : tm
-prf    : tm -> tm
-all    : tm -> (bind tm in tm) -> tm
-false_ : tm
+prop   : nat -> tm
+prf    : nat -> tm -> tm
+-- The impredicative forall is annotated with the level of the PROPOSITION it
+-- forms, which its domain does not determine: `all j A p : prop j` for A at
+-- ANY level (that is the impredicativity).  Without the annotation the level
+-- of a forall over an EMPTY domain is not determined by the interpretation at
+-- all -- the premise about p is vacuous there -- and level functionality,
+-- which everything about the interpretation of propositions rests on, fails.
+all    : nat -> tm -> (bind tm in tm) -> tm
+false_ : nat -> tm
 absurd : tm -> tm -> tm
 eqty   : tm -> tm -> tm -> tm
 refl   : tm -> tm -> tm

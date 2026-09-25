@@ -7,7 +7,7 @@ From CICM Require Import Codes.Def Codes.Sound Codes.EqPER Codes.Expand Codes.Is
   Codes.WF Codes.IsoPER Codes.Levels.
 From CICM Require Import Interp.Codes Interp.Stage Interp.Build Interp.Fam Interp.PiFam
   Interp.SigFam Interp.Univ Interp.Env Interp.Elem Interp.PiEl Interp.SigEl
-  Interp.Rec Interp.Lift Interp.Def.
+  Interp.Rec Interp.Lift Interp.LiftN Interp.Def.
 From Stdlib Require Import Arith Lia.
 
 Import UnscopedNotations.
@@ -25,31 +25,42 @@ Open Scope list_scope.
    the term and the family in one go and no equation is ever produced, hence
    none can be lost.  Since the realiser became a free index of ITy, the
    family's type no longer mentions the term and the match no longer has to be
-   dependent: that is one more place where the free-realiser form pays. *)
+   dependent: that is one more place where the free-realiser form pays.
+
+   At Pi and Sigma the components' level j and the gap d up to the annotation
+   are existential, and the family in hand lives at the annotation's level,
+   which is only provably `d + j`: hence the one lvlCast, which the consumer
+   destructs away immediately. *)
+
+Definition PiData (rho : Env) (A B : tm) (d j : nat) (w : etm)
+  (F : kUFam (d + j) w) : Type :=
+  { wA : etm & { FA : kUFam j wA & { B0 : etm &
+  { wB : forall u, kElAt FA u -> etm &
+  { FB : forall u (x : kElAt FA u), kUFam j (wB u x) &
+  { redB : forall u x, reds (eapp B0 u) (wB u x) &
+  { isoB : forall u x u' x', kEqAt FA u x u' x' ->
+             iso (kAt (FB u' x')) (kAt (FB u x)) &
+  { gPi : eqty j (epi wA B0) (epi wA B0) &
+    ((ITy rho A j wA FA) *
+     (forall u x, ITy (ext rho FA u x) B j (wB u x) (FB u x)) *
+     tyeq w (epi wA B0) *
+     iso (kAt F)
+         (kAt (famLiftN d (piFam j wA B0 FA wB FB redB isoB gPi))))%type } } } } } } } }.
 
 Definition PiDec (rho : Env) (t : tm) (k : nat) (w : etm) (F : kUFam k w) : Type :=
   match t with
-  | pi A B =>
-      { wA : etm & { FA : kUFam k wA & { B0 : etm &
-      { wB : forall u, kElAt FA u -> etm &
-      { FB : forall u (x : kElAt FA u), kUFam k (wB u x) &
-      { redB : forall u x, reds (eapp B0 u) (wB u x) &
-      { isoB : forall u x u' x', kEqAt FA u x u' x' ->
-                 iso (kAt (FB u' x')) (kAt (FB u x)) &
-      { gPi : eqty k (epi wA B0) (epi wA B0) &
-        ((ITy rho A k wA FA) *
-         (forall u x, ITy (ext rho FA u x) B k (wB u x) (FB u x)) *
-         tyeq w (epi wA B0) *
-         iso (kAt F) (kAt (piFam k wA B0 FA wB FB redB isoB gPi)))%type } } } } } } } }
+  | pi _ A B =>
+      { d : nat & { j : nat & { E : d + j = k &
+        PiData rho A B d j w (lvlCast (eq_sym E) F) } } }
   | _ => unit
   end.
 
 Ltac ity_cases D :=
   destruct D as
-    [ rho w Ew | rho w Ew | rho m w Ew
-    | rho p wp xp Dp
-    | rho A B k wA FA B0 wB FB redB isoB gPi Ew DA DB
-    | rho A B k wA FA B0 wB FB redB isoB gSig Ew DA DB
+    [ rho k w Ew | rho k w Ew | rho d j w Ew
+    | rho k j p wp xp Dp
+    | rho A B d j wA FA B0 wB FB redB isoB gPi Ew DA DB
+    | rho A B d j wA FA B0 wB FB redB isoB gSig Ew DA DB
     | rho A k w F DA
     | rho A k w v nf Dv
     | rho A k w Fc Fc' Pc Dc ].
@@ -61,7 +72,9 @@ Lemma PiDec_iso rho t k w (F F' : kUFam k w) (P : iso (kAt F) (kAt F')) :
   PiDec rho t k w F -> PiDec rho t k w F'.
 Proof.
   intros H; destruct t; cbn [PiDec] in H |- *; try exact tt.
-  destruct H as [wA [FA [B0 [wB [FB [redB [isoB [gPi [[[DA DB] Hw] Hiso]]]]]]]]].
+  destruct H as [d [j [E Hd]]]; exists d, j, E; destruct E.
+  cbn [lvlCast eq_sym] in Hd |- *.
+  destruct Hd as [wA [FA [B0 [wB [FB [redB [isoB [gPi [[[DA DB] Hw] Hiso]]]]]]]]].
   exists wA, FA, B0, wB, FB, redB, isoB, gPi.
   split; [split; [split; [exact DA | exact DB] | exact Hw] |].
   exact (iso_trans _ _ _ (iso_sym _ _ P) Hiso).
@@ -74,19 +87,22 @@ Proof.
   - exact tt.
   - exact tt.
   - destruct p; exact tt.
-  - exists wA, FA, B0, wB, FB, redB, isoB, gPi; repeat split;
-      [exact DA | exact DB | exists k; exact gPi
-      | apply (iso_self (piFam k wA B0 FA wB FB redB isoB gPi))].
+  - exists d, j, eq_refl; cbn [lvlCast eq_sym].
+    exists wA, FA, B0, wB, FB, redB, isoB, gPi; repeat split;
+      [exact DA | exact DB | exists j; exact gPi
+      | apply (iso_self (famLiftN d (piFam j wA B0 FA wB FB redB isoB gPi)))].
   - exact tt.
   - destruct A; exact tt.
   - destruct A; cbn in nf; try exact tt; destruct nf.
   - exact (PiDec_iso rho A k w Fc Fc' Pc (IH rho A k w Fc Dc)).
 Qed.
 
-(* The same at the other formers. *)
+(* The same at the other formers.  At nat, prop and Prf the canonical family
+   exists at EVERY level, so nothing has to be lifted and no cast appears:
+   `natFam k` is the reading of `nat_ k`, full stop. *)
 Definition NatDec (rho : Env) (t : tm) (k : nat) (w : etm) (F : kUFam k w) : Type :=
   match t with
-  | nat_ => iso (kAt F) (kAt (natFam k))
+  | nat_ _ => iso (kAt F) (kAt (natFam k))
   | _ => unit
   end.
 
@@ -100,7 +116,7 @@ Qed.
 Lemma ity_nat_inv rho t k w (F : kUFam k w) : ITy rho t k w F -> NatDec rho t k w F.
 Proof.
   revert rho t k w F; fix IH 6; intros rho t k w F D; ity_cases D.
-  - apply (iso_self (natFam 0)).
+  - apply (iso_self (natFam k)).
   - exact tt.
   - exact tt.
   - destruct p; exact tt.
@@ -113,7 +129,7 @@ Qed.
 
 Definition PropDec (rho : Env) (t : tm) (k : nat) (w : etm) (F : kUFam k w) : Type :=
   match t with
-  | prop => iso (kAt F) (kAt (propFam k))
+  | prop _ => iso (kAt F) (kAt (propFam k))
   | _ => unit
   end.
 
@@ -128,7 +144,7 @@ Lemma ity_prop_inv rho t k w (F : kUFam k w) : ITy rho t k w F -> PropDec rho t 
 Proof.
   revert rho t k w F; fix IH 6; intros rho t k w F D; ity_cases D.
   - exact tt.
-  - apply (iso_self (propFam 0)).
+  - apply (iso_self (propFam k)).
   - exact tt.
   - destruct p; exact tt.
   - exact tt.
@@ -138,11 +154,14 @@ Proof.
   - exact (PropDec_iso rho A k w Fc Fc' Pc (IH rho A k w Fc Dc)).
 Qed.
 
+(* Prf: the level j at which the PROPOSITION was read is existential -- a
+   proposition lives at its own level, below the Prf's -- and it does not enter
+   the family, which only wants the proposition's truth value and realiser. *)
 Definition PrfDec (rho : Env) (t : tm) (k : nat) (w : etm) (F : kUFam k w) : Type :=
   match t with
-  | prf p =>
-      { wp : etm & { xp : kElAt (propFam 0) wp &
-        (ITm rho p 0 eprop (propFam 0) wp xp * iso (kAt F) (kAt (prfF k xp)))%type } }
+  | prf _ p =>
+      { j : nat & { wp : etm & { xp : kElAt (propFam j) wp &
+        (ITm rho p j eprop (propFam j) wp xp * iso (kAt F) (kAt (prfF k xp)))%type } } }
   | _ => unit
   end.
 
@@ -150,7 +169,7 @@ Lemma PrfDec_iso rho t k w (F F' : kUFam k w) (P : iso (kAt F) (kAt F')) :
   PrfDec rho t k w F -> PrfDec rho t k w F'.
 Proof.
   intros H; destruct t; cbn [PrfDec] in H |- *; try exact tt.
-  destruct H as [wp [xp [Dp Hiso]]]; exists wp, xp; split;
+  destruct H as [j [wp [xp [Dp Hiso]]]]; exists j, wp, xp; split;
     [exact Dp | exact (iso_trans _ _ _ (iso_sym _ _ P) Hiso)].
 Qed.
 
@@ -160,7 +179,7 @@ Proof.
   - exact tt.
   - exact tt.
   - exact tt.
-  - exists wp, xp; split; [exact Dp | apply (iso_self (prfF 0 xp))].
+  - exists j, wp, xp; split; [exact Dp | apply (iso_self (prfF k xp))].
   - exact tt.
   - exact tt.
   - destruct A; exact tt.
@@ -170,13 +189,12 @@ Qed.
 
 (* Inversion at a universe, in two steps.  The family's type mentions the
    level, so "F is the universe family" cannot even be stated before the level
-   is known; but the level equation is at nat, so it is free.  Splitting the
-   two is what keeps both statements CAST-FREE: the second matches on the level
-   as well as on the term, so that `univFam j` and `F` are seen to live at the
-   same level without any eq_rect. *)
+   is known; but the level equation is at nat, so it is free.  `univ kk j` is
+   read at kk and its value is the (kk - S j)-fold lift of the universe that
+   level S j adds, which is the shape of the ity_univ clause. *)
 Definition UnivLvl (t : tm) (k : nat) : Prop :=
   match t with
-  | univ m => k = S m
+  | univ kk m => k = kk /\ m < kk
   | _ => True
   end.
 
@@ -185,7 +203,7 @@ Proof.
   revert rho t k w F; fix IH 6; intros rho t k w F D; ity_cases D.
   - exact I.
   - exact I.
-  - reflexivity.
+  - split; [reflexivity | lia].
   - destruct p; exact I.
   - exact I.
   - exact I.
@@ -195,15 +213,19 @@ Proof.
 Qed.
 
 Definition UnivIso (t : tm) (k : nat) (w : etm) : kUFam k w -> Type :=
-  match t, k return kUFam k w -> Type with
-  | univ m, S j => fun F0 => iso (kAt F0) (kAt (univFam j))
-  | _, _ => fun _ => unit
+  match t return kUFam k w -> Type with
+  | univ _ m =>
+      fun F0 => { d : nat & { E : d + S m = k &
+                  iso (kAt (lvlCast (eq_sym E) F0))
+                      (kAt (famLiftN d (univFam m))) } }
+  | _ => fun _ => unit
   end.
 
 Lemma UnivIso_iso t k w (F F' : kUFam k w) (P : iso (kAt F) (kAt F')) :
   UnivIso t k w F -> UnivIso t k w F'.
 Proof.
-  intros H; destruct t; destruct k; cbn [UnivIso] in H |- *; try exact tt.
+  intros H; destruct t; cbn [UnivIso] in H |- *; try exact tt.
+  destruct H as [d [E H]]; exists d, E; destruct E; cbn [lvlCast eq_sym] in H |- *.
   exact (iso_trans _ _ _ (iso_sym _ _ P) H).
 Qed.
 
@@ -212,12 +234,12 @@ Proof.
   revert rho t k w F; fix IH 6; intros rho t k w F D; ity_cases D.
   - exact tt.
   - exact tt.
-  - apply iso_self.
+  - exists d, eq_refl; cbn [lvlCast eq_sym]; apply iso_self.
+  - destruct p; exact tt.
   - exact tt.
-  - destruct k; exact tt.
-  - destruct k; exact tt.
-  - destruct A; destruct k; exact tt.
-  - destruct A; cbn in nf; try (destruct k; exact tt); destruct nf.
+  - exact tt.
+  - destruct A; exact tt.
+  - destruct A; cbn in nf; try exact tt; destruct nf.
   - exact (UnivIso_iso A k w Fc Fc' Pc (IH rho A k w Fc Dc)).
 Qed.
 
@@ -227,12 +249,12 @@ Qed.
    ity_of's family is literally `elFam v`. *)
 Definition OfDec (rho : Env) (t : tm) (k : nat) (w : etm) (F : kUFam k w) : Type :=
   match t with
-  | pi _ _ => unit
-  | sig_ _ _ => unit
-  | nat_ => unit
-  | prop => unit
-  | univ _ => unit
-  | prf _ => unit
+  | pi _ _ _ => unit
+  | sig_ _ _ _ => unit
+  | nat_ _ => unit
+  | prop _ => unit
+  | univ _ _ => unit
+  | prf _ _ => unit
   | up _ _ => unit
   | _ => { v : kElAt (univFam k) w &
            (ITm rho t (S k) (euniv k) (univFam k) w v *
@@ -267,9 +289,9 @@ Qed.
    at the same level. *)
 Definition UpDec (rho : Env) (t : tm) (k : nat) (w : etm) : kUFam k w -> Type :=
   match t, k return kUFam k w -> Type with
-  | up (univ j) A, S i =>
+  | up j A, S i =>
       fun F0 => { F1 : kUFam i w &
-                  ((j = S i) * ITy rho A i w F1 *
+                  ((j = i) * ITy rho A i w F1 *
                    iso (kAt F0) (kAt (famLiftK F1)))%type }
   | _, _ => fun _ => unit
   end.
@@ -277,16 +299,7 @@ Definition UpDec (rho : Env) (t : tm) (k : nat) (w : etm) : kUFam k w -> Type :=
 Lemma UpDec_iso rho t k w (F F' : kUFam k w) (P : iso (kAt F) (kAt F')) :
   UpDec rho t k w F -> UpDec rho t k w F'.
 Proof.
-  (* The annotation has to be named: UpDec's pattern `up (univ j) A` compiles
-     to a match on it, which `destruct t` leaves stuck.  The hypothesis is
-     introduced only once every match has been resolved, so that no renaming
-     by destruct can lose it. *)
-  destruct t as
-    [ i | A0 B0 t0 | A0 t0 | A0 B0 f0 a0 | f0 a0 | A0 B0 t0 a0 | A0 B0 p0
-    | A0 B0 p0 | A0 B0 | A0 B0 | | | n0 | C0 z0 s0 n0 | m0 | Au A0 | A0 t0
-    | | p0 | A0 p0 | | T0 e0 | A0 t0 a0 | A0 a0 | A0 B0 t0 a0 e0 b0 ];
-    destruct k; cbn [UpDec]; try (exact (fun _ => tt)).
-  all: (destruct Au; cbn [UpDec]; try (exact (fun _ => tt))).
+  destruct t; destruct k; cbn [UpDec]; try (exact (fun _ => tt)).
   intros [F1 [[Ej DA] Hiso]]; exists F1; split;
     [split; [exact Ej | exact DA] | exact (iso_trans _ _ _ (iso_sym _ _ P) Hiso)].
 Qed.
@@ -298,24 +311,26 @@ Proof.
   - exact tt.
   - exact tt.
   - exact tt.
-  - destruct k; exact tt.
-  - destruct k; exact tt.
+  - exact tt.
+  - exact tt.
   - exists F; split; [split; [reflexivity | exact DA] | apply iso_self].
   - destruct A; cbn in nf; try (destruct k; exact tt); destruct nf.
   - exact (UpDec_iso rho A k w Fc Fc' Pc (IH rho A k w Fc Dc)).
 Qed.
 
 (* The level a type former is read at, off the syntax alone.  Every clause of
-   ITy but ity_pi, ity_sig and ity_of fixes it outright; the two formers take it
-   from their domain and ity_of from the term's own derivation, so those are the
-   only cases the level-uniqueness induction has to recurse in. *)
+   ITy but ity_of fixes it outright, now that every former carries its level;
+   ity_of takes it from the term's own derivation, so that is the only case the
+   level-uniqueness induction has to recurse in. *)
 Definition LvlDec (t : tm) (k : nat) : Prop :=
   match t with
-  | nat_ => k = 0
-  | prop => k = 0
-  | prf _ => k = 0
-  | univ m => k = S m
-  | up Au _ => match Au with univ j => k = j | _ => True end
+  | nat_ kk => k = kk
+  | prop kk => k = kk
+  | prf kk _ => k = kk
+  | univ kk _ => k = kk
+  | pi kk _ _ => k = kk
+  | sig_ kk _ _ => k = kk
+  | up j _ => k = S j
   | _ => True
   end.
 
@@ -326,101 +341,51 @@ Proof.
   - reflexivity.
   - reflexivity.
   - reflexivity.
-  - exact I.
-  - exact I.
+  - reflexivity.
+  - reflexivity.
   - reflexivity.
   - destruct A; cbn in nf |- *; try exact I; destruct nf.
   - exact (IH rho A k w Fc Dc).
 Qed.
 
 (* ------------------------------------------------------------------ *)
-(* Functionality on types.  Stated ACROSS TWO RELATED ENVIRONMENTS,    *)
-(* which is the only form under which the Pi case composes: the two    *)
-(* derivations decompose the type with different domain families, so   *)
-(* the codomains are interpreted in different extended environments.   *)
+(* One packaged isomorphism, at Prf: two readings of one proposition   *)
+(* give isomorphic Prf-families as soon as their truth values agree.   *)
+(* The two propositions may have been read at DIFFERENT levels -- a    *)
+(* Prf at level k says nothing about where its proposition lives -- and *)
+(* neither level enters the Prf-code, which carries only the realiser   *)
+(* and the Prop.                                                       *)
 (* ------------------------------------------------------------------ *)
 
-Lemma prfFam_iso k u (x : kElAt (propFam 0) u) u' (x' : kElAt (propFam 0) u') :
+Lemma prfFam_iso k j j' u (x : kElAt (propFam j) u) u' (x' : kElAt (propFam j') u') :
   tyeq (eprf u) (eprf u') -> (propVal x <-> propVal x') ->
   iso (kAt (prfF k x)) (kAt (prfF k x')).
 Proof. intros Hty Hiff; exact (conj Hty Hiff). Qed.
-
-Lemma ity_nat_fun rho rho' k w w' (F : kUFam k w) (F' : kUFam k w') :
-  ITy rho nat_ k w F -> ITy rho' nat_ k w' F' -> iso (kAt F) (kAt F').
-Proof.
-  intros D D'; eapply iso_trans;
-    [exact (ity_nat_inv rho nat_ k w F D)
-    | apply iso_sym, (ity_nat_inv rho' nat_ k w' F' D')].
-Qed.
-
-Lemma ity_prop_fun rho rho' k w w' (F : kUFam k w) (F' : kUFam k w') :
-  ITy rho prop k w F -> ITy rho' prop k w' F' -> iso (kAt F) (kAt F').
-Proof.
-  intros D D'; eapply iso_trans;
-    [exact (ity_prop_inv rho prop k w F D)
-    | apply iso_sym, (ity_prop_inv rho' prop k w' F' D')].
-Qed.
-
-Lemma ity_prf_fun rho rho' p k w w' (F : kUFam k w) (F' : kUFam k w')
-  (Hp : forall wp xp wp' xp', ITm rho p 0 eprop (propFam 0) wp xp ->
-          ITm rho' p 0 eprop (propFam 0) wp' xp' ->
-          tyeq (eprf wp) (eprf wp') /\ (propVal xp <-> propVal xp')) :
-  ITy rho (prf p) k w F -> ITy rho' (prf p) k w' F' -> iso (kAt F) (kAt F').
-Proof.
-  intros D D'.
-  destruct (ity_prf_inv rho (prf p) k w F D) as [wp [xp [Dp Hiso]]].
-  destruct (ity_prf_inv rho' (prf p) k w' F' D') as [wp' [xp' [Dp' Hiso']]].
-  eapply iso_trans; [exact Hiso |].
-  eapply iso_trans; [| apply iso_sym; exact Hiso'].
-  destruct (Hp wp xp wp' xp' Dp Dp') as [H1 H2]; apply prfFam_iso; assumption.
-Qed.
-
-Lemma ity_pi_fun rho rho' A B k w w' (F : kUFam k w) (F' : kUFam k w')
-  (Hty : tyeq w w')
-  (HA : forall wA (FA : kUFam k wA) wA' (FA' : kUFam k wA'),
-          ITy rho A k wA FA -> ITy rho' A k wA' FA' -> iso (kAt FA) (kAt FA'))
-  (HB : forall wA (FA : kUFam k wA) wA' (FA' : kUFam k wA')
-               u x u' x' wBx (FBx : kUFam k wBx) wBx' (FBx' : kUFam k wBx'),
-          kRel FA FA' u x u' x' ->
-          ITy (ext rho FA u x) B k wBx FBx -> ITy (ext rho' FA' u' x') B k wBx' FBx' ->
-          iso (kAt FBx) (kAt FBx')) :
-  ITy rho (pi A B) k w F -> ITy rho' (pi A B) k w' F' -> iso (kAt F) (kAt F').
-Proof.
-  intros D D'.
-  destruct (ity_pi_inv rho (pi A B) k w F D)
-    as [wA [FA [B0 [wB [FB [redB [isoB [gPi [[[DA DB] Hw] Hiso]]]]]]]]].
-  destruct (ity_pi_inv rho' (pi A B) k w' F' D')
-    as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gPi' [[[DA' DB'] Hw'] Hiso']]]]]]]]].
-  eapply iso_trans; [exact Hiso |].
-  eapply iso_trans; [| apply iso_sym; exact Hiso'].
-  apply piFam_iso.
-  - (* the two Pi-realisers are layer-1 equal: each is equal to the family's
-       own realiser, and those are equal by hypothesis *)
-    eapply tyeq_trans; [apply tyeq_sym; exact Hw |].
-    eapply tyeq_trans; [exact Hty | exact Hw'].
-  - apply (HA wA FA wA' FA'); [exact DA | exact DA'].
-  - intros u x u' x' Hrel.
-    apply (HB wA FA wA' FA' u x u' x'); [exact Hrel | apply DB | apply DB'].
-Qed.
 
 (* ------------------------------------------------------------------ *)
 (* The same at Sigma.                                                 *)
 (* ------------------------------------------------------------------ *)
 
+Definition SigData (rho : Env) (A B : tm) (d j : nat) (w : etm)
+  (F : kUFam (d + j) w) : Type :=
+  { wA : etm & { FA : kUFam j wA & { B0 : etm &
+  { wB : forall u, kElAt FA u -> etm &
+  { FB : forall u (x : kElAt FA u), kUFam j (wB u x) &
+  { redB : forall u x, reds (eapp B0 u) (wB u x) &
+  { isoB : forall u x u' x', kEqAt FA u x u' x' ->
+             iso (kAt (FB u' x')) (kAt (FB u x)) &
+  { gSig : eqty j (esig wA B0) (esig wA B0) &
+    ((ITy rho A j wA FA) *
+     (forall u x, ITy (ext rho FA u x) B j (wB u x) (FB u x)) *
+     tyeq w (esig wA B0) *
+     iso (kAt F)
+         (kAt (famLiftN d (sigFam j wA B0 FA wB FB redB isoB gSig))))%type } } } } } } } }.
+
 Definition SigDec (rho : Env) (t : tm) (k : nat) (w : etm) (F : kUFam k w) : Type :=
   match t with
-  | sig_ A B =>
-      { wA : etm & { FA : kUFam k wA & { B0 : etm &
-      { wB : forall u, kElAt FA u -> etm &
-      { FB : forall u (x : kElAt FA u), kUFam k (wB u x) &
-      { redB : forall u x, reds (eapp B0 u) (wB u x) &
-      { isoB : forall u x u' x', kEqAt FA u x u' x' ->
-                 iso (kAt (FB u' x')) (kAt (FB u x)) &
-      { gSig : eqty k (esig wA B0) (esig wA B0) &
-        ((ITy rho A k wA FA) *
-         (forall u x, ITy (ext rho FA u x) B k (wB u x) (FB u x)) *
-         tyeq w (esig wA B0) *
-         iso (kAt F) (kAt (sigFam k wA B0 FA wB FB redB isoB gSig)))%type } } } } } } } }
+  | sig_ _ A B =>
+      { d : nat & { j : nat & { E : d + j = k &
+        SigData rho A B d j w (lvlCast (eq_sym E) F) } } }
   | _ => unit
   end.
 
@@ -428,7 +393,9 @@ Lemma SigDec_iso rho t k w (F F' : kUFam k w) (P : iso (kAt F) (kAt F')) :
   SigDec rho t k w F -> SigDec rho t k w F'.
 Proof.
   intros H; destruct t; cbn [SigDec] in H |- *; try exact tt.
-  destruct H as [wA [FA [B0 [wB [FB [redB [isoB [gSig [[[DA DB] Hw] Hiso]]]]]]]]].
+  destruct H as [d [j [E Hd]]]; exists d, j, E; destruct E.
+  cbn [lvlCast eq_sym] in Hd |- *.
+  destruct Hd as [wA [FA [B0 [wB [FB [redB [isoB [gSig [[[DA DB] Hw] Hiso]]]]]]]]].
   exists wA, FA, B0, wB, FB, redB, isoB, gSig.
   split; [split; [split; [exact DA | exact DB] | exact Hw] |].
   exact (iso_trans _ _ _ (iso_sym _ _ P) Hiso).
@@ -442,36 +409,11 @@ Proof.
   - exact tt.
   - destruct p; exact tt.
   - exact tt.
-  - exists wA, FA, B0, wB, FB, redB, isoB, gSig; repeat split;
-      [exact DA | exact DB | exists k; exact gSig
-      | apply (iso_self (sigFam k wA B0 FA wB FB redB isoB gSig))].
+  - exists d, j, eq_refl; cbn [lvlCast eq_sym].
+    exists wA, FA, B0, wB, FB, redB, isoB, gSig; repeat split;
+      [exact DA | exact DB | exists j; exact gSig
+      | apply (iso_self (famLiftN d (sigFam j wA B0 FA wB FB redB isoB gSig)))].
   - destruct A; exact tt.
   - destruct A; cbn in nf; try exact tt; destruct nf.
   - exact (SigDec_iso rho A k w Fc Fc' Pc (IH rho A k w Fc Dc)).
-Qed.
-
-Lemma ity_sig_fun rho rho' A B k w w' (F : kUFam k w) (F' : kUFam k w')
-  (Hty : tyeq w w')
-  (HA : forall wA (FA : kUFam k wA) wA' (FA' : kUFam k wA'),
-          ITy rho A k wA FA -> ITy rho' A k wA' FA' -> iso (kAt FA) (kAt FA'))
-  (HB : forall wA (FA : kUFam k wA) wA' (FA' : kUFam k wA')
-               u x u' x' wBx (FBx : kUFam k wBx) wBx' (FBx' : kUFam k wBx'),
-          kRel FA FA' u x u' x' ->
-          ITy (ext rho FA u x) B k wBx FBx -> ITy (ext rho' FA' u' x') B k wBx' FBx' ->
-          iso (kAt FBx) (kAt FBx')) :
-  ITy rho (sig_ A B) k w F -> ITy rho' (sig_ A B) k w' F' -> iso (kAt F) (kAt F').
-Proof.
-  intros D D'.
-  destruct (ity_sig_inv rho (sig_ A B) k w F D)
-    as [wA [FA [B0 [wB [FB [redB [isoB [gSig [[[DA DB] Hw] Hiso]]]]]]]]].
-  destruct (ity_sig_inv rho' (sig_ A B) k w' F' D')
-    as [wA' [FA' [B0' [wB' [FB' [redB' [isoB' [gSig' [[[DA' DB'] Hw'] Hiso']]]]]]]]].
-  eapply iso_trans; [exact Hiso |].
-  eapply iso_trans; [| apply iso_sym; exact Hiso'].
-  apply sigFam_iso.
-  - eapply tyeq_trans; [apply tyeq_sym; exact Hw |].
-    eapply tyeq_trans; [exact Hty | exact Hw'].
-  - apply (HA wA FA wA' FA'); [exact DA | exact DA'].
-  - intros u x u' x' Hrel.
-    apply (HB wA FA wA' FA' u x u' x'); [exact Hrel | apply DB | apply DB'].
 Qed.

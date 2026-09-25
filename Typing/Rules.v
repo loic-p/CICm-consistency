@@ -83,18 +83,26 @@ Reserved Notation "'⊢' G" (at level 80).
 Reserved Notation "G '⊢' t ':' A" (at level 80, t at next level).
 Reserved Notation "G '⊢' t '≡' u ':' A" (at level 80, t at next level, u at next level).
 
+(* LEVEL ANNOTATIONS.  Every type former carries the level it lives at and its
+   components sit at any level below, so the universe lift is one step on the
+   annotation (the c_up_* rules below) and computes on every closed type
+   expression.  `univ k j` is the universe of the level-j types, living at
+   level k, so the universe where the level-k types live is `univ (S k) k`;
+   that is what UU abbreviates. *)
+Notation UU k := (univ (S k) k).
+
 Inductive wfc : ctx -> Type :=
 | w_nil : wfc nil
-| w_cons G A k : wfc G -> ty G A (univ k) -> wfc (A :: G)
+| w_cons G A k : wfc G -> ty G A (UU k) -> wfc (A :: G)
 
 with ty : ctx -> tm -> tm -> Type :=
 (* structural *)
 | t_var G i A : wfc G -> lookup i G A -> ty G (var_tm i) A
-| t_conv G t A B k : ty G t A -> ty G A (univ k) -> ty G B (univ k) ->
-    cv G A B (univ k) -> ty G t B
+| t_conv G t A B k : ty G t A -> ty G A (UU k) -> ty G B (UU k) ->
+    cv G A B (UU k) -> ty G t B
 
 (* universes *)
-| t_univ G k : wfc G -> ty G (univ k) (univ (S k))
+| t_univ G k j : j < k -> wfc G -> ty G (univ k j) (UU k)
 (* The annotation on a lift records THE UNIVERSE THE SUBJECT'S TYPE LIVES IN,
    which for the type lift is the successor of the lifted type's own level (and
    coincides with the result type) and for the term lift is the level of the
@@ -105,7 +113,7 @@ with ty : ctx -> tm -> tm -> Type :=
    to level 1, while i_ty after ity_up gives level 2 for the same term.  With
    the annotations uniform both readings of `up (univ j) X` sit at level S j and
    the level is read off the annotation. *)
-| t_up G A k : ty G A (univ k) -> ty G (up (univ (S k)) A) (univ (S k))
+| t_up G j A : ty G A (UU j) -> ty G (up j A) (UU (S j))
 (* The lift on TERMS is explicit: `up` doubles as its own term former, so a
    term of A does not silently also have type up (univ k) A.  The two
    transparency rules that used to say it did (t_up_in / t_up_out) made typing
@@ -114,50 +122,54 @@ with ty : ctx -> tm -> tm -> Type :=
    be read off the syntax.  Nothing is lost: the lift is still there, small
    types still appear in large ones, and erasure still sends `up A t` to the
    erasure of t, so the lift is invisible on realisers. *)
-| t_up_tm G A t k : ty G A (univ k) -> ty G t A ->
-    ty G (uptm A t) (up (univ (S k)) A)
+| t_up_tm G j A t : ty G A (UU j) -> ty G t A -> ty G (uptm A t) (up j A)
 
 (* Pi *)
-| t_pi G A B k : ty G A (univ k) -> ty (A :: G) B (univ k) -> ty G (pi A B) (univ k)
-| t_lam G A B t k : ty G A (univ k) -> ty (A :: G) B (univ k) -> ty (A :: G) t B ->
-    ty G (lam A B t) (pi A B)
-| t_app G A B f u k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G f (pi A B) -> ty G u A -> ty G (app A B f u) (B [u..])
+| t_pi G k j A B : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G (pi k A B) (UU k)
+| t_lam G k j A B t : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty (A :: G) t B -> ty G (lam k A B t) (pi k A B)
+| t_app G k j A B f u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G f (pi k A B) -> ty G u A -> ty G (app A B f u) (B [u..])
 
 (* Sigma *)
-| t_sig G A B k : ty G A (univ k) -> ty (A :: G) B (univ k) -> ty G (sig_ A B) (univ k)
-| t_pair G A B t u k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G t A -> ty G u (B [t..]) -> ty G (pair A B t u) (sig_ A B)
-| t_fst G A B p k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G p (sig_ A B) -> ty G (fst A B p) A
-| t_snd G A B p k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G p (sig_ A B) -> ty G (snd A B p) (B [(fst A B p)..])
+| t_sig G k j A B : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G (sig_ k A B) (UU k)
+| t_pair G k j A B t u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G t A -> ty G u (B [t..]) -> ty G (pair k A B t u) (sig_ k A B)
+| t_fst G k j A B p : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G p (sig_ k A B) -> ty G (fst A B p) A
+| t_snd G k j A B p : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G p (sig_ k A B) -> ty G (snd A B p) (B [(fst A B p)..])
 
 (* N and its large elimination *)
-| t_nat G : wfc G -> ty G nat_ (univ 0)
-| t_zero G : wfc G -> ty G zero nat_
-| t_succ G n : ty G n nat_ -> ty G (succ n) nat_
-| t_natrec G C z s n k :
-    ty (nat_ :: G) C (univ k) ->
-    ty G z (C [zero..]) -> ty (C :: nat_ :: G) s (nrec_succ C) -> ty G n nat_ ->
+| t_nat G k : wfc G -> ty G (nat_ k) (UU k)
+| t_zero G k : wfc G -> ty G (zero k) (nat_ k)
+| t_succ G k n : ty G n (nat_ k) -> ty G (succ n) (nat_ k)
+| t_natrec G C z s n k j :
+    ty (nat_ j :: G) C (UU k) ->
+    ty G z (C [(zero j)..]) -> ty (C :: nat_ j :: G) s (nrec_succ C) ->
+    ty G n (nat_ j) ->
     ty G (natrec C z s n) (C [n..])
 
 (* Prop, Prf, impredicative forall, bottom *)
-| t_prop G : wfc G -> ty G prop (univ 0)
-| t_prf G p : ty G p prop -> ty G (prf p) (univ 0)
-| t_all G A p k : ty G A (univ k) -> ty (A :: G) p prop -> ty G (all A p) prop
+| t_prop G k : wfc G -> ty G (prop k) (UU k)
+| t_prf G k j p : j <= k -> ty G p (prop j) -> ty G (prf k p) (UU k)
+| t_all G A p j k : ty G A (UU k) -> ty (A :: G) p (prop j) ->
+    ty G (all j A p) (prop j)
 (* The forall-lambda and forall-application are their OWN formers, plam and
    papp, not lam and app: with one lambda, `lam A t` inhabits both
    pi A (prf p) and prf (all A p), so neither the type nor the universe level
    is determined by the term.  They erase exactly as lam and app do
    (Syntax/Erasure.v), so this costs nothing on realisers, and their conversion
    rules are subsumed by c_prf_irr, every papp and plam living at a Prf type. *)
-| t_all_intro G A p t k : ty G A (univ k) -> ty (A :: G) p prop ->
-    ty (A :: G) t (prf p) -> ty G (plam A t) (prf (all A p))
-| t_all_elim G A p f u k : ty G A (univ k) -> ty (A :: G) p prop ->
-    ty G f (prf (all A p)) -> ty G u A -> ty G (papp f u) (prf (p [u..]))
-| t_false G : wfc G -> ty G false_ prop
-| t_absurd G T e k : ty G T (univ k) -> ty G e (prf false_) -> ty G (absurd T e) T
+| t_all_intro G A p t j k : ty G A (UU k) -> ty (A :: G) p (prop j) ->
+    ty (A :: G) t (prf j p) -> ty G (plam A t) (prf j (all j A p))
+| t_all_elim G A p f u j k : ty G A (UU k) -> ty (A :: G) p (prop j) ->
+    ty G f (prf j (all j A p)) -> ty G u A -> ty G (papp f u) (prf j (p [u..]))
+| t_false G k : wfc G -> ty G (false_ k) (prop k)
+| t_absurd G T e k j : ty G T (UU k) -> ty G e (prf j (false_ j)) ->
+    ty G (absurd T e) T
 
 (* NO Eq.  See the note on Eq at the top of the file. *)
 
@@ -166,20 +178,37 @@ with cv : ctx -> tm -> tm -> tm -> Type :=
 | c_refl G t A : ty G t A -> cv G t t A
 | c_sym G t u A : cv G t u A -> cv G u t A
 | c_trans G t u v A : cv G t u A -> cv G u v A -> cv G t v A
-| c_conv G t u A B k : cv G t u A -> ty G A (univ k) -> ty G B (univ k) ->
-    cv G A B (univ k) -> cv G t u B
-| c_prf_irr G p e e' : ty G p prop -> ty G e (prf p) -> ty G e' (prf p) -> cv G e e' (prf p)
+| c_conv G t u A B k : cv G t u A -> ty G A (UU k) -> ty G B (UU k) ->
+    cv G A B (UU k) -> cv G t u B
+| c_prf_irr G j p e e' : ty G p (prop j) -> ty G e (prf j p) -> ty G e' (prf j p) ->
+    cv G e e' (prf j p)
 
 (* universes *)
-| c_up G A A' k : ty G A (univ k) -> ty G A' (univ k) -> cv G A A' (univ k) ->
-    cv G (up (univ (S k)) A) (up (univ (S k)) A') (univ (S k))
-| c_up_tm G A t t' k : ty G A (univ k) -> ty G t A -> ty G t' A -> cv G t t' A ->
-    cv G (uptm A t) (uptm A t') (up (univ (S k)) A)
+| c_up G j A A' : ty G A (UU j) -> ty G A' (UU j) -> cv G A A' (UU j) ->
+    cv G (up j A) (up j A') (UU (S j))
+| c_up_tm G j A t t' : ty G A (UU j) -> ty G t A -> ty G t' A -> cv G t t' A ->
+    cv G (uptm A t) (uptm A t') (up j A)
+
+(* The lift COMPUTES on every former: one rule each, and the components are
+   untouched, which is what keeps the rule well formed -- lifting the domain of
+   a Pi would leave the codomain's annotations behind, at the old level.  On a
+   variable `up` is stuck, and that case no rule can mend. *)
+| c_up_univ G k j : j < k -> wfc G ->
+    cv G (up k (univ k j)) (univ (S k) j) (UU (S k))
+| c_up_nat G k : wfc G -> cv G (up k (nat_ k)) (nat_ (S k)) (UU (S k))
+| c_up_prop G k : wfc G -> cv G (up k (prop k)) (prop (S k)) (UU (S k))
+| c_up_prf G k j p : j <= k -> ty G p (prop j) ->
+    cv G (up k (prf k p)) (prf (S k) p) (UU (S k))
+| c_up_pi G k j A B : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    cv G (up k (pi k A B)) (pi (S k) A B) (UU (S k))
+| c_up_sig G k j A B : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    cv G (up k (sig_ k A B)) (sig_ (S k) A B) (UU (S k))
 
 (* Pi *)
-| c_pi G A A' B B' k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G A' (univ k) -> ty (A' :: G) B' (univ k) ->
-    cv G A A' (univ k) -> cv (A :: G) B B' (univ k) -> cv G (pi A B) (pi A' B') (univ k)
+| c_pi G k j A A' B B' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G A' (UU j) -> ty (A' :: G) B' (UU j) ->
+    cv G A A' (UU j) -> cv (A :: G) B B' (UU j) ->
+    cv G (pi k A B) (pi k A' B') (UU k)
 (* The lambda congruence, in the same shape as c_pi: the PRIMED premises live
    in the PRIMED context.  It used to keep the codomain B and the body t' in
    the A-context while annotating the subject with A', and then the semantics
@@ -187,70 +216,77 @@ with cv : ctx -> tm -> tm -> tm -> Type :=
    environment extended by A''s family, whose realiser is `ers rho A'`, and
    that is not an environment for A :: G.  Modulo context conversion -- which
    is admissible -- the two rules prove the same conversions. *)
-| c_lam G A A' B B' t t' k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G A' (univ k) -> ty (A' :: G) B' (univ k) ->
-    cv G A A' (univ k) -> cv (A :: G) B B' (univ k) ->
+| c_lam G k j A A' B B' t t' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G A' (UU j) -> ty (A' :: G) B' (UU j) ->
+    cv G A A' (UU j) -> cv (A :: G) B B' (UU j) ->
     ty (A :: G) t B -> ty (A' :: G) t' B' -> cv (A :: G) t t' B ->
-    cv G (lam A B t) (lam A' B' t') (pi A B)
-| c_app G A B f f' u u' k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G f (pi A B) -> ty G f' (pi A B) -> cv G f f' (pi A B) ->
+    cv G (lam k A B t) (lam k A' B' t') (pi k A B)
+| c_app G k j A B f f' u u' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G f (pi k A B) -> ty G f' (pi k A B) -> cv G f f' (pi k A B) ->
     ty G u A -> ty G u' A -> cv G u u' A ->
     cv G (app A B f u) (app A B f' u') (B [u..])
-| c_beta G A B t u k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
+| c_beta G k j A B t u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
     ty (A :: G) t B -> ty G u A ->
-    cv G (app A B (lam A B t) u) (t [u..]) (B [u..])
-| c_eta G A B f k : ty G A (univ k) -> ty (A :: G) B (univ k) -> ty G f (pi A B) ->
-    cv G (lam A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))) f (pi A B)
+    cv G (app A B (lam k A B t) u) (t [u..]) (B [u..])
+| c_eta G k j A B f : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G f (pi k A B) ->
+    cv G (lam k A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))) f
+       (pi k A B)
 
 (* Sigma *)
-| c_sig G A A' B B' k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G A' (univ k) -> ty (A' :: G) B' (univ k) ->
-    cv G A A' (univ k) -> cv (A :: G) B B' (univ k) -> cv G (sig_ A B) (sig_ A' B') (univ k)
-| c_pair G A B t t' u u' k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
+| c_sig G k j A A' B B' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G A' (UU j) -> ty (A' :: G) B' (UU j) ->
+    cv G A A' (UU j) -> cv (A :: G) B B' (UU j) ->
+    cv G (sig_ k A B) (sig_ k A' B') (UU k)
+| c_pair G k j A B t t' u u' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
     ty G t A -> ty G t' A -> cv G t t' A ->
     ty G u (B [t..]) -> ty G u' (B [t..]) -> cv G u u' (B [t..]) ->
-    cv G (pair A B t u) (pair A B t' u') (sig_ A B)
-| c_fst G A B p p' k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G p (sig_ A B) -> ty G p' (sig_ A B) -> cv G p p' (sig_ A B) ->
+    cv G (pair k A B t u) (pair k A B t' u') (sig_ k A B)
+| c_fst G k j A B p p' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G p (sig_ k A B) -> ty G p' (sig_ k A B) -> cv G p p' (sig_ k A B) ->
     cv G (fst A B p) (fst A B p') A
-| c_snd G A B p p' k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G p (sig_ A B) -> ty G p' (sig_ A B) -> cv G p p' (sig_ A B) ->
+| c_snd G k j A B p p' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G p (sig_ k A B) -> ty G p' (sig_ k A B) -> cv G p p' (sig_ k A B) ->
     cv G (snd A B p) (snd A B p') (B [(fst A B p)..])
-| c_fst_beta G A B t u k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G t A -> ty G u (B [t..]) -> cv G (fst A B (pair A B t u)) t A
-| c_snd_beta G A B t u k : ty G A (univ k) -> ty (A :: G) B (univ k) ->
-    ty G t A -> ty G u (B [t..]) -> cv G (snd A B (pair A B t u)) u (B [t..])
-| c_surj G A B p k : ty G A (univ k) -> ty (A :: G) B (univ k) -> ty G p (sig_ A B) ->
-    cv G (pair A B (fst A B p) (snd A B p)) p (sig_ A B)
+| c_fst_beta G k j A B t u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G t A -> ty G u (B [t..]) -> cv G (fst A B (pair k A B t u)) t A
+| c_snd_beta G k j A B t u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G t A -> ty G u (B [t..]) -> cv G (snd A B (pair k A B t u)) u (B [t..])
+| c_surj G k j A B p : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+    ty G p (sig_ k A B) ->
+    cv G (pair k A B (fst A B p) (snd A B p)) p (sig_ k A B)
 
 (* N *)
-| c_succ G n n' : ty G n nat_ -> ty G n' nat_ -> cv G n n' nat_ ->
-    cv G (succ n) (succ n') nat_
-| c_natrec G C C' z z' s s' n n' k :
-    ty (nat_ :: G) C (univ k) -> ty (nat_ :: G) C' (univ k) -> cv (nat_ :: G) C C' (univ k) ->
-    ty G z (C [zero..]) -> ty G z' (C [zero..]) -> cv G z z' (C [zero..]) ->
-    ty (C :: nat_ :: G) s (nrec_succ C) -> ty (C :: nat_ :: G) s' (nrec_succ C) ->
-    cv (C :: nat_ :: G) s s' (nrec_succ C) ->
-    ty G n nat_ -> ty G n' nat_ -> cv G n n' nat_ ->
+| c_succ G k n n' : ty G n (nat_ k) -> ty G n' (nat_ k) -> cv G n n' (nat_ k) ->
+    cv G (succ n) (succ n') (nat_ k)
+| c_natrec G C C' z z' s s' n n' k j :
+    ty (nat_ j :: G) C (UU k) -> ty (nat_ j :: G) C' (UU k) ->
+    cv (nat_ j :: G) C C' (UU k) ->
+    ty G z (C [(zero j)..]) -> ty G z' (C [(zero j)..]) ->
+    cv G z z' (C [(zero j)..]) ->
+    ty (C :: nat_ j :: G) s (nrec_succ C) -> ty (C :: nat_ j :: G) s' (nrec_succ C) ->
+    cv (C :: nat_ j :: G) s s' (nrec_succ C) ->
+    ty G n (nat_ j) -> ty G n' (nat_ j) -> cv G n n' (nat_ j) ->
     cv G (natrec C z s n) (natrec C' z' s' n') (C [n..])
-| c_rec_zero G C z s k :
-    ty (nat_ :: G) C (univ k) -> ty G z (C [zero..]) ->
-    ty (C :: nat_ :: G) s (nrec_succ C) ->
-    cv G (natrec C z s zero) z (C [zero..])
+| c_rec_zero G C z s k j :
+    ty (nat_ j :: G) C (UU k) -> ty G z (C [(zero j)..]) ->
+    ty (C :: nat_ j :: G) s (nrec_succ C) ->
+    cv G (natrec C z s (zero j)) z (C [(zero j)..])
 (* The step's two variables are filled in one substitution: var 1 by the
    predecessor, var 0 by the recursive result. *)
-| c_rec_succ G C z s n k :
-    ty (nat_ :: G) C (univ k) -> ty G z (C [zero..]) ->
-    ty (C :: nat_ :: G) s (nrec_succ C) ->
-    ty G n nat_ ->
+| c_rec_succ G C z s n k j :
+    ty (nat_ j :: G) C (UU k) -> ty G z (C [(zero j)..]) ->
+    ty (C :: nat_ j :: G) s (nrec_succ C) ->
+    ty G n (nat_ j) ->
     cv G (natrec C z s (succ n)) (s [ (natrec C z s n) .: n .. ]) (C [(succ n)..])
 
 (* Prop *)
-| c_prf G p p' : ty G p prop -> ty G p' prop -> cv G p p' prop ->
-    cv G (prf p) (prf p') (univ 0)
-| c_all G A A' p p' k : ty G A (univ k) -> ty (A :: G) p prop ->
-    ty G A' (univ k) -> ty (A' :: G) p' prop ->
-    cv G A A' (univ k) -> cv (A :: G) p p' prop -> cv G (all A p) (all A' p') prop
+| c_prf G k j p p' : j <= k -> ty G p (prop j) -> ty G p' (prop j) ->
+    cv G p p' (prop j) -> cv G (prf k p) (prf k p') (UU k)
+| c_all G A A' p p' j k : ty G A (UU k) -> ty (A :: G) p (prop j) ->
+    ty G A' (UU k) -> ty (A' :: G) p' (prop j) ->
+    cv G A A' (UU k) -> cv (A :: G) p p' (prop j) ->
+    cv G (all j A p) (all j A' p') (prop j)
 
 where "'⊢' G" := (wfc G)
   and "G '⊢' t ':' A" := (ty G t A)
@@ -270,16 +306,18 @@ where "'⊢' G" := (wfc G)
 (* the motive's level is free.  Here it is 4.                          *)
 (* ------------------------------------------------------------------ *)
 
-Definition wfc_nat : wfc (nat_ :: nil) := w_cons nil nat_ 0 w_nil (t_nat nil w_nil).
+Definition wfc_nat : wfc (nat_ 0 :: nil) :=
+  w_cons nil (nat_ 0) 0 w_nil (t_nat nil 0 w_nil).
 
-Definition wfc_u3 : wfc (univ 3 :: nat_ :: nil) :=
-  w_cons (nat_ :: nil) (univ 3) 4 wfc_nat (t_univ (nat_ :: nil) 3 wfc_nat).
+Definition wfc_u3 : wfc (univ 4 3 :: nat_ 0 :: nil) :=
+  w_cons (nat_ 0 :: nil) (univ 4 3) 4 wfc_nat
+    (t_univ (nat_ 0 :: nil) 4 3 (le_n 4) wfc_nat).
 
 Definition natrec_at_4
-  : ty nil (natrec (univ 3) (univ 2) (var_tm 0) zero) (univ 3) :=
-  t_natrec nil (univ 3) (univ 2) (var_tm 0) zero 4
-    (t_univ (nat_ :: nil) 3 wfc_nat)
-    (t_univ nil 2 w_nil)
-    (t_var (univ 3 :: nat_ :: nil) 0 (univ 3) wfc_u3
-       (lookup_O (nat_ :: nil) (univ 3)))
-    (t_zero nil w_nil).
+  : ty nil (natrec (univ 4 3) (univ 3 2) (var_tm 0) (zero 0)) (univ 4 3) :=
+  t_natrec nil (univ 4 3) (univ 3 2) (var_tm 0) (zero 0) 4 0
+    (t_univ (nat_ 0 :: nil) 4 3 (le_n 4) wfc_nat)
+    (t_univ nil 3 2 (le_n 3) w_nil)
+    (t_var (univ 4 3 :: nat_ 0 :: nil) 0 (univ 4 3) wfc_u3
+       (lookup_O (nat_ 0 :: nil) (univ 4 3)))
+    (t_zero nil 0 w_nil).

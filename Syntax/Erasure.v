@@ -5,21 +5,23 @@ Import UnscopedNotations.
 (* Erasure |-| : tm -> etm.  Proof terms go to their subject or to estar,
    absurd goes to eerr (the only source of stuck terms), up is transparent,
    and binders of type formers become explicit elam so that codomains are
-   functions on the erased side. *)
+   functions on the erased side.  The LEVEL ANNOTATIONS all erase away: a
+   former and its lift have the same realiser, which is what makes every
+   `up`-conversion invisible at layer 1. *)
 Fixpoint er (t : tm) : etm :=
   match t with
   | var_tm i => var_etm i
-  | lam A B t => elam (er t)
+  | lam k A B t => elam (er t)
   | plam A t => elam (er t)
   | app A B t u => eapp (er t) (er u)
   | papp t u => eapp (er t) (er u)
-  | pair A B t u => epair (er t) (er u)
+  | pair k A B t u => epair (er t) (er u)
   | fst A B t => efst (er t)
   | snd A B t => esnd (er t)
-  | pi A B => epi (er A) (elam (er B))
-  | sig_ A B => esig (er A) (elam (er B))
-  | nat_ => enat
-  | zero => ezero
+  | pi k A B => epi (er A) (elam (er B))
+  | sig_ k A B => esig (er A) (elam (er B))
+  | nat_ k => enat
+  | zero k => ezero
   | succ t => esucc (er t)
   (* The step term has two binders in the annotated syntax and none in the
      erased one: it erases to a function of the scrutinee's predecessor and of
@@ -28,13 +30,13 @@ Fixpoint er (t : tm) : etm :=
      beta-steps that separate the body's realiser from eapp (eapp . m) w are
      closed by expansion (reds_lam2_app). *)
   | natrec C z s n => enatrec (er z) (elam (elam (er s))) (er n)
-  | univ k => euniv k
-  | up A t => er t
+  | univ k j => euniv j
+  | up j A => er A
   | uptm A t => er t
-  | prop => eprop
-  | prf p => eprf (er p)
-  | all A p => eall (er A) (elam (er p))
-  | false_ => efalse
+  | prop k => eprop
+  | prf k p => eprf (er p)
+  | all j A p => eall (er A) (elam (er p))
+  | false_ k => efalse
   | absurd T e => eerr
   | eqty A t u => eeqty (er A) (er t) (er u)
   | refl A a => estar
