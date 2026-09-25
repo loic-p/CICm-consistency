@@ -10,7 +10,9 @@ does not change the proof-theoretic strength of the system (one can use setoid m
 to recover an equality). However, W types *do* change the strength of the system quite
 a bit. There is no reason to expect that this method would be unable to handle them.
 
-For now, we are missing a handful of rules concerning universe lifts. Working on that.
+This formalisation was written by a frontier LLM, following a strategy devised
+by a human. The strategy was slightly modified to account for the obstacles found
+by the LLM during the formalisation.
 
 ---
 
