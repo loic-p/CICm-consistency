@@ -36,7 +36,7 @@ in the impredicative layer, and as such, it is not able to show *consistency*
 of the system, which is shown afterwards in a much stronger metatheory (ZFC).
 
 In this repository, we start by doing a similar truth-agnostic normalisation
-model, except that we use define our PERs in `Prop` to handle the entire
+model, except that we define our PERs in `Prop` to handle the entire
 universe hierarchy at once. Then, we use this model to get an ordinal which
 encodes the "complexity" of each type (we call this ordinal the *rank* of the
 type, by analogy with set theory). For instance, the rank of any proposition is
@@ -73,6 +73,12 @@ the directory `Tests/` contains a few derivations in our formalised calculus.
   by `beth 0 = Nat` and `beth (suc n) = P(beth n)`. Finally, define `beth_omega`
   as `Sigma (n : Nat) . beth n`. For the second high-complexity type, we replace
   the powerset operator by the modified powerset operator `P'(A) = (A -> Type)`.
+
+## Type-checking the proof
+
+The proof has been checked using Rocq 9.3. All the major results are axiom-free.
+The proof takes quite a while to type-check on a medium-end laptop (expect
+30 minutes).
 
 ## Architecture
 
