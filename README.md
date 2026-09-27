@@ -151,11 +151,33 @@ well-founded relation.
 
 ### Bounded assemblies
 
-In the file `Codes/Def.v`, we define a universe hierarchy of assemblies by induction
-on universe levels. Each universe of assemblies is defined by an induction on Brouwer
-trees: assume that we know how to define α-bounded assemblies for all α < β. Then
-the term `T` is associated to the β-bounded assembly `Tε` if either `T` is associated
-to `Tε` as an α-bounded assembly, or one of the following holds:
+The second model is similar to the first model, except that it must track the
+truth of propositions. However, we cannot define a PER of reducible propositions
+by induction (because of impredicativity!), so we want to over-approximate: a
+proposition `P` is reducible whenever we can find a PER for the inhabitants
+of `P`. The issue is that there can be many PERs that work for `P`, and thus
+there might be several distinct witnesses of reducibility for `P`. This forces
+us to use a proof-relevant version of PERs: assemblies.
+
+An *assembly* is the data of a family `El : etm -> Type` and an equality
+`Eq : forall t, El t -> forall u, El u -> Prop` that is symmetric and transitive.
+
+A *dependent assembly* indexed over `(El, Eq)` is the data of
+* an assembly family `Fam : forall t, El t -> Asm` 
+* a coercion function `coe : Eq t tε u uε -> ((Fam t tε).El v) -> ((Fam u uε).El v)`
+* a coherence equality `coh : Eq t tε u uε -> ((Fam t tε).Eq v vε w wε) -> ((Fam u uε).Eq v (coe vε) w (coe wε))`
+* such that coercing along an equality between tε and tε does nothing
+* and coercing from tε to uε, then from uε to vε is the same as coercing from tε to vε
+
+(NB: this is the version with homogeneous equality, probably heterogeneous
+equality would be easier)
+
+In the file `Codes/Def.v`, we define a hierarchy of assembly universes by
+induction on universe levels. Each assembly universe is defined by an
+sub-induction on Brouwer trees: assume that we know how to define α-bounded
+assemblies for all α < β. Then the term `T` is associated to the β-bounded
+assembly `Tε` if either `T` is associated to `Tε` as an α-bounded assembly, or
+one of the following holds:
 * `T` reduces to `nat` and `Tε` is the modest assembly of natural numbers
 * `T` reduces to `prop` and `Tε` is the co-discrete assembly of propositions
 * `T` reduces to `prf p` and `Tε` is the modest assembly corresponding to some
@@ -163,24 +185,34 @@ to `Tε` as an α-bounded assembly, or one of the following holds:
 * `T` reduces to `univ i` and `Tε` is the universe assembly of level i (assuming the
   induction on universe levels is at stage > i)
 * `T` reduces to `pi A B` and `A` is associated to an α-bounded assembly `Aε`, and
-  for any term and witness `(a, aε) ∈ Aε`, `B a` is associated to an α-bounded
-  assembly `Bε a aε` in an extensional way, and `Tε` is the dependent product of
-  assemblies of `Aε` and `Bε`
-* `T` reduces to `sigma A B` and `A` is associated to an α-bounded assembly `Aε`,
-  and for any term and witness `(a, aε) ∈ Aε`, `B a` is associated to an α-bounded
-  assembly `Bε a aε` in an extensional way, and `Tε` is the dependent sum of
-  assemblies of `Aε` and `Bε`.
+  and `B` is associated to a dependent α-bounded assembly `Bε`, and `Tε` is the
+  dependent product of assemblies of `Aε` and `Bε`
+* `T` reduces to `sigma A B` and `A` is associated to an α-bounded assembly `Aε`, and
+  and `B` is associated to a dependent α-bounded assembly `Bε`, and `Tε` is the
+  dependent sum of assemblies of `Aε` and `Bε`
 
-`Codes/EqPER.v` shows that the equalities on the assemblies in the universe are PERs
+`Codes/EqPER.v` shows that the equalities of the assemblies in the universe are PERs
 
-### Consistency model
+`Codes/Iso.v` and `Codes/IsoPER` define an observational equality on the universe of
+assemblies, and prove that it satisfies all the laws it should satisfy.
 
-`Interp/` — the layer-2 model: universe families (`kUFam`, `kAt`, `kElAt`,
-`kEqAt`, `kRel`), the type formers (`piFam`, `sigFam`, `natFam`, `propFam`,
-`prfF`, `univFam`), the element operations (`piApp`, `sigFst`, `sigSnd`,
-`sigPair`, `semrec`), environments (`Entry`, `Env`, `ext`, `ers`, `EnvRel`,
-`EntryRel`), the interpretation `ITy`/`ITm` (`Interp/Def.v` = blueprint 9.1),
-its inversions (`Interp/Inv.v`), weakening/substitution stability
-(`Interp/Subst.v`), the canonical-form **decoder** (`Interp/Fun.v`) and
-section 9 itself (`Interp/Fund.v`).
+`Codes/Expand.v` shows that the assemblies are closed under reduction and expansion.
+
+`Codes/WF.v` characterises the coercions that are packed in the universe
+
+`Codes/Lift.v` and `Codes/LiftIso.v` handle universe lifts
+
+`Codes/Sound.v` shows that the assembly model is a refinement of the earlier PER model.
+
+### Interpreting the syntax
+
+The directory `Interp/` interprets the syntax of the theory in the assembly model.
+
+Interpretation is defined in `Inter/Def.v` as a pair of mutual partial functions
+`ITy` and `ITm`, defined by induction on raw syntax. Then, all the type formers are
+defined and shown to preserve the required structure (this part is mostly technical,
+so it was left to the LLM). The proof that the interpretation relation is functional
+is in `Interp/Fun.v`. Finally, the fundamental lemma is in `Interp/Fund.v`.
+
+The consistency theorem is in `Interp/Consistency.v`.
 
