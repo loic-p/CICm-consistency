@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def Layer1.Bundle.Inv.
 
@@ -20,6 +20,7 @@ Proof.
     | A A' m Hm HeA HeA'
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
+    | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
     | A A' N N' HeA HeA' HsN HsN' ];
     intros A'' Q' HQ.
   - eapply PerEq_trans; [apply PerEq_sym; exact HPQ | exact (IH _ _ HQ)].
@@ -35,6 +36,10 @@ Proof.
   - destruct (LR_inv_sig n X _ _ _ _ _ HQ HeA) as [A0'' [B0'' [PA'' [PB'' [_ [HA'' [HB'' E]]]]]]].
     eapply PerEq_trans; [|apply PerEq_sym; exact E].
     apply SigPer_ext; [exact (IHA _ _ HA'')|].
+    intros u u' Hu. eapply (IHB u u' Hu). apply HB''. apply (IHA _ _ HA''); exact Hu.
+  - destruct (LR_inv_w n X _ _ _ _ _ HQ HeA) as [A0'' [B0'' [PA'' [PB'' [_ [HA'' [HB'' E]]]]]]].
+    eapply PerEq_trans; [|apply PerEq_sym; exact E].
+    apply WPer_ext; [exact (IHA _ _ HA'')|].
     intros u u' Hu. eapply (IHB u u' Hu). apply HB''. apply (IHA _ _ HA''); exact Hu.
   - destruct (LR_inv_ne n X _ _ _ _ HQ HeA HsN) as [? [_ [_ E]]]; apply PerEq_sym; exact E.
 Qed.

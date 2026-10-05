@@ -1,11 +1,9 @@
-From CICM Require Import core unscoped Syntax Erasure.
+From CICM Require Import Syntax.Erased Syntax.Ann Syntax.Erasure.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Typing.Rules.
 From CICM Require Import Layer1.Per Layer1.Def Layer1.Bundle Layer1.Elim.
 
-Import UnscopedNotations.
 Open Scope list_scope.
-Open Scope subst_scope.
 
 (* WHY THERE IS NO Eq IN Typing/Rules.v.
 
@@ -70,7 +68,7 @@ Open Scope subst_scope.
    (living at level 1), so the arrow is a level-1 Pi and the equation is a
    level-0 proposition -- `prop` being impredicative, that choice is free. *)
 Definition EqT : tm :=
-  Core.eqty (univ 2 1) (pi 1 (univ 1 0) (univ 1 0)) (univ 1 0).
+  Ann.eqty (univ 2 1) (pi 1 (univ 1 0) (univ 1 0)) (univ 1 0).
 Definition PT : tm := prf 0 EqT.
 
 (* In context [PT], transport the identity function on Type0 along the
@@ -90,11 +88,11 @@ Section LargeTransp.
 
 (* The two absent rules, as hypotheses: all this file assumes. *)
 Hypothesis t_eq : forall G A t u k,
-  ty G A (UU k) -> ty G t A -> ty G u A -> ty G (Core.eqty A t u) (prop 0).
+  ty G A (UU k) -> ty G t A -> ty G u A -> ty G (Ann.eqty A t u) (prop 0).
 
 Hypothesis t_transp_large : forall G A B t u e b k j,
   ty G A (UU k) -> ty (A :: G) B (UU j) ->
-  ty G t A -> ty G u A -> ty G e (prf 0 (Core.eqty A t u)) -> ty G b (B [t..]) ->
+  ty G t A -> ty G u A -> ty G e (prf 0 (Ann.eqty A t u)) -> ty G b (B [t..]) ->
   ty G (transp A B t u e b) (B [u..]).
 
 Lemma wf_nil : wfc nil.
@@ -111,7 +109,7 @@ Proof. exact (w_cons G (univ 1 0) 1 W (ty_U0 G W)). Qed.
 
 Lemma ty_arrow G (W : wfc G) : ty G (pi 1 (univ 1 0) (univ 1 0)) (UU 1).
 Proof.
-  exact (t_pi G 1 1 (univ 1 0) (univ 1 0) (le_n 1) (ty_U0 G W)
+  exact (t_pi G 1 1 1 (univ 1 0) (univ 1 0) (le_n 1) (le_n 1) (ty_U0 G W)
            (ty_U0 _ (wf_U0 G W))).
 Qed.
 
@@ -134,13 +132,13 @@ Proof.
             (t_var _ 0 _ wf_PT (lookup_O _ _)) _).
   - exact (t_var _ 0 _ (w_cons _ (univ 2 1) 2 wf_PT (ty_U1 _ wf_PT))
              (lookup_O _ _)).
-  - refine (t_lam _ 1 1 (univ 1 0) (univ 1 0) (var_tm 0) (le_n 1)
+  - refine (t_lam _ 1 1 1 (univ 1 0) (univ 1 0) (var_tm 0) (le_n 1) (le_n 1)
               (ty_U0 _ wf_PT) (ty_U0 _ (wf_U0 _ wf_PT)) _).
     exact (t_var _ 0 _ (wf_U0 _ wf_PT) (lookup_O _ _)).
 Qed.
 
 Theorem ty_Tbad : ty nil Tbad (UU 0).
-Proof. exact (t_pi nil 0 0 PT Cod (le_n 0) ty_PT ty_Cod). Qed.
+Proof. exact (t_pi nil 0 0 0 PT Cod (le_n 0) (le_n 0) ty_PT ty_Cod). Qed.
 
 End LargeTransp.
 
@@ -181,10 +179,10 @@ Qed.
    the half every later layer consumes. *)
 Corollary large_transp_refutes_layer1 :
   (forall G A t u k, ty G A (UU k) -> ty G t A -> ty G u A ->
-     ty G (Core.eqty A t u) (prop 0)) ->
+     ty G (Ann.eqty A t u) (prop 0)) ->
   (forall G A B t u e b k j,
      ty G A (UU k) -> ty (A :: G) B (UU j) ->
-     ty G t A -> ty G u A -> ty G e (prf 0 (Core.eqty A t u)) -> ty G b (B [t..]) ->
+     ty G t A -> ty G u A -> ty G e (prf 0 (Ann.eqty A t u)) -> ty G b (B [t..]) ->
      ty G (transp A B t u e b) (B [u..])) ->
   ~ (forall A k, ty nil A (UU k) -> Good_ty (er A)).
 Proof. intros HE HL H; apply Tbad_not_good, (H Tbad 0 (ty_Tbad HE HL)). Qed.

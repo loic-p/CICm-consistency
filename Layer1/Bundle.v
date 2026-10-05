@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def.
 From CICM Require Export Layer1.Bundle.Inv Layer1.Bundle.Fun Layer1.Bundle.Sym

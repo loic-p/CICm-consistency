@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def Layer1.Bundle.Inv Layer1.Bundle.Fun.
 
@@ -163,6 +163,59 @@ Proof.
     split; [assumption|]. apply (pk_stuck _ (HB _ _ H1)); apply stuckv_snd; assumption.
 Qed.
 
+(* W.  The two interesting clauses are symmetry and transitivity, and both
+   turn on index irrelevance: the branches of the two trees are compared at
+   PB a a', and to swap or to compose the trees that relation has to be
+   moved to PB a' a, resp. PB a2 a3, which is exactly what Irr provides. *)
+Lemma WPer_ok PA PB : PerOK PA -> (forall u u', PA u u' -> PerOK (PB u u')) ->
+  Irr PA PB -> PerOK (WPer PA PB).
+Proof.
+  intros HA HB Hirr; constructor.
+  - (* symmetry *)
+    intros w w' H; induction H as [w w' a a' f f' Hw Hw' Ha Hf IH | w w' Hw Hw'].
+    + assert (Ha' : PA a' a) by (apply (pk_sym _ HA); exact Ha).
+      eapply wp_sup; [exact Hw' | exact Hw | exact Ha' |].
+      intros u u' Hu; apply (IH u' u).
+      apply (pk_sym _ (HB _ _ Ha)).
+      exact (proj1 (Hirr a' a a a' Ha' Ha Ha' u u') Hu).
+    + apply wp_stuck; assumption.
+  - (* transitivity *)
+    intros w1 w2 w3 H1; revert w3.
+    induction H1 as [w1 w2 a1 a2 f1 f2 Hw1 Hw2 Ha Hf IH | w1 w2 Hw1 Hw2];
+      intros w3 H2.
+    + inversion H2 as [x y b2 a3 g2 f3 Hx Hy Ha2 Hf2 | x y Hx Hy]; subst.
+      * assert (E := eval_det _ _ _ Hw2 Hx); injection E as Ea Ef;
+          subst b2 g2.
+        assert (Ha13 : PA a1 a3) by (eapply (pk_trans _ HA); eassumption).
+        assert (Ha11 : PA a1 a1)
+          by (eapply (pk_trans _ HA); [exact Ha | apply (pk_sym _ HA); exact Ha]).
+        eapply wp_sup; [exact Hw1 | exact Hy | exact Ha13 |].
+        intros u u' Hu.
+        assert (Hu1 : PB a1 a2 u u')
+          by exact (proj1 (Hirr a1 a3 a1 a2 Ha13 Ha Ha11 u u') Hu).
+        assert (Hu2 : PB a1 a2 u' u').
+        { eapply (pk_trans _ (HB _ _ Ha));
+            [apply (pk_sym _ (HB _ _ Ha)); exact Hu1 | exact Hu1]. }
+        apply (IH u u' Hu1).
+        apply Hf2.
+        exact (proj1 (Hirr a1 a2 a2 a3 Ha Ha2 Ha u' u') Hu2).
+      * exfalso; eapply stuckv_not_value; [exact Hx | exact Hw2 | constructor].
+    + inversion H2 as [x y b2 a3 g2 f3 Hx Hy Ha2 Hf2 | x y Hx Hy]; subst.
+      * exfalso; eapply stuckv_not_value; [exact Hw2 | exact Hx | constructor].
+      * apply wp_stuck; assumption.
+  - (* closure under expansion *)
+    intros w w' w0 w0' Hr Hr' H;
+      destruct H as [x y a a' f f' Hx Hy Ha Hf | x y Hx Hy].
+    + eapply wp_sup; eauto using eval_reds.
+    + apply wp_stuck; eauto using stuckv_exp.
+  - (* closure under reduction *)
+    intros w w' w0 w0' H Hr Hr';
+      destruct H as [x y a a' f f' Hx Hy Ha Hf | x y Hx Hy].
+    + eapply wp_sup; eauto using eval_reds_inv.
+    + apply wp_stuck; eauto using stuckv_red.
+  - intros; apply wp_stuck; assumption.
+Qed.
+
 Section Sym.
 Context (n : nat) (X : nat -> etm -> etm -> PER -> Prop).
 Context (HX : forall m, m < n -> XOK (X m)).
@@ -176,6 +229,7 @@ Proof.
     | A A' HeA HeA'
     | A A' p p' HeA HeA' HPR
     | A A' m Hm HeA HeA'
+    | A A' A0 B0 A0' B0' PA PB HeA HeA' HA [IHAok IHAsym] HB IHB
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA [IHAok IHAsym] HB IHB
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA [IHAok IHAsym] HB IHB
     | A A' N N' HeA HeA' HsN HsN' ].
@@ -210,6 +264,19 @@ Proof.
       * eapply LR_sig; [exact HeA' | exact HeA | exact IHAsym |].
         intros u u' Hu. apply (proj2 (IHB u' u (pk_sym _ IHAok _ _ Hu))).
       * apply SigPer_ext; [apply PerEq_refl|].
+        intros u u' Hu. exact (Hirr u' u u u' (pk_sym _ IHAok _ _ Hu) Hu (pk_sym _ IHAok _ _ Hu)).
+  - assert (Hirr : Irr PA PB).
+    { intros u u' v v' Hu Hv Huv.
+      assert (Huv' : PA u v') by (eapply (pk_trans _ IHAok); eassumption).
+      eapply PerEq_trans.
+      - eapply LR_fun; [apply (HB _ _ Hu) | apply (HB _ _ Huv')].
+      - eapply LR_fun; [apply (proj2 (IHB _ _ Huv')) | apply (proj2 (IHB _ _ Hv))]. }
+    split.
+    + apply WPer_ok; auto. intros u u' Hu; apply (proj1 (IHB _ _ Hu)).
+    + eapply LR_ext.
+      * eapply LR_w; [exact HeA' | exact HeA | exact IHAsym |].
+        intros u u' Hu. apply (proj2 (IHB u' u (pk_sym _ IHAok _ _ Hu))).
+      * apply WPer_ext; [apply PerEq_refl|].
         intros u u' Hu. exact (Hirr u' u u u' (pk_sym _ IHAok _ _ Hu) Hu (pk_sym _ IHAok _ _ Hu)).
   - split; [apply NePer_ok | eapply LR_ne; eauto].
 Qed.

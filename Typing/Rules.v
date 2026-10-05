@@ -1,8 +1,6 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Ann.
 
-Import UnscopedNotations.
 Open Scope list_scope.
-Open Scope subst_scope.
 
 
 (* The rules of CIC^-, in the redundant style.  The three judgements are
@@ -31,8 +29,7 @@ Open Scope subst_scope.
    term determines its type up to conversion, and in particular determines
    every universe level: the forall-lambda and forall-application are their own
    formers (plam, papp), and the term-level lift is written.  Levels then come
-   off the syntax -- `nat_`, `prop`, `prf p` at Type0, `univ k` and
-   `up (univ k) A` at Typek+1, Pi and Sigma at their components' level -- which
+   off the syntax -- every former carries the level it lives at -- which
    is what the interpretation needs when it has to compare two readings of the
    same type.  Proving it post hoc about a theory with silent lifts is not an
    option: reaching `ty G A (univ k)` through t_conv would need
@@ -68,16 +65,72 @@ Inductive lookup : nat -> ctx -> tm -> Prop :=
    type of the STEP TERM, which carries its own two binders -- var 1 for the
    scrutinee's predecessor, var 0 for the recursive result.
 
-   There is deliberately no `nrec_step C = pi nat_ (pi C (nrec_succ C))`.  A
-   function of that type is formed by t_pi, which is homogeneous in the level,
-   so it would need `ty G nat_ (univ k)` at the motive's level k -- and t_nat
-   gives only univ 0.  Every route to `ty G s (nrec_step C)` (t_lam, t_var
-   through wfc, t_conv, t_app, t_fst, t_absurd, t_natrec) in turn requires
-   nrec_step C to be formed at some universe, so with the function form the
-   rule was derivable only for k = 0 and large elimination above Type0 was
-   unreachable.  The binder form needs no type for the step at all. *)
+   There is deliberately no `nrec_step C = pi nat_ (pi C (nrec_succ C))`.  In
+   v1 that was forced: t_pi was HOMOGENEOUS in the level, so the step's type
+   would have needed `nat_` at the motive's level, and large elimination above
+   Type0 was unreachable.  With t_pi heterogeneous (v2) the function form is
+   derivable again, and the binder form is kept for a different reason: a step
+   written as a function HAS A TYPE, and the interpretation of
+   `natrec C z s n` would have to match it -- including the level annotations
+   on its Pis, which are not part of the subject.  With binders there is no
+   type to match: the interpretation extends the environment by families it
+   has already built.  The same argument keeps wrec's step binder-shaped. *)
 Definition nrec_succ (C : tm) : tm :=
-  C [ succ (var_tm 1) .: (fun i => var_tm (S (S i))) ].
+  C [ succ (var_tm 1) .:s (rcomp ↑ ↑) ].
+
+(* ------------------------------------------------------------------ *)
+(* W: the three types the step's binders range over.                   *)
+(*                                                                    *)
+(* With the tree type W := wt k A B over Gamma, the step of            *)
+(* `wrec A B C s w` is typed in the context                            *)
+(*                                                                    *)
+(*     wih n k A B C  ::  wbr k A B  ::  A  ::  Gamma                  *)
+(*         (var 0)          (var 1)     (var 2)                        *)
+(*                                                                    *)
+(* -- the induction hypothesis, the branching function and the label.  *)
+(* `n` is the level of the induction hypothesis's Pi, whose domain sits *)
+(* at B's level and whose codomain sits at the motive's: exactly the    *)
+(* heterogeneity t_pi now allows, and the only place in the calculus    *)
+(* that needs it.                                                      *)
+(* ------------------------------------------------------------------ *)
+
+(* the three shifts of the step's three binders, in the RENAMING algebra.
+   Written as a raw lambda, `fun i => S (S (S i))`, rasimpl cannot push a
+   composition through it, and every equation about the step becomes
+   intractable; in the algebra they are routine. *)
+Definition sh3 : ren := rcomp ↑ (rcomp ↑ ↑).
+
+(* the branching function of a tree with label (var 0), in context A :: Gamma *)
+Definition wbr (k : nat) (A B : tm) : tm :=
+  pi k B ((wt k A B) ⟨↑⟩ ⟨↑⟩).
+
+(* the induction hypothesis, in context (wbr k A B :: A :: Gamma): a function
+   taking a branch (var 0) to the motive at the subtree the branching
+   function (var 1) puts there. *)
+Definition wih (n k : nat) (A B C : tm) : tm :=
+  pi n (B ⟨↑⟩)
+     (C [ app (B ⟨↑⟩ ⟨↑⟩) ((wt k A B) ⟨↑⟩ ⟨↑⟩ ⟨↑⟩ ⟨↑⟩) (var_tm 1) (var_tm 0)
+          .:s sh3 ]).
+
+(* the step's own type, in context (wih .. :: wbr .. :: A :: Gamma): the
+   motive at the tree built from the label (var 2) and the branching
+   function (var 1). *)
+Definition wsup_ty (k : nat) (A B C : tm) : tm :=
+  C [ sup k (A ⟨sh3⟩) (B ⟨up_ren sh3⟩) (var_tm 2) (var_tm 1)
+      .:s sh3 ].
+
+(* The subtree at branch (var 0), in context (B[a] :: Gamma), and the
+   induction hypothesis the computation rule supplies: the function sending a
+   branch to the recursive result on that subtree. *)
+Definition wsub (k : nat) (A B a f : tm) : tm :=
+  app ((B [a..]) ⟨↑⟩) ((wt k A B) ⟨↑⟩ ⟨↑⟩) (f ⟨↑⟩) (var_tm 0).
+
+Definition wih_val (n k : nat) (A B C s a f : tm) : tm :=
+  lam n (B [a..])
+      (C [ wsub k A B a f .:s ↑ ])
+      (wrec (A ⟨↑⟩) (B ⟨up_ren ↑⟩) (C ⟨up_ren ↑⟩)
+            (s ⟨up_ren (up_ren (up_ren ↑))⟩)
+            (wsub k A B a f)).
 
 Reserved Notation "'⊢' G" (at level 80).
 Reserved Notation "G '⊢' t ':' A" (at level 80, t at next level).
@@ -125,22 +178,68 @@ with ty : ctx -> tm -> tm -> Type :=
 | t_up_tm G j A t : ty G A (UU j) -> ty G t A -> ty G (uptm A t) (up j A)
 
 (* Pi *)
-| t_pi G k j A B : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| t_pi G k i j A B : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G (pi k A B) (UU k)
-| t_lam G k j A B t : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| t_lam G k i j A B t : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty (A :: G) t B -> ty G (lam k A B t) (pi k A B)
-| t_app G k j A B f u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| t_app G k i j A B f u : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G f (pi k A B) -> ty G u A -> ty G (app A B f u) (B [u..])
 
 (* Sigma *)
-| t_sig G k j A B : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| t_sig G k i j A B : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G (sig_ k A B) (UU k)
-| t_pair G k j A B t u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| t_pair G k i j A B t u : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G t A -> ty G u (B [t..]) -> ty G (pair k A B t u) (sig_ k A B)
-| t_fst G k j A B p : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| t_fst G k i j A B p : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G p (sig_ k A B) -> ty G (fst A B p) A
-| t_snd G k j A B p : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| t_snd G k i j A B p : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G p (sig_ k A B) -> ty G (snd A B p) (B [(fst A B p)..])
+
+(* W: the same shape as Sigma -- the label type A and the branching type B at
+   independent levels below the annotation -- and the same discipline for the
+   eliminator as natrec: the step carries its own binders, here three, for the
+   label, the branching function and the induction hypothesis.  A tree's
+   branching function is typed AT THE ANNOTATION'S LEVEL, which a
+   heterogeneous Pi allows outright: its domain B[a] sits at j and its
+   codomain, the tree type itself, at k. *)
+| t_w G k i j A B : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty G (wt k A B) (UU k)
+| t_sup G k i j A B a f : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty G a A -> ty G f (pi k (B [a..]) ((wt k A B) ⟨↑⟩)) ->
+    ty G (sup k A B a f) (wt k A B)
+(* The induction hypothesis's level `n` is PINNED to the least level that
+   accommodates its domain (the branching type, at j) and its codomain (the
+   motive at the subtree, at m).  Without the pin `wrec` would be the one
+   eliminator whose premises mention a level its subject does not record, and
+   the interpretation -- which has only the term to go by -- could not
+   determine the level of the step's third context entry; two readings of one
+   `wrec` could then put that entry at different levels, which `EnvRel`
+   cannot relate at all (see Interp/Fund.v).  Nothing is lost: the step is
+   typed in the same context up to that annotation. *)
+| t_wrec G k i j m n A B C s w : i <= k -> j <= k -> j <= n -> m <= n ->
+    n = Nat.max j m ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty (wt k A B :: G) C (UU m) ->
+    (* the step's context, in the redundant style: the rule MENTIONS these two
+       types, so it carries their formation judgements.  Without them the
+       admissibility of renaming is not provable -- its induction hypothesis
+       for the step needs this context to be well formed, and building it
+       would need weakening of A and B and a substitution instance of the
+       motive, i.e. the very theorems being proved. *)
+    ty (A :: G) (wbr k A B) (UU k) ->
+    ty (wbr k A B :: A :: G) (wih n k A B C) (UU n) ->
+    ty (wih n k A B C :: wbr k A B :: A :: G) s (wsup_ty k A B C) ->
+    ty G w (wt k A B) ->
+    ty G (wrec A B C s w) (C [w..])
 
 (* N and its large elimination *)
 | t_nat G k : wfc G -> ty G (nat_ k) (UU k)
@@ -199,15 +298,21 @@ with cv : ctx -> tm -> tm -> tm -> Type :=
 | c_up_prop G k : wfc G -> cv G (up k (prop k)) (prop (S k)) (UU (S k))
 | c_up_prf G k j p : j <= k -> ty G p (prop j) ->
     cv G (up k (prf k p)) (prf (S k) p) (UU (S k))
-| c_up_pi G k j A B : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_up_pi G k i j A B : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     cv G (up k (pi k A B)) (pi (S k) A B) (UU (S k))
-| c_up_sig G k j A B : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_up_sig G k i j A B : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     cv G (up k (sig_ k A B)) (sig_ (S k) A B) (UU (S k))
+| c_up_w G k i j A B : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    cv G (up k (wt k A B)) (wt (S k) A B) (UU (S k))
 
 (* Pi *)
-| c_pi G k j A A' B B' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
-    ty G A' (UU j) -> ty (A' :: G) B' (UU j) ->
-    cv G A A' (UU j) -> cv (A :: G) B B' (UU j) ->
+| c_pi G k i j A A' B B' : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty G A' (UU i) -> ty (A' :: G) B' (UU j) ->
+    cv G A A' (UU i) -> cv (A :: G) B B' (UU j) ->
     cv G (pi k A B) (pi k A' B') (UU k)
 (* The lambda congruence, in the same shape as c_pi: the PRIMED premises live
    in the PRIMED context.  It used to keep the codomain B and the body t' in
@@ -216,45 +321,95 @@ with cv : ctx -> tm -> tm -> tm -> Type :=
    environment extended by A''s family, whose realiser is `ers rho A'`, and
    that is not an environment for A :: G.  Modulo context conversion -- which
    is admissible -- the two rules prove the same conversions. *)
-| c_lam G k j A A' B B' t t' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
-    ty G A' (UU j) -> ty (A' :: G) B' (UU j) ->
-    cv G A A' (UU j) -> cv (A :: G) B B' (UU j) ->
+| c_lam G k i j A A' B B' t t' : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty G A' (UU i) -> ty (A' :: G) B' (UU j) ->
+    cv G A A' (UU i) -> cv (A :: G) B B' (UU j) ->
     ty (A :: G) t B -> ty (A' :: G) t' B' -> cv (A :: G) t t' B ->
     cv G (lam k A B t) (lam k A' B' t') (pi k A B)
-| c_app G k j A B f f' u u' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_app G k i j A B f f' u u' : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G f (pi k A B) -> ty G f' (pi k A B) -> cv G f f' (pi k A B) ->
     ty G u A -> ty G u' A -> cv G u u' A ->
     cv G (app A B f u) (app A B f' u') (B [u..])
-| c_beta G k j A B t u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_beta G k i j A B t u : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty (A :: G) t B -> ty G u A ->
     cv G (app A B (lam k A B t) u) (t [u..]) (B [u..])
-| c_eta G k j A B f : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_eta G k i j A B f : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G f (pi k A B) ->
-    cv G (lam k A B (app (A ⟨↑⟩) (B ⟨upRen_tm_tm shift⟩) (f ⟨↑⟩) (var_tm 0))) f
+    cv G (lam k A B (app (A ⟨↑⟩) (B ⟨up_ren ↑⟩) (f ⟨↑⟩) (var_tm 0))) f
        (pi k A B)
 
 (* Sigma *)
-| c_sig G k j A A' B B' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
-    ty G A' (UU j) -> ty (A' :: G) B' (UU j) ->
-    cv G A A' (UU j) -> cv (A :: G) B B' (UU j) ->
+| c_sig G k i j A A' B B' : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty G A' (UU i) -> ty (A' :: G) B' (UU j) ->
+    cv G A A' (UU i) -> cv (A :: G) B B' (UU j) ->
     cv G (sig_ k A B) (sig_ k A' B') (UU k)
-| c_pair G k j A B t t' u u' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_pair G k i j A B t t' u u' : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G t A -> ty G t' A -> cv G t t' A ->
     ty G u (B [t..]) -> ty G u' (B [t..]) -> cv G u u' (B [t..]) ->
     cv G (pair k A B t u) (pair k A B t' u') (sig_ k A B)
-| c_fst G k j A B p p' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_fst G k i j A B p p' : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G p (sig_ k A B) -> ty G p' (sig_ k A B) -> cv G p p' (sig_ k A B) ->
     cv G (fst A B p) (fst A B p') A
-| c_snd G k j A B p p' : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_snd G k i j A B p p' : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G p (sig_ k A B) -> ty G p' (sig_ k A B) -> cv G p p' (sig_ k A B) ->
     cv G (snd A B p) (snd A B p') (B [(fst A B p)..])
-| c_fst_beta G k j A B t u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_fst_beta G k i j A B t u : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G t A -> ty G u (B [t..]) -> cv G (fst A B (pair k A B t u)) t A
-| c_snd_beta G k j A B t u : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_snd_beta G k i j A B t u : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G t A -> ty G u (B [t..]) -> cv G (snd A B (pair k A B t u)) u (B [t..])
-| c_surj G k j A B p : j <= k -> ty G A (UU j) -> ty (A :: G) B (UU j) ->
+| c_surj G k i j A B p : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
     ty G p (sig_ k A B) ->
     cv G (pair k A B (fst A B p) (snd A B p)) p (sig_ k A B)
+
+(* W *)
+| c_w G k i j A A' B B' : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty G A' (UU i) -> ty (A' :: G) B' (UU j) ->
+    cv G A A' (UU i) -> cv (A :: G) B B' (UU j) ->
+    cv G (wt k A B) (wt k A' B') (UU k)
+| c_sup G k i j A B a a' f f' : i <= k -> j <= k ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty G a A -> ty G a' A -> cv G a a' A ->
+    ty G f (pi k (B [a..]) ((wt k A B) ⟨↑⟩)) ->
+    ty G f' (pi k (B [a..]) ((wt k A B) ⟨↑⟩)) ->
+    cv G f f' (pi k (B [a..]) ((wt k A B) ⟨↑⟩)) ->
+    cv G (sup k A B a f) (sup k A B a' f') (wt k A B)
+| c_wrec G k i j m n A B C C' s s' w w' :
+    i <= k -> j <= k -> j <= n -> m <= n -> n = Nat.max j m ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty (wt k A B :: G) C (UU m) -> ty (wt k A B :: G) C' (UU m) ->
+    cv (wt k A B :: G) C C' (UU m) ->
+    ty (A :: G) (wbr k A B) (UU k) ->
+    ty (wbr k A B :: A :: G) (wih n k A B C) (UU n) ->
+    ty (wih n k A B C :: wbr k A B :: A :: G) s (wsup_ty k A B C) ->
+    ty (wih n k A B C :: wbr k A B :: A :: G) s' (wsup_ty k A B C) ->
+    cv (wih n k A B C :: wbr k A B :: A :: G) s s' (wsup_ty k A B C) ->
+    ty G w (wt k A B) -> ty G w' (wt k A B) -> cv G w w' (wt k A B) ->
+    cv G (wrec A B C s w) (wrec A B C' s' w') (C [w..])
+(* the computation rule: the step is fed the label, the branching function,
+   and the function sending a branch to the recursive result there. *)
+| c_wrec_sup G k i j m n A B C s a f :
+    i <= k -> j <= k -> j <= n -> m <= n -> n = Nat.max j m ->
+    ty G A (UU i) -> ty (A :: G) B (UU j) ->
+    ty (wt k A B :: G) C (UU m) ->
+    ty (A :: G) (wbr k A B) (UU k) ->
+    ty (wbr k A B :: A :: G) (wih n k A B C) (UU n) ->
+    ty (wih n k A B C :: wbr k A B :: A :: G) s (wsup_ty k A B C) ->
+    ty G a A -> ty G f (pi k (B [a..]) ((wt k A B) ⟨↑⟩)) ->
+    cv G (wrec A B C s (sup k A B a f))
+         (s [ wih_val n k A B C s a f .: (f .: a ..) ])
+         (C [(sup k A B a f)..])
 
 (* N *)
 | c_succ G k n n' : ty G n (nat_ k) -> ty G n' (nat_ k) -> cv G n n' (nat_ k) ->
@@ -321,3 +476,145 @@ Definition natrec_at_4
     (t_var (univ 4 3 :: nat_ 0 :: nil) 0 (univ 4 3) wfc_u3
        (lookup_O (nat_ 0 :: nil) (univ 4 3)))
     (t_zero nil 0 w_nil).
+
+(* ------------------------------------------------------------------ *)
+(* Smoke test for the W rules.                                         *)
+(*                                                                    *)
+(* Trees labelled by numerals whose branching type is EMPTY: every     *)
+(* tree is a leaf, and its branching function is the empty function.   *)
+(* Then a recursion on one.  What this really checks is the de Bruijn  *)
+(* bookkeeping of wbr, wih and wsup_ty: t_wrec's step premise is a     *)
+(* typing judgement in the three-entry context they build, and every   *)
+(* rule that types the step needs that context to be WELL FORMED --    *)
+(* which is exactly the statement that those definitions are types.    *)
+(* ------------------------------------------------------------------ *)
+
+Definition Bot : tm := prf 0 (false_ 0).
+Definition Wnat : tm := wt 0 (nat_ 0) Bot.
+
+Lemma ty_Bot G (W : wfc G) : ty G Bot (UU 0).
+Proof. exact (t_prf G 0 0 (false_ 0) (le_n 0) (t_false G 0 W)). Qed.
+
+Lemma wfc_N G (W : wfc G) : wfc (nat_ 0 :: G).
+Proof. exact (w_cons G (nat_ 0) 0 W (t_nat G 0 W)). Qed.
+
+Lemma ty_Wnat G (W : wfc G) : ty G Wnat (UU 0).
+Proof.
+  exact (t_w G 0 0 0 (nat_ 0) Bot (le_n 0) (le_n 0) (t_nat G 0 W)
+           (ty_Bot _ (wfc_N G W))).
+Qed.
+
+(* the leaf with label 0 *)
+Definition leaf : tm :=
+  sup 0 (nat_ 0) Bot (zero 0) (lam 0 Bot Wnat (absurd Wnat (var_tm 0))).
+
+Lemma ty_leaf : ty nil leaf Wnat.
+Proof.
+  pose proof (w_cons nil Bot 0 w_nil (ty_Bot nil w_nil)) as WB.
+  refine (t_sup nil 0 0 0 (nat_ 0) Bot (zero 0) _ (le_n 0) (le_n 0)
+            (t_nat nil 0 w_nil) (ty_Bot _ (wfc_N nil w_nil))
+            (t_zero nil 0 w_nil) _).
+  refine (t_lam nil 0 0 0 Bot Wnat _ (le_n 0) (le_n 0)
+            (ty_Bot nil w_nil) (ty_Wnat _ WB) _).
+  exact (t_absurd _ Wnat (var_tm 0) 0 0 (ty_Wnat _ WB)
+           (t_var _ 0 Bot WB (lookup_O nil Bot))).
+Qed.
+
+(* the two types the step's binders range over, which the rule now carries *)
+Lemma ty_wbrN G (W : wfc G) : ty (nat_ 0 :: G) (wbr 0 (nat_ 0) Bot) (UU 0).
+Proof.
+  pose proof (wfc_N G W) as W1.
+  refine (t_pi _ 0 0 0 Bot Wnat (le_n 0) (le_n 0) (ty_Bot _ W1) _).
+  exact (ty_Wnat _ (w_cons _ Bot 0 W1 (ty_Bot _ W1))).
+Qed.
+
+Lemma ty_wihN G (W : wfc G) :
+  ty (wbr 0 (nat_ 0) Bot :: nat_ 0 :: G) (wih 0 0 (nat_ 0) Bot (nat_ 0)) (UU 0).
+Proof.
+  pose proof (w_cons _ (wbr 0 (nat_ 0) Bot) 0 (wfc_N G W) (ty_wbrN G W)) as W2.
+  refine (t_pi _ 0 0 0 Bot (nat_ 0) (le_n 0) (le_n 0) (ty_Bot _ W2) _).
+  exact (t_nat _ 0 (w_cons _ Bot 0 W2 (ty_Bot _ W2))).
+Qed.
+
+(* the step's context is well formed *)
+Lemma wfc_wstep :
+  wfc (wih 0 0 (nat_ 0) Bot (nat_ 0) :: wbr 0 (nat_ 0) Bot :: nat_ 0 :: nil).
+Proof.
+  exact (w_cons _ _ 0
+           (w_cons _ _ 0 (wfc_N nil w_nil) (ty_wbrN nil w_nil))
+           (ty_wihN nil w_nil)).
+Qed.
+
+(* a recursion on trees, at the motive N: every leaf gets 0 *)
+Definition wrec_leaf : tm := wrec (nat_ 0) Bot (nat_ 0) (zero 0) leaf.
+
+Lemma ty_wrec_leaf : ty nil wrec_leaf (nat_ 0).
+Proof.
+  pose proof (wfc_N nil w_nil) as W1.
+  refine (t_wrec nil 0 0 0 0 0 (nat_ 0) Bot (nat_ 0) (zero 0) leaf
+            (le_n 0) (le_n 0) (le_n 0) (le_n 0) eq_refl
+            (t_nat nil 0 w_nil) (ty_Bot _ W1) _ (ty_wbrN nil w_nil)
+            (ty_wihN nil w_nil) _ ty_leaf).
+  - exact (t_nat _ 0 (w_cons nil Wnat 0 w_nil (ty_Wnat nil w_nil))).
+  - exact (t_zero _ 0 wfc_wstep).
+Qed.
+
+(* and it computes *)
+Lemma cv_wrec_leaf :
+  cv nil wrec_leaf
+     ((zero 0) [ wih_val 0 0 (nat_ 0) Bot (nat_ 0) (zero 0) (zero 0)
+                   (lam 0 Bot Wnat (absurd Wnat (var_tm 0)))
+                 .: ((lam 0 Bot Wnat (absurd Wnat (var_tm 0))) .: (zero 0) ..) ])
+     (nat_ 0).
+Proof.
+  pose proof (wfc_N nil w_nil) as W1.
+  pose proof (w_cons nil Bot 0 w_nil (ty_Bot nil w_nil)) as WB.
+  refine (c_wrec_sup nil 0 0 0 0 0 (nat_ 0) Bot (nat_ 0) (zero 0) (zero 0) _
+            (le_n 0) (le_n 0) (le_n 0) (le_n 0) eq_refl
+            (t_nat nil 0 w_nil) (ty_Bot _ W1)
+            (t_nat _ 0 (w_cons nil Wnat 0 w_nil (ty_Wnat nil w_nil)))
+            (ty_wbrN nil w_nil) (ty_wihN nil w_nil)
+            (t_zero _ 0 wfc_wstep) (t_zero nil 0 w_nil) _).
+  refine (t_lam nil 0 0 0 Bot Wnat _ (le_n 0) (le_n 0)
+            (ty_Bot nil w_nil) (ty_Wnat _ WB) _).
+  exact (t_absurd _ Wnat (var_tm 0) 0 0 (ty_Wnat _ WB)
+           (t_var _ 0 Bot WB (lookup_O nil Bot))).
+Qed.
+
+(* the induction hypothesis the computation rule feeds to the step is itself
+   well typed: this is what checks wsub's and wih_val's bookkeeping. *)
+Definition empfun : tm := lam 0 Bot Wnat (absurd Wnat (var_tm 0)).
+
+Lemma ty_wih_val :
+  ty nil (wih_val 0 0 (nat_ 0) Bot (nat_ 0) (zero 0) (zero 0) empfun)
+     (pi 0 Bot (nat_ 0)).
+Proof.
+  pose proof (wfc_N nil w_nil) as W1.
+  pose proof (w_cons nil Bot 0 w_nil (ty_Bot nil w_nil)) as WB.
+  assert (dempfun : ty nil empfun (pi 0 Bot Wnat)).
+  { refine (t_lam nil 0 0 0 Bot Wnat _ (le_n 0) (le_n 0)
+              (ty_Bot nil w_nil) (ty_Wnat _ WB) _).
+    exact (t_absurd _ Wnat (var_tm 0) 0 0 (ty_Wnat _ WB)
+             (t_var _ 0 Bot WB (lookup_O nil Bot))). }
+  refine (t_lam nil 0 0 0 Bot (nat_ 0) _ (le_n 0) (le_n 0)
+            (ty_Bot nil w_nil) (t_nat _ 0 WB) _).
+  (* the body: the recursive call on the subtree at the branch (var 0) *)
+  refine (t_wrec _ 0 0 0 0 0 (nat_ 0) Bot (nat_ 0) (zero 0) _
+            (le_n 0) (le_n 0) (le_n 0) (le_n 0) eq_refl
+            (t_nat _ 0 WB) (ty_Bot _ (wfc_N _ WB))
+            (t_nat _ 0 (w_cons _ Wnat 0 WB (ty_Wnat _ WB)))
+            (ty_wbrN _ WB) (ty_wihN _ WB)
+            (t_zero _ 0
+               (w_cons _ _ 0 (w_cons _ _ 0 (wfc_N _ WB) (ty_wbrN _ WB))
+                  (ty_wihN _ WB))) _).
+  (* the subtree itself: empfun applied to the branch *)
+  refine (t_app _ 0 0 0 Bot Wnat _ (var_tm 0) (le_n 0) (le_n 0)
+            (ty_Bot _ WB) (ty_Wnat _ (w_cons _ Bot 0 WB (ty_Bot _ WB))) _ _).
+  - exact (t_lam _ 0 0 0 Bot Wnat _ (le_n 0) (le_n 0) (ty_Bot _ WB)
+             (ty_Wnat _ (w_cons _ Bot 0 WB (ty_Bot _ WB)))
+             (t_absurd _ Wnat (var_tm 0) 0 0
+                (ty_Wnat _ (w_cons _ Bot 0 WB (ty_Bot _ WB)))
+                (t_var _ 0 Bot (w_cons _ Bot 0 WB (ty_Bot _ WB))
+                   (lookup_O _ Bot)))).
+  - exact (t_var _ 0 Bot WB (lookup_O nil Bot)).
+Qed.

@@ -8,12 +8,9 @@ clean: Makefile.coq
 Makefile.coq:
 	rocq makefile -f _CoqProject -o Makefile.coq
 
-autosubst:
-	autosubst -f -s urocq -v ge813 -p ./Syntax/Preamble.v -o ./Syntax/Syntax.v ./Syntax/cicm.sig
-
 force _CoqProject Makefile: ;
 
 %: Makefile.coq force
 	@+$(MAKE) -f Makefile.coq $@
 
-.PHONY: all clean autosubst
+.PHONY: all clean

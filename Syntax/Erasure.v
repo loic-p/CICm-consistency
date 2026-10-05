@@ -1,13 +1,12 @@
-From CICM Require Import core unscoped Syntax.
+(** Erasure |-| : tm -> etm.  Proof terms go to their subject or to estar,
+    absurd goes to eerr (the only source of stuck terms), the lifts are
+    transparent, and binders of type formers become explicit elam so that
+    codomains are functions on the erased side.  The LEVEL ANNOTATIONS all
+    erase away: a former and its lift have the same realiser, which is what
+    makes every `up`-conversion invisible at layer 1. *)
 
-Import UnscopedNotations.
+From CICM Require Import Syntax.Erased Syntax.Ann.
 
-(* Erasure |-| : tm -> etm.  Proof terms go to their subject or to estar,
-   absurd goes to eerr (the only source of stuck terms), up is transparent,
-   and binders of type formers become explicit elam so that codomains are
-   functions on the erased side.  The LEVEL ANNOTATIONS all erase away: a
-   former and its lift have the same realiser, which is what makes every
-   `up`-conversion invisible at layer 1. *)
 Fixpoint er (t : tm) : etm :=
   match t with
   | var_tm i => var_etm i
@@ -20,15 +19,16 @@ Fixpoint er (t : tm) : etm :=
   | snd A B t => esnd (er t)
   | pi k A B => epi (er A) (elam (er B))
   | sig_ k A B => esig (er A) (elam (er B))
+  (* W: the branching type becomes a function, as at Pi and Sigma, and the
+     recursor's step -- three binders here, none there -- becomes a curried
+     function of the label, the branching function and the induction
+     hypothesis, which is the shape red_wrec consumes. *)
+  | wt k A B => ew (er A) (elam (er B))
+  | sup k A B a f => esup (er a) (er f)
+  | wrec A B C s w => ewrec (elam (elam (elam (er s)))) (er w)
   | nat_ k => enat
   | zero k => ezero
   | succ t => esucc (er t)
-  (* The step term has two binders in the annotated syntax and none in the
-     erased one: it erases to a function of the scrutinee's predecessor and of
-     the recursive result, which is exactly the shape red_rec_s consumes.  So
-     the erased calculus is unchanged by the binder form of natrec, and the two
-     beta-steps that separate the body's realiser from eapp (eapp . m) w are
-     closed by expansion (reds_lam2_app). *)
   | natrec C z s n => enatrec (er z) (elam (elam (er s))) (er n)
   | univ k j => euniv j
   | up j A => er A
@@ -43,51 +43,34 @@ Fixpoint er (t : tm) : etm :=
   | transp A B t u e b => er b
   end.
 
-Lemma er_up_ren xi :
-  forall x, upRen_tm_tm xi x = upRen_etm_etm xi x.
-Proof. intros []; reflexivity. Qed.
-
-(* natrec's step term sits under TWO binders, so the two calculi's `up` have to
-   be matched twice. *)
-Lemma er_up_ren2 xi :
-  forall x, upRen_tm_tm (upRen_tm_tm xi) x = upRen_etm_etm (upRen_etm_etm xi) x.
-Proof. intros [| []]; reflexivity. Qed.
-
-Lemma er_ren xi t : er (ren_tm xi t) = ren_etm xi (er t).
+(* RENAMINGS ARE SHARED between the two algebras -- both are nat -> nat, and
+   `up_ren` is Sulfur's, not a generated constant -- so erasure commutes with
+   renaming with no compatibility lemma at all.  Under Autosubst2 this needed
+   one lemma per binder depth (upRen_tm_tm versus upRen_etm_etm). *)
+Lemma er_ren r t : er (t ⟨r⟩) = ren_etm r (er t).
 Proof.
-  revert xi; induction t; intros xi; cbn; f_equal; auto;
-    rewrite ?IHt2, ?IHt, ?IHt3;
-    try apply extRen_etm; intros; try apply er_up_ren; auto.
-  all: apply er_up_ren2.
+  revert r; induction t; intros r; cbn; unfold ren_etm in *; repeat f_equal; auto.
 Qed.
 
-Lemma er_up_subst sigma :
-  forall x, er (up_tm_tm sigma x) = up_etm_etm (sigma >> er) x.
+(* Substitutions are NOT shared: a tm-substitution is nat -> tm and an
+   etm-substitution is nat -> etm, so the two `up_subst`s have to be matched.
+   Stating the match as a CLOSURE PROPERTY rather than an equation makes it
+   iterate on its own, which is what natrec's two binders and wrec's three
+   need -- under Autosubst2 this was one lemma per depth. *)
+Lemma er_up_subst s t :
+  (forall i, er (s i) = t i) -> forall i, er (up_subst s i) = up_etm t i.
 Proof.
-  intros []; cbn; [reflexivity|].
-  unfold funcomp; apply er_ren.
+  intros H [| i]; unfold up_etm, up_subst, Erased.up_subst; cbn; [reflexivity |].
+  unfold rscomp, srcomp; cbn; rewrite er_ren, H; reflexivity.
 Qed.
 
-Lemma er_up_subst2 sigma :
-  forall x, er (up_tm_tm (up_tm_tm sigma) x) = up_etm_etm (up_etm_etm (sigma >> er)) x.
+Lemma er_subst : forall u s t, (forall i, er (s i) = t i) ->
+  er (u [s]) = subst_etm t (er u).
 Proof.
-  intros [| []]; cbn; try reflexivity.
-  unfold funcomp; cbn; rewrite !er_ren; reflexivity.
+  induction u; intros s t H; cbn; unfold subst_etm in *; repeat f_equal;
+    eauto using er_up_subst.
 Qed.
 
-(* Lemma 3.1: erasure commutes with substitution.  The substitution on the
-   erased side is the annotated one composed with erasure. *)
-Lemma er_subst sigma t : er (subst_tm sigma t) = subst_etm (sigma >> er) (er t).
-Proof.
-  revert sigma; induction t; intros sigma; cbn; f_equal; auto;
-    rewrite ?IHt2, ?IHt, ?IHt3;
-    try apply ext_etm; intros; try apply er_up_subst; auto.
-  (* pi, sig_ and all sit under one elam, natrec's step under two. *)
-  all: repeat apply congr_elam; apply ext_etm; intros;
-       first [apply er_up_subst | apply er_up_subst2].
-Qed.
-
-Lemma er_subst1 t u : er (t[u..]) = (er t)[(er u)..].
-Proof.
-  rewrite er_subst; apply ext_etm; intros []; reflexivity.
-Qed.
+Lemma er_subst1 t u :
+  er (t [u..]) = subst_etm (Erased.scons (er u) Erased.sid) (er t).
+Proof. apply er_subst; intros [| i]; reflexivity. Qed.

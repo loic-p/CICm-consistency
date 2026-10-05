@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def Layer1.Bundle.Inv Layer1.Bundle.Fun Layer1.Bundle.Sym.
 
@@ -22,6 +22,7 @@ Proof.
     | A A' m Hm HeA HeA'
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
+    | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
     | A A' N N' HeA HeA' HsN HsN' ];
     intros A'' Q' HQ.
   - eapply LR_ext; [exact (IH _ _ HQ) | exact HPQ].
@@ -42,6 +43,12 @@ Proof.
     assert (EA : PA ≐ PA').
     { eapply LR_fun; [apply (LR_sym n X HX); exact HA | exact H2]. }
     eapply LR_sig; [exact HeA | exact H1 | exact (IHA _ _ H2) |].
+    intros u u' Hu. eapply (IHB u u' Hu). apply H3. apply EA.
+    eapply (pk_trans _ (LR_ok n X HX _ _ _ HA)); [apply (pk_sym _ (LR_ok n X HX _ _ _ HA))|]; exact Hu.
+  - destruct (LR_inv_w n X _ _ _ _ _ HQ HeA') as [A0'' [B0'' [PA' [PB' [H1 [H2 [H3 _]]]]]]].
+    assert (EA : PA ≐ PA').
+    { eapply LR_fun; [apply (LR_sym n X HX); exact HA | exact H2]. }
+    eapply LR_w; [exact HeA | exact H1 | exact (IHA _ _ H2) |].
     intros u u' Hu. eapply (IHB u u' Hu). apply H3. apply EA.
     eapply (pk_trans _ (LR_ok n X HX _ _ _ HA)); [apply (pk_sym _ (LR_ok n X HX _ _ _ HA))|]; exact Hu.
   - destruct (LR_inv_ne n X _ _ _ _ HQ HeA' HsN') as [N'' [H1 [H2 _]]].

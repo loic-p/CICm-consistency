@@ -1,9 +1,7 @@
-From CICM Require Import core unscoped Syntax Erasure.
+From CICM Require Import Syntax.Ann Syntax.Erasure.
 From CICM Require Import Typing.Rules.
-From CICM Require Import Interp.Consistency.
 From Stdlib Require Import Arith.
 
-Import UnscopedNotations.
 Open Scope list_scope.
 
 (* ================================================================== *)
@@ -12,9 +10,9 @@ Open Scope list_scope.
 (*                                                                    *)
 (* Everything here is a derivation in the OBJECT language CIC^-: the     *)
 (* terms are `tm`, the judgements are `Typing/Rules.v`'s `ty` and `cv`.   *)
-(* Nothing appeals to the model, except in the last section, where        *)
-(* consistency (9.3) is used to show that the companion statement         *)
-(* `eq 0 0 -> False` is NOT derivable.                                    *)
+(* Nothing here appeals to the model: this file is pure object language.  *)
+(* The companion statement -- that `eq 0 0 -> False` is NOT derivable --   *)
+(* needs consistency (9.3) and waits for Interp/ to be ported.             *)
 (*                                                                    *)
 (* Conventions.  `prop` is the impredicative universe of propositions;    *)
 (* `prf p` is the TYPE of proofs of `p : prop`, so an implication          *)
@@ -65,7 +63,7 @@ Proof. exact (w_cons G (nat_ 0) 0 W (t_nat G 0 W)). Qed.
 
 Lemma ty_natFun G (W : wfc G) : ty G natFun (UU 0).
 Proof.
-  exact (t_pi G 0 0 (nat_ 0) (prop 0) (le_n 0) (t_nat G 0 W)
+  exact (t_pi G 0 0 0 (nat_ 0) (prop 0) (le_n 0) (le_n 0) (t_nat G 0 W)
            (t_prop (nat_ 0 :: G) 0 (wfc_nat G W))).
 Qed.
 
@@ -99,8 +97,8 @@ Qed.
 
 Lemma ty_eqz G (W : wfc G) : ty G eqz natFun.
 Proof.
-  exact (t_lam G 0 0 (nat_ 0) (prop 0)
-           (natrec (prop 0) True_ (false_ 0) (var_tm 0)) (le_n 0)
+  exact (t_lam G 0 0 0 (nat_ 0) (prop 0)
+           (natrec (prop 0) True_ (false_ 0) (var_tm 0)) (le_n 0) (le_n 0)
            (t_nat G 0 W) (t_prop (nat_ 0 :: G) 0 (wfc_nat G W))
            (ty_eqz_body G W)).
 Qed.
@@ -113,7 +111,7 @@ Proof.
   pose proof (wfc_nat _ Ws) as Wm.
   pose proof (wfc_nat _ Wm) as Wp.
   pose proof (wfc_prop _ Wp) as Wq.
-  refine (t_lam (natFun :: nat_ 0 :: G) 0 0 (nat_ 0) (prop 0) _ (le_n 0)
+  refine (t_lam (natFun :: nat_ 0 :: G) 0 0 0 (nat_ 0) (prop 0) _ (le_n 0) (le_n 0)
             (t_nat _ 0 Ws) (t_prop _ 0 Wm) _).
   refine (t_natrec _ (prop 0) (false_ 0)
             (app (nat_ 0) (prop 0) (var_tm 3) (var_tm 1)) (var_tm 0) 0 0
@@ -121,7 +119,7 @@ Proof.
             (t_var _ 0 (nat_ 0) Wm (lookup_O _ (nat_ 0)))).
   (* the step: (eq n) applied to the predecessor of m, in
      prop :: nat_ :: nat_ :: natFun :: nat_ :: G *)
-  refine (t_app _ 0 0 (nat_ 0) (prop 0) (var_tm 3) (var_tm 1) (le_n 0)
+  refine (t_app _ 0 0 0 (nat_ 0) (prop 0) (var_tm 3) (var_tm 1) (le_n 0) (le_n 0)
             (t_nat _ 0 Wq) (t_prop _ 0 (wfc_nat _ Wq)) _ _).
   - refine (t_var _ 3 natFun Wq _).
     exact (lookup_S (nat_ 0 :: nat_ 0 :: natFun :: nat_ 0 :: G) 2 natFun
@@ -147,22 +145,22 @@ Qed.
 
 Theorem ty_eq G (W : wfc G) : ty G eq_ (pi 0 (nat_ 0) natFun).
 Proof.
-  exact (t_lam G 0 0 (nat_ 0) natFun (natrec natFun eqz eqs (var_tm 0))
-           (le_n 0) (t_nat G 0 W)
+  exact (t_lam G 0 0 0 (nat_ 0) natFun (natrec natFun eqz eqs (var_tm 0))
+           (le_n 0) (le_n 0) (t_nat G 0 W)
            (ty_natFun (nat_ 0 :: G) (wfc_nat G W)) (ty_eq_body G W)).
 Qed.
 
 Lemma ty_eqApp1 G (W : wfc G) m (dm : ty G m (nat_ 0)) :
   ty G (app (nat_ 0) natFun eq_ m) natFun.
 Proof.
-  exact (t_app G 0 0 (nat_ 0) natFun eq_ m (le_n 0) (t_nat G 0 W)
+  exact (t_app G 0 0 0 (nat_ 0) natFun eq_ m (le_n 0) (le_n 0) (t_nat G 0 W)
            (ty_natFun (nat_ 0 :: G) (wfc_nat G W)) (ty_eq G W) dm).
 Qed.
 
 Theorem ty_eqAt G (W : wfc G) m n (dm : ty G m (nat_ 0)) (dn : ty G n (nat_ 0)) :
   ty G (eqAt m n) (prop 0).
 Proof.
-  exact (t_app G 0 0 (nat_ 0) (prop 0) (app (nat_ 0) natFun eq_ m) n (le_n 0)
+  exact (t_app G 0 0 0 (nat_ 0) (prop 0) (app (nat_ 0) natFun eq_ m) n (le_n 0) (le_n 0)
            (t_nat G 0 W) (t_prop (nat_ 0 :: G) 0 (wfc_nat G W))
            (ty_eqApp1 G W m dm) dn).
 Qed.
@@ -175,8 +173,8 @@ Lemma cv_eq_zero G (W : wfc G) :
 Proof.
   pose proof (wfc_nat G W) as W1.
   eapply c_trans.
-  - exact (c_beta G 0 0 (nat_ 0) natFun (natrec natFun eqz eqs (var_tm 0))
-             (zero 0) (le_n 0) (t_nat G 0 W) (ty_natFun (nat_ 0 :: G) W1)
+  - exact (c_beta G 0 0 0 (nat_ 0) natFun (natrec natFun eqz eqs (var_tm 0))
+             (zero 0) (le_n 0) (le_n 0) (t_nat G 0 W) (ty_natFun (nat_ 0 :: G) W1)
              (ty_eq_body G W) (t_zero G 0 W)).
   - exact (c_rec_zero G natFun eqz eqs 0 0 (ty_natFun (nat_ 0 :: G) W1)
              (ty_eqz G W) (ty_eqs G W)).
@@ -190,15 +188,15 @@ Proof.
   pose proof (t_succ G 0 (zero 0) (t_zero G 0 W)) as d1.
   eapply c_trans.
   - (* congruence in the function position *)
-    exact (c_app G 0 0 (nat_ 0) (prop 0) (app (nat_ 0) natFun eq_ (zero 0)) eqz
-             (succ (zero 0)) (succ (zero 0)) (le_n 0) (t_nat G 0 W)
+    exact (c_app G 0 0 0 (nat_ 0) (prop 0) (app (nat_ 0) natFun eq_ (zero 0)) eqz
+             (succ (zero 0)) (succ (zero 0)) (le_n 0) (le_n 0) (t_nat G 0 W)
              (t_prop (nat_ 0 :: G) 0 W1)
              (ty_eqApp1 G W (zero 0) (t_zero G 0 W)) (ty_eqz G W)
              (cv_eq_zero G W) d1 d1 (c_refl G (succ (zero 0)) (nat_ 0) d1)).
   - eapply c_trans.
-    + exact (c_beta G 0 0 (nat_ 0) (prop 0)
+    + exact (c_beta G 0 0 0 (nat_ 0) (prop 0)
                (natrec (prop 0) True_ (false_ 0) (var_tm 0)) (succ (zero 0))
-               (le_n 0) (t_nat G 0 W) (t_prop (nat_ 0 :: G) 0 W1)
+               (le_n 0) (le_n 0) (t_nat G 0 W) (t_prop (nat_ 0 :: G) 0 W1)
                (ty_eqz_body G W) d1).
     + exact (c_rec_succ G (prop 0) True_ (false_ 0) (zero 0) 0 0
                (t_prop (nat_ 0 :: G) 0 W1) (ty_True_ G W)
@@ -250,14 +248,14 @@ Proof.
   pose proof (wfc_nat G W) as W1.
   pose proof (t_zero G 0 W) as d0.
   eapply c_trans.
-  - exact (c_app G 0 0 (nat_ 0) (prop 0) (app (nat_ 0) natFun eq_ (zero 0)) eqz
-             (zero 0) (zero 0) (le_n 0) (t_nat G 0 W)
+  - exact (c_app G 0 0 0 (nat_ 0) (prop 0) (app (nat_ 0) natFun eq_ (zero 0)) eqz
+             (zero 0) (zero 0) (le_n 0) (le_n 0) (t_nat G 0 W)
              (t_prop (nat_ 0 :: G) 0 W1)
              (ty_eqApp1 G W (zero 0) d0) (ty_eqz G W) (cv_eq_zero G W)
              d0 d0 (c_refl G (zero 0) (nat_ 0) d0)).
   - eapply c_trans.
-    + exact (c_beta G 0 0 (nat_ 0) (prop 0)
-               (natrec (prop 0) True_ (false_ 0) (var_tm 0)) (zero 0) (le_n 0)
+    + exact (c_beta G 0 0 0 (nat_ 0) (prop 0)
+               (natrec (prop 0) True_ (false_ 0) (var_tm 0)) (zero 0) (le_n 0) (le_n 0)
                (t_nat G 0 W) (t_prop (nat_ 0 :: G) 0 W1) (ty_eqz_body G W) d0).
     + exact (c_rec_zero G (prop 0) True_ (false_ 0) 0 0
                (t_prop (nat_ 0 :: G) 0 W1) (ty_True_ G W)
@@ -291,16 +289,7 @@ Proof.
                  (cv_eq00 G W)))).
 Qed.
 
-(* So a closed proof of `eq 0 0 -> False` would prove False outright. *)
-Theorem eq00_not_absurd (e : tm)
-  (d : ty nil e (prf 0 (all 0 (prf 0 (eqAt (zero 0) (zero 0))) (false_ 0)))) :
-  False.
-Proof.
-  pose proof (t_zero nil 0 w_nil) as d0.
-  pose proof (ty_eqAt nil w_nil (zero 0) (zero 0) d0 d0) as dEq.
-  pose proof (t_prf nil 0 0 (eqAt (zero 0) (zero 0)) (le_n 0) dEq) as dPrf.
-  pose proof (w_cons nil (prf 0 (eqAt (zero 0) (zero 0))) 0 w_nil dPrf) as W1.
-  refine (consistency 0 0 (papp e eq00_proof) _).
-  exact (t_all_elim nil (prf 0 (eqAt (zero 0) (zero 0))) (false_ 0) e
-           eq00_proof 0 0 dPrf (t_false _ 0 W1) d (ty_eq00_proof nil w_nil)).
-Qed.
+(* The companion half -- that a closed proof of `eq 0 0 -> False` would prove
+   False outright -- is the one thing here that needs the MODEL, through 9.3.
+   It comes back when Interp/Consistency.v is ported; what is checked above is
+   its object-language half, that `eq 0 0` really is inhabited. *)

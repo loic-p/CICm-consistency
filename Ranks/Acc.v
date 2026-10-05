@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def Layer1.Bundle Ranks.Pred.
 From Stdlib Require Import Arith Lia.
@@ -31,6 +31,7 @@ Proof.
     | A A' m Hm HeA HeA'
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
+    | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
     | A A' N N' HeA HeA' HsN HsN' ].
   - exact IH.
   - constructor; intros C HC; apply (Acc_inv IH); eapply prec_red; eauto.
@@ -38,7 +39,9 @@ Proof.
   - constructor; intros C [q Hq]; destruct q; eval_confl.
   - constructor; intros C [q Hq]; destruct q; eval_confl.
   - constructor; intros C [q Hq]; destruct q; eval_confl.
-  - constructor; intros C [q Hq]; destruct q as [C0 D0 e | C0 D0 u e g | C0 D0 e | C0 D0 u e g];
+  - constructor; intros C [q Hq];
+      destruct q as [C0 D0 e | C0 D0 u e g | C0 D0 e | C0 D0 u e g
+                    | C0 D0 e | C0 D0 u e g];
       eval_confl; cbn in *; try subst C; cbn.
     + exact IHA.
     + apply (IHB u u). destruct g as [k [Q [HQ Hu]]].
@@ -46,7 +49,19 @@ Proof.
       { eapply tau_fun; [apply (tau_cumul n (Nat.max n k)); [apply Nat.le_max_l | exact HA]
                         | apply (tau_cumul k (Nat.max n k)); [apply Nat.le_max_r | exact HQ]]. }
       apply EQ; exact Hu.
-  - constructor; intros C [q Hq]; destruct q as [C0 D0 e | C0 D0 u e g | C0 D0 e | C0 D0 u e g];
+  - constructor; intros C [q Hq];
+      destruct q as [C0 D0 e | C0 D0 u e g | C0 D0 e | C0 D0 u e g
+                    | C0 D0 e | C0 D0 u e g];
+      eval_confl; cbn in *; try subst C; cbn.
+    + exact IHA.
+    + apply (IHB u u). destruct g as [k [Q [HQ Hu]]].
+      assert (EQ : PA ≐ Q).
+      { eapply tau_fun; [apply (tau_cumul n (Nat.max n k)); [apply Nat.le_max_l | exact HA]
+                        | apply (tau_cumul k (Nat.max n k)); [apply Nat.le_max_r | exact HQ]]. }
+      apply EQ; exact Hu.
+  - constructor; intros C [q Hq];
+      destruct q as [C0 D0 e | C0 D0 u e g | C0 D0 e | C0 D0 u e g
+                    | C0 D0 e | C0 D0 u e g];
       eval_confl; cbn in *; try subst C; cbn.
     + exact IHA.
     + apply (IHB u u). destruct g as [k [Q [HQ Hu]]].

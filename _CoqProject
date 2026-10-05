@@ -1,8 +1,7 @@
 -R . CICM
 
-Syntax/core.v
-Syntax/unscoped.v
-Syntax/Syntax.v
+Syntax/Erased.v
+Syntax/Ann.v
 Syntax/Erasure.v
 
 Reduction/Def.v
@@ -10,7 +9,16 @@ Reduction/Stuck.v
 Reduction/Determinism.v
 
 Typing/Rules.v
+Typing/WSubst.v
 Typing/Subst.v
+
+Tests/Eq.v
+Tests/Sigma.v
+Tests/Logic.v
+Tests/Aczel.v
+
+# ---- not yet ported to the v2 calculus (W types, heterogeneous Pi/Sigma/W,
+# ---- and Sulfur in place of Autosubst2).  They are v1 files.
 
 Layer1/Per.v
 Layer1/Def.v
@@ -30,15 +38,16 @@ Ranks/Acc.v
 Ranks/Rank.v
 
 Codes/Def.v
-Codes/Sound.v
-Codes/EqPER.v
-Codes/Expand.v
-Codes/Iso.v
+Codes/Eq.v
 Codes/WF.v
-Codes/IsoPER.v
+Codes/Sym.v
+Codes/Str.v
+Codes/Sound.v
+Codes/Expand.v
+Codes/Mor.v
+Codes/Refl.v
 Codes/Levels.v
 Codes/Lift.v
-Codes/LiftIso.v
 
 Interp/Codes.v
 Interp/Stage.v
@@ -47,12 +56,16 @@ Interp/Fam.v
 Interp/Lift.v
 Interp/PiFam.v
 Interp/SigFam.v
+Interp/WFam.v
 Interp/Univ.v
 Interp/Env.v
 Interp/Elem.v
 Interp/PiEl.v
+Interp/WEl.v
 Interp/SigEl.v
 Interp/Rec.v
+Interp/LiftN.v
+Interp/LiftFam.v
 Interp/Def.v
 Interp/Inv.v
 Interp/Ctx.v
@@ -60,6 +73,4 @@ Interp/Subst.v
 Interp/Fun.v
 Interp/Fund.v
 Interp/Consistency.v
-Tests/Eq.v
-Tests/Sigma.v
-Tests/Logic.v
+

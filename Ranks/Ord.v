@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Layer1.Per Layer1.Def Ranks.Pred.
 
 (* Brouwer trees whose sups are indexed by component witnesses. *)

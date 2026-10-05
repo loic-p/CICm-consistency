@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def.
 
 (* Lemma 4.2: stuck terms are inert.  Stuckness is preserved by every

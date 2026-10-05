@@ -1,14 +1,8 @@
-From CICM Require Import core unscoped Syntax Erasure.
+From CICM Require Import Syntax.Ann Syntax.Erasure.
 From CICM Require Import Typing.Rules.
-From CICM Require Import Layer1.Per Layer1.Def Layer1.Bundle Layer1.Elim.
-From CICM Require Import Ranks.Pred Ranks.Ord Ranks.Acc Ranks.Rank.
-From CICM Require Import Codes.Def Codes.Iso.
-From CICM Require Import Interp.Codes Interp.Fam Interp.Univ Interp.Env Interp.Elem
-  Interp.Def Interp.Inv Interp.Ctx Interp.Fun Interp.Fund.
 From CICM Require Import Tests.Eq.
 From Stdlib Require Import Arith.
 
-Import UnscopedNotations.
 Open Scope list_scope.
 
 (* ================================================================== *)
@@ -52,13 +46,13 @@ Proof.
   pose proof (t_var _ 0 (UU 0) Ws (lookup_O (nat_ 0 :: G) (UU 0))) as dv.
   refine (t_natrec G (UU 0) (nat_ 0) (pi 0 (var_tm 0) (prop 0)) n 1 0 dU
             (t_nat G 0 W) _ dn).
-  exact (t_pi _ 0 0 (var_tm 0) (prop 0) (le_n 0) dv
+  exact (t_pi _ 0 0 0 (var_tm 0) (prop 0) (le_n 0) (le_n 0) dv
            (t_prop _ 0 (w_cons _ (var_tm 0) 0 Ws dv))).
 Qed.
 
 Theorem ty_SigP G (W : wfc G) : ty G SigP (UU 0).
 Proof.
-  refine (t_sig G 0 0 (nat_ 0) (PowN (var_tm 0)) (le_n 0) (t_nat G 0 W) _).
+  refine (t_sig G 0 0 0 (nat_ 0) (PowN (var_tm 0)) (le_n 0) (le_n 0) (t_nat G 0 W) _).
   pose proof (wfc_nat G W) as W1.
   exact (ty_PowN (nat_ 0 :: G) W1 (var_tm 0)
            (t_var (nat_ 0 :: G) 0 (nat_ 0) W1 (lookup_O G (nat_ 0)))).
@@ -74,14 +68,14 @@ Proof.
   pose proof (t_univ (nat_ 0 :: G) 1 0 (le_n 1) W1) as dU.
   pose proof (w_cons (nat_ 0 :: G) (UU 0) 1 W1 dU) as Ws.
   pose proof (t_var _ 0 (UU 0) Ws (lookup_O (nat_ 0 :: G) (UU 0))) as dv.
-  pose proof (t_pi _ 0 0 (var_tm 0) (prop 0) (le_n 0) dv
+  pose proof (t_pi _ 0 0 0 (var_tm 0) (prop 0) (le_n 0) (le_n 0) dv
                 (t_prop _ 0 (w_cons _ (var_tm 0) 0 Ws dv))) as ds.
   pose proof (ty_PowN G W (zero 0) (t_zero G 0 W)) as dP0.
   eapply c_trans.
   - exact (c_rec_succ G (UU 0) (nat_ 0) (pi 0 (var_tm 0) (prop 0)) (zero 0) 1 0
              dU (t_nat G 0 W) ds (t_zero G 0 W)).
   - (* pi (PowN zero) prop  ==  pi nat_ prop *)
-    refine (c_pi G 0 0 (PowN (zero 0)) (nat_ 0) (prop 0) (prop 0) (le_n 0)
+    refine (c_pi G 0 0 0 (PowN (zero 0)) (nat_ 0) (prop 0) (prop 0) (le_n 0) (le_n 0)
               dP0 _ (t_nat G 0 W) _ _ _).
     + exact (t_prop _ 0 (w_cons G (PowN (zero 0)) 0 W dP0)).
     + exact (t_prop (nat_ 0 :: G) 0 W1).
@@ -99,15 +93,15 @@ Proof.
   pose proof (t_univ (nat_ 0 :: G) 1 0 (le_n 1) W1) as dU.
   pose proof (w_cons (nat_ 0 :: G) (UU 0) 1 W1 dU) as Ws.
   pose proof (t_var _ 0 (UU 0) Ws (lookup_O (nat_ 0 :: G) (UU 0))) as dv.
-  pose proof (t_pi _ 0 0 (var_tm 0) (prop 0) (le_n 0) dv
+  pose proof (t_pi _ 0 0 0 (var_tm 0) (prop 0) (le_n 0) (le_n 0) dv
                 (t_prop _ 0 (w_cons _ (var_tm 0) 0 Ws dv))) as ds.
   pose proof (ty_PowN G W (one 0) (t_succ G 0 (zero 0) (t_zero G 0 W))) as dP1.
   pose proof (ty_natFun G W) as dNF.
   eapply c_trans.
   - exact (c_rec_succ G (UU 0) (nat_ 0) (pi 0 (var_tm 0) (prop 0)) (one 0) 1 0
              dU (t_nat G 0 W) ds (t_succ G 0 (zero 0) (t_zero G 0 W))).
-  - refine (c_pi G 0 0 (PowN (one 0)) (pi 0 (nat_ 0) (prop 0)) (prop 0) (prop 0)
-              (le_n 0) dP1 _ dNF _ _ _).
+  - refine (c_pi G 0 0 0 (PowN (one 0)) (pi 0 (nat_ 0) (prop 0)) (prop 0) (prop 0)
+              (le_n 0) (le_n 0) dP1 _ dNF _ _ _).
     + exact (t_prop _ 0 (w_cons G (PowN (one 0)) 0 W dP1)).
     + exact (t_prop _ 0 (w_cons G (pi 0 (nat_ 0) (prop 0)) 0 W dNF)).
     + exact (cv_PowN_one G W).
@@ -130,9 +124,9 @@ Lemma ty_elt2 G (W : wfc G) :
 Proof.
   pose proof (ty_natFun G W) as dNF.
   pose proof (w_cons G (pi 0 (nat_ 0) (prop 0)) 0 W dNF) as W1.
-  refine (t_lam G 0 0 (pi 0 (nat_ 0) (prop 0)) (prop 0) _ (le_n 0) dNF
+  refine (t_lam G 0 0 0 (pi 0 (nat_ 0) (prop 0)) (prop 0) _ (le_n 0) (le_n 0) dNF
             (t_prop _ 0 W1) _).
-  exact (t_app _ 0 0 (nat_ 0) (prop 0) (var_tm 0) (zero 0) (le_n 0)
+  exact (t_app _ 0 0 0 (nat_ 0) (prop 0) (var_tm 0) (zero 0) (le_n 0) (le_n 0)
            (t_nat _ 0 W1) (t_prop _ 0 (wfc_nat _ W1))
            (t_var _ 0 (pi 0 (nat_ 0) (prop 0)) W1
               (lookup_O G (pi 0 (nat_ 0) (prop 0))))
@@ -147,7 +141,7 @@ Proof.
   pose proof (wfc_nat G W) as W1.
   pose proof (t_succ G 0 (zero 0) (t_zero G 0 W)) as d1.
   pose proof (ty_PowN G W (one 0) d1) as dP1.
-  refine (t_pair G 0 0 (nat_ 0) (PowN (var_tm 0)) (one 0) elt1 (le_n 0)
+  refine (t_pair G 0 0 0 (nat_ 0) (PowN (var_tm 0)) (one 0) elt1 (le_n 0) (le_n 0)
             (t_nat G 0 W)
             (ty_PowN (nat_ 0 :: G) W1 (var_tm 0)
                (t_var (nat_ 0 :: G) 0 (nat_ 0) W1 (lookup_O G (nat_ 0)))) d1 _).
@@ -167,7 +161,7 @@ Proof.
   pose proof (t_succ G 0 (succ (zero 0)) (t_succ G 0 (zero 0) (t_zero G 0 W)))
     as d2.
   pose proof (ty_PowN G W (two 0) d2) as dP2.
-  refine (t_pair G 0 0 (nat_ 0) (PowN (var_tm 0)) (two 0) elt2 (le_n 0)
+  refine (t_pair G 0 0 0 (nat_ 0) (PowN (var_tm 0)) (two 0) elt2 (le_n 0) (le_n 0)
             (t_nat G 0 W)
             (ty_PowN (nat_ 0 :: G) W1 (var_tm 0)
                (t_var (nat_ 0 :: G) 0 (nat_ 0) W1 (lookup_O G (nat_ 0)))) d2 _).
@@ -175,7 +169,7 @@ Proof.
             0 (ty_elt2 G W) _ dP2
             (c_sym G (PowN (two 0)) (pi 0 (pi 0 (nat_ 0) (prop 0)) (prop 0))
                (UU 0) (cv_PowN_two G W))).
-  exact (t_pi G 0 0 (pi 0 (nat_ 0) (prop 0)) (prop 0) (le_n 0) (ty_natFun G W)
+  exact (t_pi G 0 0 0 (pi 0 (nat_ 0) (prop 0)) (prop 0) (le_n 0) (le_n 0) (ty_natFun G W)
            (t_prop _ 0 (w_cons G (pi 0 (nat_ 0) (prop 0)) 0 W (ty_natFun G W)))).
 Qed.
 
@@ -214,7 +208,7 @@ Proof.
   pose proof (w_cons (nat_ 1 :: G) (UU 1) 2 W1
                 (t_univ (nat_ 1 :: G) 2 1 (le_n 2) W1)) as Ws.
   pose proof (t_var _ 0 (UU 1) Ws (lookup_O (nat_ 1 :: G) (UU 1))) as dv.
-  exact (t_pi _ 1 1 (var_tm 0) (UU 0) (le_n 1) dv
+  exact (t_pi _ 1 1 1 (var_tm 0) (UU 0) (le_n 1) (le_n 1) dv
            (t_univ _ 1 0 (le_n 1) (w_cons _ (var_tm 0) 1 Ws dv))).
 Qed.
 
@@ -237,7 +231,7 @@ Proof.
   eapply c_trans.
   - exact (c_rec_succ G (UU 1) (nat_ 1) (pi 1 (var_tm 0) (UU 0)) (zero 1) 2 1
              dC (t_nat G 1 W) ds (t_zero G 1 W)).
-  - refine (c_pi G 1 1 (PowTN (zero 1)) (nat_ 1) (UU 0) (UU 0) (le_n 1) dP0 _
+  - refine (c_pi G 1 1 1 (PowTN (zero 1)) (nat_ 1) (UU 0) (UU 0) (le_n 1) (le_n 1) dP0 _
               (t_nat G 1 W) _ _ _).
     + exact (t_univ _ 1 0 (le_n 1) (w_cons G (PowTN (zero 1)) 1 W dP0)).
     + exact (t_univ _ 1 0 (le_n 1) W1).
@@ -256,13 +250,13 @@ Proof.
   pose proof (ty_PowTN_step G W) as ds.
   pose proof (ty_PowTN G W (one 1) (t_succ G 1 (zero 1) (t_zero G 1 W))) as dP1.
   assert (dP : ty G (pi 1 (nat_ 1) (UU 0)) (UU 1))
-    by exact (t_pi G 1 1 (nat_ 1) (UU 0) (le_n 1) (t_nat G 1 W)
+    by exact (t_pi G 1 1 1 (nat_ 1) (UU 0) (le_n 1) (le_n 1) (t_nat G 1 W)
                 (t_univ _ 1 0 (le_n 1) W1)).
   eapply c_trans.
   - exact (c_rec_succ G (UU 1) (nat_ 1) (pi 1 (var_tm 0) (UU 0)) (one 1) 2 1
              dC (t_nat G 1 W) ds (t_succ G 1 (zero 1) (t_zero G 1 W))).
-  - refine (c_pi G 1 1 (PowTN (one 1)) (pi 1 (nat_ 1) (UU 0)) (UU 0) (UU 0)
-              (le_n 1) dP1 _ dP _ (cv_PowTN_one G W) _).
+  - refine (c_pi G 1 1 1 (PowTN (one 1)) (pi 1 (nat_ 1) (UU 0)) (UU 0) (UU 0)
+              (le_n 1) (le_n 1) dP1 _ dP _ (cv_PowTN_one G W) _).
     + exact (t_univ _ 1 0 (le_n 1) (w_cons G (PowTN (one 1)) 1 W dP1)).
     + exact (t_univ _ 1 0 (le_n 1) (w_cons G (pi 1 (nat_ 1) (UU 0)) 1 W dP)).
     + exact (c_refl _ (UU 0) (UU 1)
@@ -277,7 +271,7 @@ Definition powT1 : tm := lam 1 (nat_ 1) (UU 0) (nat_ 0).
 Lemma ty_powT1 G (W : wfc G) : ty G powT1 (pi 1 (nat_ 1) (UU 0)).
 Proof.
   pose proof (wfc_nat1 G W) as W1.
-  exact (t_lam G 1 1 (nat_ 1) (UU 0) (nat_ 0) (le_n 1) (t_nat G 1 W)
+  exact (t_lam G 1 1 1 (nat_ 1) (UU 0) (nat_ 0) (le_n 1) (le_n 1) (t_nat G 1 W)
            (t_univ _ 1 0 (le_n 1) W1) (t_nat _ 0 W1)).
 Qed.
 
@@ -291,12 +285,12 @@ Lemma ty_powT2 G (W : wfc G) :
 Proof.
   pose proof (wfc_nat1 G W) as W1.
   assert (dP : ty G (pi 1 (nat_ 1) (UU 0)) (UU 1))
-    by exact (t_pi G 1 1 (nat_ 1) (UU 0) (le_n 1) (t_nat G 1 W)
+    by exact (t_pi G 1 1 1 (nat_ 1) (UU 0) (le_n 1) (le_n 1) (t_nat G 1 W)
                 (t_univ _ 1 0 (le_n 1) W1)).
   pose proof (w_cons G (pi 1 (nat_ 1) (UU 0)) 1 W dP) as WP.
-  refine (t_lam G 1 1 (pi 1 (nat_ 1) (UU 0)) (UU 0) _ (le_n 1) dP
+  refine (t_lam G 1 1 1 (pi 1 (nat_ 1) (UU 0)) (UU 0) _ (le_n 1) (le_n 1) dP
             (t_univ _ 1 0 (le_n 1) WP) _).
-  exact (t_app _ 1 1 (nat_ 1) (UU 0) (var_tm 0) (zero 1) (le_n 1)
+  exact (t_app _ 1 1 1 (nat_ 1) (UU 0) (var_tm 0) (zero 1) (le_n 1) (le_n 1)
            (t_nat _ 1 WP) (t_univ _ 1 0 (le_n 1) (wfc_nat1 _ WP))
            (t_var _ 0 (pi 1 (nat_ 1) (UU 0)) WP
               (lookup_O G (pi 1 (nat_ 1) (UU 0))))
@@ -316,7 +310,7 @@ Definition SigT : tm := sig_ 1 (nat_ 1) (PowTN (var_tm 0)).
 Theorem ty_SigT G (W : wfc G) : ty G SigT (UU 1).
 Proof.
   pose proof (wfc_nat1 G W) as W1.
-  exact (t_sig G 1 1 (nat_ 1) (PowTN (var_tm 0)) (le_n 1) (t_nat G 1 W)
+  exact (t_sig G 1 1 1 (nat_ 1) (PowTN (var_tm 0)) (le_n 1) (le_n 1) (t_nat G 1 W)
            (ty_PowTN (nat_ 1 :: G) W1 (var_tm 0)
               (t_var (nat_ 1 :: G) 0 (nat_ 1) W1 (lookup_O G (nat_ 1))))).
 Qed.
@@ -331,13 +325,13 @@ Proof.
     as d2.
   pose proof (ty_PowTN G W (two 1) d2) as dP2.
   assert (dQ : ty G (pi 1 (nat_ 1) (UU 0)) (UU 1))
-    by exact (t_pi G 1 1 (nat_ 1) (UU 0) (le_n 1) (t_nat G 1 W)
+    by exact (t_pi G 1 1 1 (nat_ 1) (UU 0) (le_n 1) (le_n 1) (t_nat G 1 W)
                 (t_univ _ 1 0 (le_n 1) W1)).
   assert (dP : ty G (pi 1 (pi 1 (nat_ 1) (UU 0)) (UU 0)) (UU 1))
-    by exact (t_pi G 1 1 (pi 1 (nat_ 1) (UU 0)) (UU 0) (le_n 1) dQ
+    by exact (t_pi G 1 1 1 (pi 1 (nat_ 1) (UU 0)) (UU 0) (le_n 1) (le_n 1) dQ
                 (t_univ _ 1 0 (le_n 1)
                    (w_cons G (pi 1 (nat_ 1) (UU 0)) 1 W dQ))).
-  refine (t_pair G 1 1 (nat_ 1) (PowTN (var_tm 0)) (two 1) powT2 (le_n 1)
+  refine (t_pair G 1 1 1 (nat_ 1) (PowTN (var_tm 0)) (two 1) powT2 (le_n 1) (le_n 1)
             (t_nat G 1 W)
             (ty_PowTN (nat_ 1 :: G) W1 (var_tm 0)
                (t_var (nat_ 1 :: G) 0 (nat_ 1) W1 (lookup_O G (nat_ 1)))) d2 _).
@@ -350,19 +344,8 @@ Qed.
 Theorem SigT_inhabited_closed : ty nil pairT SigT.
 Proof. exact (ty_pairT nil w_nil). Qed.
 
-(* There is still no cumulativity: `nat_ 0` is a type of `UU 0` and of no
-   other universe -- what lives in `UU 1` is `nat_ 1`, a DIFFERENT type with
-   the same realisers.  The model says so: `nat_ 0`'s interpretation has level
-   0 (LvlDec), so a reading of it as an ELEMENT of `UU 1` would give it level
-   1 as well. *)
-Theorem nat_not_at_univ1 : ty nil (nat_ 0) (UU 1) -> False.
-Proof.
-  intros d.
-  destruct (fund_tot nil (nat_ 0) (UU 1) d) as [_ Hn].
-  destruct (Hn nil tt 2 (univFam 1)
-              (ity_univ nil 0 1 (ers nil (UU 1)) eq_refl)) as [x Dx].
-  destruct (itm_univ_ty nil (nat_ 0) 1 (ers nil (UU 1)) (univFam 1)
-              (ers nil (nat_ 0)) x (iso_self (univFam 1)) Dx) as [F0 [D0 _]].
-  pose proof (ity_lvl_dec nil (nat_ 0) 1 (ers nil (nat_ 0)) F0 D0) as E.
-  cbn [LvlDec] in E; discriminate E.
-Qed.
+(* That there is still no cumulativity -- `nat_ 0` is a type of `UU 0` and of
+   no other universe -- is a statement about the MODEL (a reading of `nat_ 0`
+   as an element of `UU 1` would have level 1 as well as level 0), so it comes
+   back with Interp/.  The object-language half is above: version B has to be
+   built out of `nat_ 1`, not `nat_ 0`. *)

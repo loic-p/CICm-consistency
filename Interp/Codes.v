@@ -1,243 +1,394 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Ann Syntax.Erasure.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def Layer1.Bundle Layer1.Elim.
 From CICM Require Import Ranks.Pred Ranks.Ord Ranks.Acc Ranks.Rank.
-From CICM Require Import Codes.Def Codes.Sound Codes.EqPER Codes.Expand Codes.Iso
-  Codes.WF Codes.IsoPER Codes.Levels.
+From CICM Require Import Codes.Def Codes.Eq Codes.WF Codes.Sym Codes.Str Codes.Sound
+  Codes.Expand Codes.Refl Codes.Mor Codes.Levels Codes.Lift.
 From Stdlib Require Import Arith Lia.
 
 (* Smart constructors for the codes the interpretation builds, one per type
-   former, each packaged with the identity property IdP of the code it
-   produces, so that it can be used in turn as a component of a bigger code.
+   former, each with the well-formedness of the code it produces, so that it
+   can be used in turn as a component of a bigger code.
 
-   The Pi constructor is the point of the whole of Codes/: it takes the
-   codomain family together with the *isomorphisms* between its values at
-   related arguments -- which is what the fundamental lemma has at a
-   subderivation -- and discharges the three laws that Refine demands of a
-   Pi-code.  The coherence data is the canonical transport of Codes/Iso.v,
-   the composition law is its functoriality, and the identity law is the
-   identity property of the codomain codes. *)
+   This is where v2's redesign shows most plainly.  A v1 Pi-code carried a
+   TRANSPORT between the codomain codes at related arguments, together with
+   its composition and identity laws, so `mkPi` had to build that transport
+   out of the canonical one of Codes/Iso.v and discharge three laws; the
+   file was 243 lines for Pi and Sigma alone.  Here a binder code carries its
+   components' EQUALITIES, the interpretation hands it the canonical ones, and
+   the only genuine input is the coherence of the codomain family -- "related
+   arguments give equal codomain codes" -- which is exactly what the
+   fundamental lemma has at the subderivation of the codomain.  Nothing has to
+   be transported, so there are no laws to discharge. *)
+
+(* PERFORMANCE.  v1's Interp/SigEl.v took ~500s and Interp/Build.v ~40s,
+   because the conversion checker was asked to compare composites of canonical
+   TRANSPORTS -- terms built from `hj`, a double recursion over Brouwer trees
+   whose indices come from `rk`.  v2 has no transports in its codes, so the
+   families above compile in under a second each; what remains of that risk is
+   the COERCION of Codes/Str.v, whose value comes out of the `big` pack and is
+   never needed (only its coherence is).  Sealing it, and the other
+   stage-recursive constructions, keeps the oracle from ever unfolding one.
+
+   If a later file genuinely needs one of these to compute, it can reopen it
+   locally with `Transparent`; nothing below relies on their values. *)
+
+Opaque xto xtrU xtrE nsym nsymU xsym xsymU big.
+Opaque crefl subRefl elRefl.
+Opaque cRed cExp cRed_rel cExp_rel bigExp.
 
 (* ------------------------------------------------------------------ *)
-(* Level-k abbreviations. *)
+(* Level-k abbreviations.                                              *)
+(* ------------------------------------------------------------------ *)
 
 Definition kU (k : nat) : nat -> etm -> Type := lU (lvl k).
-Definition kUEq (k : nat) : forall m u, kU k m u -> forall u', kU k m u' -> Prop :=
-  lUEq (lvl k).
+Definition kUEq (k : nat)
+  : forall m u, kU k m u -> forall m' u', kU k m' u' -> Prop := lUEq (lvl k).
 Definition kOK (k : nat) : nat -> Prop := lOK (lvl k).
+Definition krefl (k : nat) := lrefl (lvl k).
 Definition ksym (k : nat) := lsym (lvl k).
 Definition ktrans (k : nat) := ltrans (lvl k).
 
-Definition kstage (k : nat) (alpha : Ord) : Stage := stage (kU k) (kUEq k) (kOK k) alpha.
-Definition kUst (k : nat) (beta : Ord) : Stage := Ust (kU k) (kUEq k) (kOK k) beta.
-Definition kSub (k : nat) (alpha : Ord) : Type := (kstage k alpha).(St).
-Definition kSh {k alpha} (s : kSub k alpha) : etm := (kstage k alpha).(StSh) s.
-Definition kElS {k alpha} (s : kSub k alpha) (u : etm) : Type := (kstage k alpha).(StEl) s u.
-Definition kEqS {k alpha} (s : kSub k alpha) u (x : kElS s u) u' (x' : kElS s u') : Prop :=
-  (kstage k alpha).(StEq) s u x u' x'.
+Definition kstage (k : nat) (alpha : Ord) : Stage := stage (kU k) (kOK k) alpha.
+Definition kUst (k : nat) (beta : Ord) : Stage := Ust (kU k) (kOK k) beta.
+Definition kSub (k : nat) (alpha : Ord) : Type := St (kstage k alpha).
+Definition kCode (k : nat) (beta : Ord) : Type := U (kU k) (kOK k) beta.
 
-Definition khj (k : nat) := hj (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k).
-Definition kirel {k alpha} (s s' : kSub k alpha) : Prop := hj_rel (khj k alpha alpha) s s'.
-Definition kidps (k : nat) (alpha : Ord) : kSub k alpha -> Prop :=
-  idps (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) alpha.
+Definition kSh {k alpha} (s : kSub k alpha) : etm := StSh (kstage k alpha) s.
+Definition kElS {k alpha} (s : kSub k alpha) (u : etm) : Type :=
+  StEl (kstage k alpha) s u.
+
+(* the canonical equalities, HETEROGENEOUS in the code: this is the whole
+   difference from v1, where `kEqS` could only compare elements of one code
+   and a transport was needed to say anything about two *)
+(* heterogeneous in the NODE as well as in the code: two components placed at
+   two different nodes are compared directly *)
+Definition kcU {k alpha alpha'} (s : kSub k alpha) (s' : kSub k alpha') : Prop :=
+  cU (xcmp (kU k) (kUEq k) (kOK k) alpha alpha') s s'.
+Definition kcEl {k alpha alpha'} (s : kSub k alpha) u (x : kElS s u)
+  (s' : kSub k alpha') u' (x' : kElS s' u') : Prop :=
+  cEl (xcmp (kU k) (kUEq k) (kOK k) alpha alpha') s u x s' u' x'.
+Definition kwfS {k alpha} (s : kSub k alpha) : Prop :=
+  wfsub (kU k) (kUEq k) (kOK k) alpha s.
+
+(* and the same at a node *)
+Definition kElC {k beta} (c : kCode k beta) (u : etm) : Type := StEl (kUst k beta) c u.
+Definition kceq {k beta beta'} (c : kCode k beta) (c' : kCode k beta') : Prop :=
+  ceq (kU k) (kUEq k) (kOK k) c c'.
+Definition kcel {k beta beta'} (c : kCode k beta) u (x : kElC c u)
+  (c' : kCode k beta') u' (x' : kElC c' u') : Prop :=
+  cel (kU k) (kUEq k) (kOK k) c u x c' u' x'.
+Definition kwfc {k beta} (c : kCode k beta) : Prop := wfc (kU k) (kUEq k) (kOK k) c.
 
 (* The universe u_m is a code of level k exactly when m < k. *)
 Lemma kOK_iff k m : kOK k m <-> m < k.
-Proof.
-  unfold kOK; destruct k as [| n]; cbn.
-  - split; [intros [] | intros H; inversion H].
-  - split; auto.
-Qed.
+Proof. exact (lOK_lt k m). Qed.
 
 Lemma kOK_of k m : m < k -> kOK k m.
 Proof. apply kOK_iff. Qed.
 
-(* A code of level k at node beta with shadow S is exactly a refinement
-   over the codes strictly below beta, indexed by S. *)
+(* the structure of the hierarchy, specialised to level k *)
+Definition kself {k alpha} (s : kSub k alpha) : kwfS s -> kcU s s :=
+  fun w => wfsub_self (kU k) (kUEq k) (kOK k) alpha s w.
+Definition kselfE {k alpha} (s : kSub k alpha) (w : kwfS s) u (x : kElS s u)
+  : kcEl s u x s u x :=
+  subRefl (kU k) (kUEq k) (kOK k) (krefl k) alpha s w u x.
+Definition kcsym {k alpha} := xsym (kU k) (kUEq k) (kOK k) (ksym k)
+  (alpha := alpha) (alpha' := alpha).
+Definition kcsymU {k alpha} := xsymU (kU k) (kUEq k) (kOK k) (ksym k)
+  (alpha := alpha) (alpha' := alpha).
+
+Definition kcrefl {k beta} (c : kCode k beta) (W : kwfc c) u (x : kElC c u)
+  : kcel c u x c u x :=
+  crefl (kU k) (kUEq k) (kOK k) (krefl k) c W u x.
+Definition knsym {k b b'} (c : kCode k b) (c' : kCode k b') u x u' x'
+  : kcel c u x c' u' x' -> kcel c' u' x' c u x :=
+  nsym (kU k) (kUEq k) (kOK k) (ksym k) c c' u x u' x'.
+Definition knsymU {k b b'} (c : kCode k b) (c' : kCode k b')
+  : kceq c c' -> kceq c' c :=
+  nsymU (kU k) (kUEq k) (kOK k) (ksym k) c c'.
+Definition ktrU {k b b' b''} (c : kCode k b) (c' : kCode k b') (c'' : kCode k b'')
+  : kwfc c -> kwfc c' -> kwfc c'' -> kceq c c' -> kceq c' c'' -> kceq c c'' :=
+  xtrU (kU k) (kUEq k) (kOK k) (krefl k) (ksym k) (ktrans k) c c' c''.
+Definition ktrE {k b b' b''} (c : kCode k b) (c' : kCode k b') (c'' : kCode k b'')
+  : forall u x u' x' u'' x'', kwfc c -> kwfc c' -> kwfc c'' -> kceq c c' ->
+    kcel c u x c' u' x' -> kcel c' u' x' c'' u'' x'' -> kcel c u x c'' u'' x'' :=
+  xtrE (kU k) (kUEq k) (kOK k) (krefl k) (ksym k) (ktrans k) c c' c''.
+
+(* the coercion, with its coherence and its respect for the equality *)
+Definition kto {k b b'} (c : kCode k b) (c' : kCode k b') (W : kwfc c) (W' : kwfc c')
+  (e : kceq c c') u (x : kElC c u) : kElC c' u :=
+  xto (kU k) (kUEq k) (kOK k) (krefl k) (ksym k) (ktrans k) c c' W W' e u x.
+Definition kto_coh {k b b'} (c : kCode k b) (c' : kCode k b') W W' e u x
+  : kcel c u x c' u (kto c c' W W' e u x) :=
+  xto_coh (kU k) (kUEq k) (kOK k) (krefl k) (ksym k) (ktrans k) c c' W W' e u x.
+Definition kto_eq {k b b'} (c : kCode k b) (c' : kCode k b') W W' (e : kceq c c')
+  (c0 : kCode k b) (c0' : kCode k b') W0 W0' (e0 : kceq c0 c0') u x u0 x0
+  : kceq c c0 -> kcel c u x c0 u0 x0 ->
+    kcel c' u (kto c c' W W' e u x) c0' u0 (kto c0 c0' W0 W0' e0 u0 x0) :=
+  xto_eq (kU k) (kUEq k) (kOK k) (krefl k) (ksym k) (ktrans k) c c' W W' e
+    c0 c0' W0 W0' e0 u x u0 x0.
+
+(* ------------------------------------------------------------------ *)
+(* Layer-1 types of the realisers: what the self-equality of a code     *)
+(* asks for.  v1's `wfa` did not include it; v2's does, because a code's *)
+(* self-equality is what the coercion's coherence needs at a Pi code.    *)
+(* ------------------------------------------------------------------ *)
+
+Lemma tyeq_nat T : eval T enat -> tyeq T T.
+Proof. intros e; exists 0; exists NatPer; apply LR_nat; exact e. Qed.
+
+Lemma tyeq_prop T : eval T eprop -> tyeq T T.
+Proof. intros e; exists 0; exists PR; apply LR_prop; exact e. Qed.
+
+Lemma tyeq_prf T p : eval T (eprf p) -> PR p p -> tyeq T T.
+Proof. intros e Hp; exists 0; exists TruePer; eapply LR_prf; [exact e | exact e | exact Hp]. Qed.
+
+Lemma tyeq_univ T m : eval T (euniv m) -> tyeq T T.
+Proof.
+  intros e; exists (S m); eexists; apply (LR_univ _ _ T T m); [lia | exact e | exact e].
+Qed.
+
+(* ------------------------------------------------------------------ *)
+(* Codes at a node, and the four clauses that carry no components.      *)
+(* ------------------------------------------------------------------ *)
+
 Definition SRefine (k : nat) (beta : Ord) (S : etm) : Type :=
   Refine (kstage k beta) (kOK k) S.
-Definition mkCode {k beta S} (r : SRefine k beta S) : U (kU k) (kUEq k) (kOK k) beta :=
-  existT _ S r.
+Definition mkCode {k beta S} (r : SRefine k beta S) : kCode k beta := existT _ S r.
+Definition kwfa {k beta S} (r : SRefine k beta S) : Prop :=
+  wfRefine (xcmp (kU k) (kUEq k) (kOK k) beta beta) (fun s => kwfS s) r.
 
-Definition kwfa (k : nat) (alpha : Ord) {S} (r : SRefine k alpha S) : Prop :=
-  wfa (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) alpha r.
+Lemma kwfa_code {k beta S} (r : SRefine k beta S) : kwfa r -> kwfc (mkCode r).
+Proof. exact (fun h => h). Qed.
 
-(* The identity property of the code a smart constructor returns, stated at
-   the node it lives at. *)
-Definition kIdP (k : nat) (beta : Ord) {S} (r : SRefine k beta S) : Prop :=
-  IdP (kUst k beta) (hjU (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) beta beta) (mkCode r).
+Lemma mkCode_sh {k beta S} (r : SRefine k beta S) : projT1 (mkCode r) = S.
+Proof. reflexivity. Qed.
 
-Lemma kIdP_of k beta {S} (r : SRefine k beta S) : kwfa k beta r -> kIdP k beta r.
-Proof. intros W; apply (idp_next (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) beta r W). Qed.
-
-(* ------------------------------------------------------------------ *)
-(* The non-dependent formers.  Their well-formedness is vacuous. *)
-
-Definition mkNat k beta T (e : eval T enat) : SRefine k beta T := r_nat _ _ T e.
-Definition mkProp k beta T (e : eval T eprop) : SRefine k beta T := r_prop _ _ T e.
+Definition mkNat k beta T (e : eval T enat) : SRefine k beta T := r_nat T e.
+Definition mkProp k beta T (e : eval T eprop) : SRefine k beta T := r_prop T e.
 Definition mkPrf k beta T p (e : eval T (eprf p)) (H : Prop) : SRefine k beta T :=
-  r_prf _ _ T p e H.
+  r_prf T p e H.
 Definition mkUniv k beta T m (ok : kOK k m) (e : eval T (euniv m)) : SRefine k beta T :=
-  r_univ _ _ T m ok e.
-Definition mkNe k beta T N (e : eval T N) (s : stuck N) : SRefine k beta T := r_ne _ _ T N e s.
+  r_univ T m ok e.
 
-Lemma mkNat_wf k beta T e : kwfa k beta (mkNat k beta T e).
-Proof. exact I. Qed.
-Lemma mkProp_wf k beta T e : kwfa k beta (mkProp k beta T e).
-Proof. exact I. Qed.
-Lemma mkPrf_wf k beta T p e H : kwfa k beta (mkPrf k beta T p e H).
-Proof. exact I. Qed.
-Lemma mkUniv_wf k beta T m ok e : kwfa k beta (mkUniv k beta T m ok e).
-Proof. exact I. Qed.
-Lemma mkNe_wf k beta T N e s : kwfa k beta (mkNe k beta T N e s).
-Proof. exact I. Qed.
+Lemma mkNat_wf k beta T e : kwfa (mkNat k beta T e).
+Proof. split; [exact I | exact (tyeq_nat T e)]. Qed.
+
+Lemma mkProp_wf k beta T e : kwfa (mkProp k beta T e).
+Proof. split; [exact I | exact (tyeq_prop T e)]. Qed.
+
+Lemma mkPrf_wf k beta T p e H : PR p p -> kwfa (mkPrf k beta T p e H).
+Proof.
+  intros Hp; split; [exact I |].
+  split; [exact (tyeq_prf T p e Hp) | split; exact (fun h => h)].
+Qed.
+
+Lemma mkUniv_wf k beta T m ok e : kwfa (mkUniv k beta T m ok e).
+Proof. split; [exact I | split; [exact (tyeq_univ T m e) | reflexivity]]. Qed.
 
 (* ------------------------------------------------------------------ *)
-(* Pi. *)
+(* Pi.                                                                 *)
+(*                                                                    *)
+(* The code carries its components' canonical equalities, so the only   *)
+(* input beyond the components themselves is `cohB`: related arguments  *)
+(* give EQUAL codomain codes.  v1 needed, in place of `cohB`, a         *)
+(* transport between those codes together with its composition and      *)
+(* identity laws.                                                      *)
+(* ------------------------------------------------------------------ *)
 
 Section Pi.
-  Context (k : nat) (alpha : Ord).
-  Context (T A0 B0 : etm) (e : eval T (epi A0 B0)).
-  Context (a : kSub k alpha) (ea : tyeq (kSh a) A0).
-  Context (b : forall u, kElS a u -> kSub k alpha)
-          (eb : forall u x, tyeq (kSh (b u x)) (eapp B0 u)).
-  (* what the fundamental lemma has at the subderivation of the codomain *)
-  Context (isoB : forall u x u' x', kEqS a u x u' x' -> kirel (b u' x') (b u x)).
-  (* and the identity property of the codomain codes *)
-  Context (idb : forall u x, kidps k alpha (b u x)).
+Context (k : nat) (alpha : Ord).
+Context (T A0 B0 : etm) (e : eval T (epi A0 B0)) (ety : tyeq T T).
+Context (a : kSub k alpha) (ea : tyeq (kSh a) A0) (wa : kwfS a).
+Context (b : forall u, kElS a u -> kSub k alpha)
+        (eb : forall u x, tyeq (kSh (b u x)) (eapp B0 u))
+        (wb : forall u x, kwfS (b u x)).
+Context (cohB : forall u x u' x', kcEl a u x a u' x' -> kcU (b u x) (b u' x')).
 
-  Definition cohPi u x u' x' (r : kEqS a u x u' x')
-    : Transp (kstage k alpha) (b u' x') (b u x) :=
-    Build_Transp (kstage k alpha) (b u' x') (b u x)
-      (hj_to (khj k alpha alpha) (b u' x') (b u x) (isoB u x u' x' r))
-      (hj_to_eq (khj k alpha alpha) (b u' x') (b u x) (isoB u x u' x' r)).
+Definition mkPi : SRefine k alpha T :=
+  r_pi T A0 B0 e a ea (fun u x u' x' => kcEl a u x a u' x') b eb
+    (fun u x u' x' v y v' y' => kcEl (b u x) v y (b u' x') v' y').
 
-  (* Composition: functoriality of the canonical transport, plus the fact
-     that it does not depend on the relatedness proof. *)
-  Lemma cohPi_comp : forall u0 x0 u1 x1 u2 x2
-      (r01 : kEqS a u0 x0 u1 x1) (r12 : kEqS a u1 x1 u2 x2) (r02 : kEqS a u0 x0 u2 x2)
-      v (y : kElS (b u2 x2) v), goodS (kstage k alpha) (b u2 x2) v y ->
-      kEqS (b u0 x0) v (tr (cohPi _ _ _ _ r01) v (tr (cohPi _ _ _ _ r12) v y))
-                     v (tr (cohPi _ _ _ _ r02) v y).
-  Proof.
-    intros u0 x0 u1 x1 u2 x2 r01 r12 r02 v y _.
-    apply (proj1 (eqs_PER (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) alpha (b u0 x0))).
-    apply (proj2 (hj_transP (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) alpha alpha alpha)
-             (b u2 x2) (b u1 x1) (b u0 x0)
-             (isoB u1 x1 u2 x2 r12) (isoB u0 x0 u1 x1 r01) (isoB u0 x0 u2 x2 r02) v y).
-  Qed.
+Lemma mkPi_wf : kwfa mkPi.
+Proof.
+  split.
+  - split; [exact wa | split; [exact wb | split; intros; split; exact (fun h => h)]].
+  - split; [exact ety | split; [exact (kself a wa) | exact cohB]].
+Qed.
 
-  (* Identity: the transport along a self-isomorphism is the identity. *)
-  Lemma cohPi_id : forall u x (r : kEqS a u x u x) v (y : kElS (b u x) v),
-      goodS (kstage k alpha) (b u x) v y ->
-      kEqS (b u x) v (tr (cohPi _ _ _ _ r) v y) v y.
-  Proof. intros u x r v y _; exact (idb u x (isoB u x u x r) v y). Qed.
+(* elements: the extensional functions *)
+Definition mkPiEl u (f : forall u1 (x1 : kElS a u1), kElS (b u1 x1) (eapp u u1))
+  (fext : forall u1 x1 u1' x1', kcEl a u1 x1 a u1' x1' ->
+      kcEl (b u1 x1) (eapp u u1) (f u1 x1) (b u1' x1') (eapp u u1') (f u1' x1'))
+  (g : Good T u) : kElC (mkCode mkPi) u := (exist _ f fext, g).
 
-  Definition mkPi : SRefine k alpha T :=
-    r_pi (kstage k alpha) (kOK k) T A0 B0 e a ea b eb cohPi cohPi_comp cohPi_id.
+Definition mkPiApp u (F : kElC (mkCode mkPi) u) u1 (x1 : kElS a u1)
+  : kElS (b u1 x1) (eapp u u1) := proj1_sig (Datatypes.fst F) u1 x1.
 
-  Lemma mkPi_wf : (forall u x, kidps k alpha (b u x)) -> kidps k alpha a -> kwfa k alpha mkPi.
-  Proof.
-    intros Hb Ha; split; [exact Ha | split; [exact Hb |]].
-    intros u x u' x' rr v y G.
-    apply (hj_irr (khj k alpha alpha)).
-  Qed.
+Definition mkPiGood u (F : kElC (mkCode mkPi) u) : Good T u := Datatypes.snd F.
+
+Lemma mkPiApp_el u f fext g u1 x1 : mkPiApp u (mkPiEl u f fext g) u1 x1 = f u1 x1.
+Proof. reflexivity. Qed.
+
+Lemma mkPiApp_ext u (F : kElC (mkCode mkPi) u) u1 x1 u1' x1' :
+  kcEl a u1 x1 a u1' x1' ->
+  kcEl (b u1 x1) (eapp u u1) (mkPiApp u F u1 x1)
+       (b u1' x1') (eapp u u1') (mkPiApp u F u1' x1').
+Proof. exact (proj2_sig (Datatypes.fst F) u1 x1 u1' x1'). Qed.
+
+(* the equality of two function elements IS pointwise agreement on related
+   arguments: v1 had to compose with a transport to say this *)
+Lemma mkPi_eq u (F : kElC (mkCode mkPi) u) u' (F' : kElC (mkCode mkPi) u') :
+  (forall u1 x1 u1' x1', kcEl a u1 x1 a u1' x1' ->
+     kcEl (b u1 x1) (eapp u u1) (mkPiApp u F u1 x1)
+          (b u1' x1') (eapp u' u1') (mkPiApp u' F' u1' x1')) ->
+  Rel T u u' -> kcel (mkCode mkPi) u F (mkCode mkPi) u' F'.
+Proof. intros H HR; split; [exact H | split; [exact ety | exact HR]]. Qed.
+
+Lemma mkPi_eq_inv u (F : kElC (mkCode mkPi) u) u' (F' : kElC (mkCode mkPi) u') :
+  kcel (mkCode mkPi) u F (mkCode mkPi) u' F' ->
+  forall u1 x1 u1' x1', kcEl a u1 x1 a u1' x1' ->
+  kcEl (b u1 x1) (eapp u u1) (mkPiApp u F u1 x1)
+       (b u1' x1') (eapp u' u1') (mkPiApp u' F' u1' x1').
+Proof. intros H; exact (proj1 H). Qed.
 End Pi.
 
 (* ------------------------------------------------------------------ *)
-(* Sigma.  Identical data, identical laws: a Sigma-code differs from a
-   Pi-code only in the head its realiser evaluates to and in how its
-   decoding reads that data. *)
+(* Sigma.  The decoding carries no condition at all -- a pair is good    *)
+(* as soon as its components are -- so the element constructor is the    *)
+(* pair, and surjective pairing holds up to the equality by reflexivity  *)
+(* of the components.                                                   *)
+(* ------------------------------------------------------------------ *)
 
 Section Sig.
-  Context (k : nat) (alpha : Ord).
-  Context (T A0 B0 : etm) (e : eval T (esig A0 B0)).
-  Context (a : kSub k alpha) (ea : tyeq (kSh a) A0).
-  Context (b : forall u, kElS a u -> kSub k alpha)
-          (eb : forall u x, tyeq (kSh (b u x)) (eapp B0 u)).
-  (* what the fundamental lemma has at the subderivation of the codomain *)
-  Context (isoB : forall u x u' x', kEqS a u x u' x' -> kirel (b u' x') (b u x)).
-  (* and the identity property of the codomain codes *)
-  Context (idb : forall u x, kidps k alpha (b u x)).
+Context (k : nat) (alpha : Ord).
+Context (T A0 B0 : etm) (e : eval T (esig A0 B0)) (ety : tyeq T T).
+Context (a : kSub k alpha) (ea : tyeq (kSh a) A0) (wa : kwfS a).
+Context (b : forall u, kElS a u -> kSub k alpha)
+        (eb : forall u x, tyeq (kSh (b u x)) (eapp B0 u))
+        (wb : forall u x, kwfS (b u x)).
+Context (cohB : forall u x u' x', kcEl a u x a u' x' -> kcU (b u x) (b u' x')).
 
-  Definition cohSig u x u' x' (r : kEqS a u x u' x')
-    : Transp (kstage k alpha) (b u' x') (b u x) :=
-    Build_Transp (kstage k alpha) (b u' x') (b u x)
-      (hj_to (khj k alpha alpha) (b u' x') (b u x) (isoB u x u' x' r))
-      (hj_to_eq (khj k alpha alpha) (b u' x') (b u x) (isoB u x u' x' r)).
+Definition mkSig : SRefine k alpha T := r_sig T A0 B0 e a ea b eb.
 
-  (* Composition: functoriality of the canonical transport, plus the fact
-     that it does not depend on the relatedness proof. *)
-  Lemma cohSig_comp : forall u0 x0 u1 x1 u2 x2
-      (r01 : kEqS a u0 x0 u1 x1) (r12 : kEqS a u1 x1 u2 x2) (r02 : kEqS a u0 x0 u2 x2)
-      v (y : kElS (b u2 x2) v), goodS (kstage k alpha) (b u2 x2) v y ->
-      kEqS (b u0 x0) v (tr (cohSig _ _ _ _ r01) v (tr (cohSig _ _ _ _ r12) v y))
-                     v (tr (cohSig _ _ _ _ r02) v y).
-  Proof.
-    intros u0 x0 u1 x1 u2 x2 r01 r12 r02 v y _.
-    apply (proj1 (eqs_PER (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) alpha (b u0 x0))).
-    apply (proj2 (hj_transP (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) alpha alpha alpha)
-             (b u2 x2) (b u1 x1) (b u0 x0)
-             (isoB u1 x1 u2 x2 r12) (isoB u0 x0 u1 x1 r01) (isoB u0 x0 u2 x2 r02) v y).
-  Qed.
+Lemma mkSig_wf : kwfa mkSig.
+Proof.
+  split.
+  - split; [exact wa | split; [exact wb | exact I]].
+  - split; [exact ety | split; [exact (kself a wa) | exact cohB]].
+Qed.
 
-  (* Identity: the transport along a self-isomorphism is the identity. *)
-  Lemma cohSig_id : forall u x (r : kEqS a u x u x) v (y : kElS (b u x) v),
-      goodS (kstage k alpha) (b u x) v y ->
-      kEqS (b u x) v (tr (cohSig _ _ _ _ r) v y) v y.
-  Proof. intros u x r v y _; exact (idb u x (isoB u x u x r) v y). Qed.
+Definition mkSigEl u (z : kElS a (efst u)) (w : kElS (b (efst u) z) (esnd u))
+  (g : Good T u) : kElC (mkCode mkSig) u := (existT _ z w, g).
 
-  Definition mkSig : SRefine k alpha T :=
-    r_sig (kstage k alpha) (kOK k) T A0 B0 e a ea b eb cohSig cohSig_comp cohSig_id.
+Definition mkSigFst u (x : kElC (mkCode mkSig) u) : kElS a (efst u) :=
+  projT1 (Datatypes.fst x).
+Definition mkSigSnd u (x : kElC (mkCode mkSig) u)
+  : kElS (b (efst u) (mkSigFst u x)) (esnd u) := projT2 (Datatypes.fst x).
+Definition mkSigGood u (x : kElC (mkCode mkSig) u) : Good T u := Datatypes.snd x.
 
-  Lemma mkSig_wf : (forall u x, kidps k alpha (b u x)) -> kidps k alpha a -> kwfa k alpha mkSig.
-  Proof.
-    intros Hb Ha; split; [exact Ha | split; [exact Hb |]].
-    intros u x u' x' rr v y G.
-    apply (hj_irr (khj k alpha alpha)).
-  Qed.
+Lemma mkSigFst_pair u z w g : mkSigFst u (mkSigEl u z w g) = z.
+Proof. reflexivity. Qed.
+Lemma mkSigSnd_pair u z w g : mkSigSnd u (mkSigEl u z w g) = w.
+Proof. reflexivity. Qed.
 
-  (* Introducing and eliminating an element of a Sigma-code.  The two
-     projections are projections; the pair needs the self-relatedness that
-     Stage_next bundles into the decoding, and that is the identity law of the
-     code -- the transport along the self-relation of the first component does
-     nothing to the second. *)
-  Definition mkSigEl u (z : kElS a (efst u)) (w : kElS (b (efst u) z) (esnd u))
-    (g : Good T u) : (kUst k alpha).(StEl) (mkCode mkSig) u.
-  Proof.
-    refine (exist _ (existT _ z w, g) _).
-    split; [| split; [| exact g]].
-    - exists (stage_good (kU k) (kUEq k) (kOK k) alpha a (efst u) z).
-      apply (proj1 (eqs_PER (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) alpha
-                      (b (efst u) z))).
-      apply cohSig_id; apply stage_good.
-    - exists (stage_good (kU k) (kUEq k) (kOK k) alpha a (efst u) z).
-      apply (proj1 (eqs_PER (kU k) (kUEq k) (kOK k) (ksym k) (ktrans k) alpha
-                      (b (efst u) z))).
-      apply cohSig_id; apply stage_good.
-  Defined.
+(* surjective pairing at the level of the code: rebuilding an element from its
+   projections gives one RELATED to it (sigT has no eta), and related is all
+   the equality ever asks for *)
+Lemma mkSig_surj u (x : kElC (mkCode mkSig) u) :
+  kcel (mkCode mkSig) u (mkSigEl u (mkSigFst u x) (mkSigSnd u x) (mkSigGood u x))
+       (mkCode mkSig) u x.
+Proof.
+  split; [apply kselfE; exact wa |].
+  split; [apply kselfE; apply wb |].
+  split; [exact ety | exact (Datatypes.snd x)].
+Qed.
 
-  Definition mkSigFst u (x : (kUst k alpha).(StEl) (mkCode mkSig) u) : kElS a (efst u) :=
-    projT1 (Datatypes.fst (proj1_sig x)).
-
-  Definition mkSigSnd u (x : (kUst k alpha).(StEl) (mkCode mkSig) u)
-    : kElS (b (efst u) (mkSigFst u x)) (esnd u) :=
-    projT2 (Datatypes.fst (proj1_sig x)).
-
-  Definition mkSigGood u (x : (kUst k alpha).(StEl) (mkCode mkSig) u) : Good T u :=
-    Datatypes.snd (proj1_sig x).
-
-  Lemma mkSigFst_pair u z w g : mkSigFst u (mkSigEl u z w g) = z.
-  Proof. reflexivity. Qed.
-
-  Lemma mkSigSnd_pair u z w g : mkSigSnd u (mkSigEl u z w g) = w.
-  Proof. reflexivity. Qed.
-
-  (* Surjective pairing, at the level of the code: rebuilding an element from
-     its projections gives one RELATED to it -- not equal, because sigT has no
-     eta -- and related is all the equality of a code ever asks for. *)
-  Lemma mkSig_surj u (x : (kUst k alpha).(StEl) (mkCode mkSig) u) :
-    (kUst k alpha).(StEq) (mkCode mkSig) u (mkSigEl u (mkSigFst u x) (mkSigSnd u x) (mkSigGood u x)) u x.
-  Proof. exact (proj2_sig x). Qed.
+Lemma mkSig_eq u (x : kElC (mkCode mkSig) u) u' (x' : kElC (mkCode mkSig) u') :
+  kcEl a (efst u) (mkSigFst u x) a (efst u') (mkSigFst u' x') ->
+  kcEl (b (efst u) (mkSigFst u x)) (esnd u) (mkSigSnd u x)
+       (b (efst u') (mkSigFst u' x')) (esnd u') (mkSigSnd u' x') ->
+  Rel T u u' -> kcel (mkCode mkSig) u x (mkCode mkSig) u' x'.
+Proof. intros H1 H2 HR; split; [exact H1 | split; [exact H2 | split; [exact ety | exact HR]]]. Qed.
 End Sig.
 
+(* ------------------------------------------------------------------ *)
+(* W.  New in v2: the trees over a label code and a branching family.   *)
+(*                                                                    *)
+(* An element is a tree together with its self-relation, and `WRel t t` *)
+(* IS the statement that the tree's branching is hereditarily           *)
+(* extensional -- so `mkWsup` asks exactly for what the interpretation   *)
+(* of `sup` has: a label, a branch function into the W code, and the     *)
+(* extensionality of that function.                                     *)
+(* ------------------------------------------------------------------ *)
+
+Section W.
+Context (k : nat) (alpha : Ord).
+Context (T A0 B0 : etm) (e : eval T (ew A0 B0)) (ety : tyeq T T).
+Context (a : kSub k alpha) (ea : tyeq (kSh a) A0) (wa : kwfS a).
+Context (b : forall u, kElS a u -> kSub k alpha)
+        (eb : forall u x, tyeq (kSh (b u x)) (eapp B0 u))
+        (wb : forall u x, kwfS (b u x)).
+Context (cohB : forall u x u' x', kcEl a u x a u' x' -> kcU (b u x) (b u' x')).
+
+Definition mkW : SRefine k alpha T :=
+  r_w T A0 B0 e a ea (fun u x u' x' => kcEl a u x a u' x') b eb
+    (fun u x u' x' v y v' y' => kcEl (b u x) v y (b u' x') v' y').
+
+Lemma mkW_wf : kwfa mkW.
+Proof.
+  split.
+  - split; [exact wa | split; [exact wb | split; intros; split; exact (fun h => h)]].
+  - split; [exact ety | split; [exact (kself a wa) | exact cohB]].
+Qed.
+
+(* the trees and their relation, at the canonical equalities *)
+Definition kWEl (u : etm) : Type := WEl T a b u.
+Definition kWRel {u} (t : kWEl u) {u'} (t' : kWEl u') : Prop :=
+  WRel T T a a b b (fun u1 x1 u1' x1' => kcEl a u1 x1 a u1' x1')
+    (fun u1 x1 u1' x1' v y v' y' => kcEl (b u1 x1) v y (b u1' x1') v' y') t t'.
+
+Definition kWgood {u} (t : kWEl u) : Good T u :=
+  match t with wel_sup _ _ _ _ _ gd _ => gd end.
+
+Definition mkWtree u (x : kElC (mkCode mkW) u) : kWEl u := proj1_sig (Datatypes.fst x).
+Definition mkWrel u (x : kElC (mkCode mkW) u) : kWRel (mkWtree u x) (mkWtree u x) :=
+  proj2_sig (Datatypes.fst x).
+Definition mkWGood u (x : kElC (mkCode mkW) u) : Good T u := Datatypes.snd x.
+
+Definition mkWel u (t : kWEl u) (tr : kWRel t t) (g : Good T u)
+  : kElC (mkCode mkW) u := (exist (fun z : kWEl u => kWRel z z) t tr, g).
+
+(* sup *)
+Definition mkWsup (w u0 f : etm) (z : kElS a u0)
+  (ev : eval w (esup u0 f)) (gd : Good T w)
+  (sub : forall v (y : kElS (b u0 z) v), kElC (mkCode mkW) (eapp f v))
+  (subext : forall v y v' y', kcEl (b u0 z) v y (b u0 z) v' y' ->
+      kcel (mkCode mkW) (eapp f v) (sub v y) (mkCode mkW) (eapp f v') (sub v' y'))
+  : kElC (mkCode mkW) w.
+Proof.
+  refine (mkWel w (wel_sup w u0 z f ev gd (fun v y => mkWtree _ (sub v y))) _ gd).
+  cbn; split; [apply kselfE; exact wa |].
+  intros v y v' y' Hy; exact (proj1 (subext v y v' y' Hy)).
+Defined.
+
+(* the equality at a W code is the tree relation *)
+Lemma mkW_eq u (x : kElC (mkCode mkW) u) u' (x' : kElC (mkCode mkW) u') :
+  kWRel (mkWtree u x) (mkWtree u' x') -> Rel T u u' ->
+  kcel (mkCode mkW) u x (mkCode mkW) u' x'.
+Proof. intros H HR; split; [exact H | split; [exact ety | exact HR]]. Qed.
+
+Lemma mkW_eq_inv u (x : kElC (mkCode mkW) u) u' (x' : kElC (mkCode mkW) u') :
+  kcel (mkCode mkW) u x (mkCode mkW) u' x' -> kWRel (mkWtree u x) (mkWtree u' x').
+Proof. intros H; exact (proj1 H). Qed.
+
+(* and the branches of a related pair of sups are related: this is what the
+   recursor's step needs *)
+Lemma kWRel_sup_inv w u0 z f ev gd sb w' u0' z' f' ev' gd' sb' :
+  kWRel (wel_sup w u0 z f ev gd sb) (wel_sup w' u0' z' f' ev' gd' sb') ->
+  kcEl a u0 z a u0' z' /\
+  (forall v y v' y', kcEl (b u0 z) v y (b u0' z') v' y' -> kWRel (sb v y) (sb' v' y')).
+Proof. intros [Hl Hs]; split; [exact Hl | exact Hs]. Qed.
+End W.

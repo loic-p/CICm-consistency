@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def.
 
@@ -8,21 +8,34 @@ From CICM Require Import Layer1.Per Layer1.Def.
 
    Deviation from the blueprint: there is no universe clause.  Universes are
    handled by an outer recursion on the level in Codes/, so ranks only have
-   to bound the nesting of Pi and Sigma. *)
+   to bound the nesting of Pi, Sigma and W.
+
+   W contributes its label type and its branching types, exactly as Sigma
+   contributes its domain and its fibres: a code for a tree type is built
+   from a code for the labels and a family of codes for the branches, so
+   both have to sit strictly below it. *)
 Inductive Pred (T : etm) : Type :=
 | p_dom A0 B0 : eval T (epi A0 B0) -> Pred T
 | p_cod A0 B0 u : eval T (epi A0 B0) -> Good A0 u -> Pred T
 | p_sdom A0 B0 : eval T (esig A0 B0) -> Pred T
-| p_scod A0 B0 u : eval T (esig A0 B0) -> Good A0 u -> Pred T.
+| p_scod A0 B0 u : eval T (esig A0 B0) -> Good A0 u -> Pred T
+| p_wdom A0 B0 : eval T (ew A0 B0) -> Pred T
+| p_wcod A0 B0 u : eval T (ew A0 B0) -> Good A0 u -> Pred T.
 
 Arguments p_dom {T}. Arguments p_cod {T}. Arguments p_sdom {T}. Arguments p_scod {T}.
+Arguments p_wdom {T}. Arguments p_wcod {T}.
 
+(* NOTE.  The pattern variables are NOT called B0: the generated signature
+   declares `Inductive base := B0` for the level annotation's base type, so a
+   pattern variable of that name would be read as that constructor. *)
 Definition pred {T} (p : Pred T) : etm :=
   match p with
-  | p_dom A0 _ _ => A0
-  | p_cod _ B0 u _ _ => eapp B0 u
-  | p_sdom A0 _ _ => A0
-  | p_scod _ B0 u _ _ => eapp B0 u
+  | p_dom A _ _ => A
+  | p_cod _ B u _ _ => eapp B u
+  | p_sdom A _ _ => A
+  | p_scod _ B u _ _ => eapp B u
+  | p_wdom A _ _ => A
+  | p_wcod _ B u _ _ => eapp B u
   end.
 
 Definition prec (C T : etm) : Prop := exists p : Pred T, pred p = C.
@@ -32,10 +45,12 @@ Definition prec (C T : etm) : Prop := exists p : Pred T, pred p = C.
    beta-reduct comparable in Codes/. *)
 Definition Pred_red {T T'} (H : forall w, eval T w -> eval T' w) (p : Pred T) : Pred T' :=
   match p with
-  | p_dom A0 B0 e => p_dom A0 B0 (H _ e)
-  | p_cod A0 B0 u e g => p_cod A0 B0 u (H _ e) g
-  | p_sdom A0 B0 e => p_sdom A0 B0 (H _ e)
-  | p_scod A0 B0 u e g => p_scod A0 B0 u (H _ e) g
+  | p_dom A B e => p_dom A B (H _ e)
+  | p_cod A B u e g => p_cod A B u (H _ e) g
+  | p_sdom A B e => p_sdom A B (H _ e)
+  | p_scod A B u e g => p_scod A B u (H _ e) g
+  | p_wdom A B e => p_wdom A B (H _ e)
+  | p_wcod A B u e g => p_wcod A B u (H _ e) g
   end.
 
 Lemma pred_Pred_red {T T'} (H : forall w, eval T w -> eval T' w) p :

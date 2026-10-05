@@ -1,8 +1,7 @@
-From CICM Require Import core unscoped Syntax Erasure.
+From CICM Require Import Syntax.Ann Syntax.Erasure.
 From CICM Require Import Typing.Rules.
 From Stdlib Require Import Arith.
 
-Import UnscopedNotations.
 Open Scope list_scope.
 
 (* ================================================================== *)
@@ -88,8 +87,8 @@ Ltac tystep0 :=
      what `le_n` forces: every proposition here lives at level 0. *)
   | |- ty _ (prf _ _) _ => refine (t_prf _ _ _ _ (le_n _) _)
   | |- ty _ (all _ _ _) _ => eapply t_all
-  | |- ty _ (pi _ _ _) _ => refine (t_pi _ _ _ _ _ (le_n _) _ _)
-  | |- ty _ (lam _ _ _ _) _ => refine (t_lam _ _ _ _ _ _ (le_n _) _ _ _)
+  | |- ty _ (pi _ _ _) _ => refine (t_pi _ _ _ _ _ _ (le_n _) (le_n _) _ _)
+  | |- ty _ (lam _ _ _ _) _ => refine (t_lam _ _ _ _ _ _ _ (le_n _) (le_n _) _ _ _)
   | |- ty _ (var_tm _) _ => eapply t_var; [ | lk ]
   | _ => eassumption
   end.
@@ -168,9 +167,9 @@ Theorem ty_conjAt G (W : wfc G) a b (da : ty G a (prop 0)) (db : ty G b (prop 0)
   ty G (conjAt a b) (prop 0).
 Proof.
   unfold conjAt.
-  refine (t_app G 0 0 (prop 0) (prop 0) _ b (le_n 0) (t_prop G 0 W)
+  refine (t_app G 0 0 0 (prop 0) (prop 0) _ b (le_n 0) (le_n 0) (t_prop G 0 W)
             (t_prop _ 0 (w_cons G (prop 0) 0 W (t_prop G 0 W))) _ db).
-  exact (t_app G 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) conj a (le_n 0) (t_prop G 0 W)
+  exact (t_app G 0 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) conj a (le_n 0) (le_n 0) (t_prop G 0 W)
            (ty_pipp _ (w_cons G (prop 0) 0 W (t_prop G 0 W))) (ty_conj G W) da).
 Qed.
 
@@ -178,9 +177,9 @@ Theorem ty_disjAt G (W : wfc G) a b (da : ty G a (prop 0)) (db : ty G b (prop 0)
   ty G (disjAt a b) (prop 0).
 Proof.
   unfold disjAt.
-  refine (t_app G 0 0 (prop 0) (prop 0) _ b (le_n 0) (t_prop G 0 W)
+  refine (t_app G 0 0 0 (prop 0) (prop 0) _ b (le_n 0) (le_n 0) (t_prop G 0 W)
             (t_prop _ 0 (w_cons G (prop 0) 0 W (t_prop G 0 W))) _ db).
-  exact (t_app G 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) disj a (le_n 0) (t_prop G 0 W)
+  exact (t_app G 0 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) disj a (le_n 0) (le_n 0) (t_prop G 0 W)
            (ty_pipp _ (w_cons G (prop 0) 0 W (t_prop G 0 W))) (ty_disj G W) da).
 Qed.
 
@@ -213,14 +212,14 @@ Proof.
     by (unfold conj_mid_body; tyauto0).
   unfold conjAt.
   eapply c_trans.
-  - refine (c_app G 0 0 (prop 0) (prop 0) (app (prop 0) (pi 0 (prop 0) (prop 0)) conj (var_tm i))
-              (conj_mid i) (var_tm j) (var_tm j) (le_n 0) (t_prop G 0 W) (t_prop _ 0 W1)
+  - refine (c_app G 0 0 0 (prop 0) (prop 0) (app (prop 0) (pi 0 (prop 0) (prop 0)) conj (var_tm i))
+              (conj_mid i) (var_tm j) (var_tm j) (le_n 0) (le_n 0) (t_prop G 0 W) (t_prop _ 0 W1)
               _ dmid _ dj dj (c_refl G (var_tm j) (prop 0) dj)).
-    + exact (t_app G 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) conj (var_tm i) (le_n 0) (t_prop G 0 W)
+    + exact (t_app G 0 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) conj (var_tm i) (le_n 0) (le_n 0) (t_prop G 0 W)
                (ty_pipp _ W1) (ty_conj G W) di).
-    + exact (c_beta G 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) conj_inner (var_tm i) (le_n 0) (t_prop G 0 W)
+    + exact (c_beta G 0 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) conj_inner (var_tm i) (le_n 0) (le_n 0) (t_prop G 0 W)
                (ty_pipp _ W1) dinner di).
-  - exact (c_beta G 0 0 (prop 0) (prop 0) (conj_mid_body i) (var_tm j) (le_n 0) (t_prop G 0 W)
+  - exact (c_beta G 0 0 0 (prop 0) (prop 0) (conj_mid_body i) (var_tm j) (le_n 0) (le_n 0) (t_prop G 0 W)
              (t_prop _ 0 W1) dmidb dj).
 Qed.
 
@@ -239,14 +238,14 @@ Proof.
     by (unfold disj_mid_body; tyauto0).
   unfold disjAt.
   eapply c_trans.
-  - refine (c_app G 0 0 (prop 0) (prop 0) (app (prop 0) (pi 0 (prop 0) (prop 0)) disj (var_tm i))
-              (disj_mid i) (var_tm j) (var_tm j) (le_n 0) (t_prop G 0 W) (t_prop _ 0 W1)
+  - refine (c_app G 0 0 0 (prop 0) (prop 0) (app (prop 0) (pi 0 (prop 0) (prop 0)) disj (var_tm i))
+              (disj_mid i) (var_tm j) (var_tm j) (le_n 0) (le_n 0) (t_prop G 0 W) (t_prop _ 0 W1)
               _ dmid _ dj dj (c_refl G (var_tm j) (prop 0) dj)).
-    + exact (t_app G 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) disj (var_tm i) (le_n 0) (t_prop G 0 W)
+    + exact (t_app G 0 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) disj (var_tm i) (le_n 0) (le_n 0) (t_prop G 0 W)
                (ty_pipp _ W1) (ty_disj G W) di).
-    + exact (c_beta G 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) disj_inner (var_tm i) (le_n 0) (t_prop G 0 W)
+    + exact (c_beta G 0 0 0 (prop 0) (pi 0 (prop 0) (prop 0)) disj_inner (var_tm i) (le_n 0) (le_n 0) (t_prop G 0 W)
                (ty_pipp _ W1) dinner di).
-  - exact (c_beta G 0 0 (prop 0) (prop 0) (disj_mid_body i) (var_tm j) (le_n 0) (t_prop G 0 W)
+  - exact (c_beta G 0 0 0 (prop 0) (prop 0) (disj_mid_body i) (var_tm j) (le_n 0) (le_n 0) (t_prop G 0 W)
              (t_prop _ 0 W1) dmidb dj).
 Qed.
 

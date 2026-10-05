@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def.
 
@@ -36,6 +36,22 @@ Proof.
   - apply HB; [apply HA|]; assumption.
 Qed.
 
+Lemma WPer_ext PA PA' PB PB' :
+  PA ≐ PA' -> (forall u u', PA u u' -> PB u u' ≐ PB' u u') ->
+  WPer PA PB ≐ WPer PA' PB'.
+Proof.
+  intros HA HB w w'; split; intros H.
+  - induction H as [w w' a a' f f' Hw Hw' Ha Hf IH | w w' Hw Hw'].
+    + eapply wp_sup; [exact Hw | exact Hw' | apply HA; exact Ha |].
+      intros u u' Hu; apply IH, HB; [exact Ha | exact Hu].
+    + apply wp_stuck; assumption.
+  - induction H as [w w' a a' f f' Hw Hw' Ha Hf IH | w w' Hw Hw'].
+    + assert (Ha' : PA a a') by (apply HA; exact Ha).
+      eapply wp_sup; [exact Hw | exact Hw' | exact Ha' |].
+      intros u u' Hu; apply IH, HB; [exact Ha' | exact Hu].
+    + apply wp_stuck; assumption.
+Qed.
+
 Section Inv.
 Context (n : nat) (X : nat -> etm -> etm -> PER -> Prop).
 
@@ -50,6 +66,7 @@ Proof.
     | solve [eapply LR_univ; eauto using eval_reds_inv]
     | solve [eapply LR_pi; eauto using eval_reds_inv]
     | solve [eapply LR_sig; eauto using eval_reds_inv]
+    | solve [eapply LR_w; eauto using eval_reds_inv]
     | solve [eapply LR_ne; eauto using eval_reds_inv] ] ].
   - eapply LR_ext; [apply IHLR; assumption | assumption].
   - destruct (reds_diamond _ _ _ H HB) as [D1 | D1];
@@ -70,6 +87,7 @@ Ltac lr_induction He :=
     | A A' HeA HeA'
     | A A' q q' HeA HeA' HPR
     | A A' m0 Hm HeA HeA'
+    | A A' C0 D0 C0' D0' PA PB HeA HeA' HA IHA HB IHB
     | A A' C0 D0 C0' D0' PA PB HeA HeA' HA IHA HB IHB
     | A A' C0 D0 C0' D0' PA PB HeA HeA' HA IHA HB IHB
     | A A' M M' HeA HeA' HsM HsM' ];
@@ -137,6 +155,20 @@ Lemma LR_inv_sig A A' P A0 B0 : LR n X A A' P -> eval A (esig A0 B0) ->
   exists A0' B0' PA PB, eval A' (esig A0' B0') /\ LR n X A0 A0' PA /\
     (forall u u', PA u u' -> LR n X (eapp B0 u) (eapp B0' u') (PB u u')) /\
     P ≐ SigPer PA PB.
+Proof.
+  lr_induction He; try solve [eval_confl].
+  - destruct (IH He) as [A0' [B0' [PA [PB [H1 [H2 [H3 H4]]]]]]].
+    exists A0', B0', PA, PB; split; [exact H1 | split; [exact H2 | split; [exact H3 |]]].
+    eapply PerEq_trans; [apply PerEq_sym; exact HPQ | exact H4].
+  - destruct (IH (eval_reds_inv _ _ _ HrA He)) as [A0' [B0' [PA [PB [H1 [H2 [H3 H4]]]]]]].
+    exists A0', B0', PA, PB; split; [eapply eval_reds; eauto | split; [exact H2 | split; [exact H3 | exact H4]]].
+  - eval_confl. exists C0', D0', PA, PB; split; [assumption | split; [assumption | split; [assumption | apply PerEq_refl]]].
+Qed.
+
+Lemma LR_inv_w A A' P A0 B0 : LR n X A A' P -> eval A (ew A0 B0) ->
+  exists A0' B0' PA PB, eval A' (ew A0' B0') /\ LR n X A0 A0' PA /\
+    (forall u u', PA u u' -> LR n X (eapp B0 u) (eapp B0' u') (PB u u')) /\
+    P ≐ WPer PA PB.
 Proof.
   lr_induction He; try solve [eval_confl].
   - destruct (IH He) as [A0' [B0' [PA [PB [H1 [H2 [H3 H4]]]]]]].

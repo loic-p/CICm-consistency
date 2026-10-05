@@ -1,59 +1,95 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
-From CICM Require Import Layer1.Per Layer1.Def Ranks.Pred Ranks.Ord.
+From CICM Require Import Layer1.Per Layer1.Def Layer1.Bundle Layer1.Elim.
+From CICM Require Import Ranks.Pred Ranks.Ord.
+From Stdlib Require Import Arith Lia.
 
-(* The stratified universe of assembly codes.
+(* The stratified universe of assembly codes, v2.
 
-   Deviations from the blueprint, all forced by Rocq rather than chosen:
+   The design and its rationale are in Codes/DESIGN.md; the four points that
+   differ from v1 are these.
 
-   1. A code at stage alpha is a refinement over the codes strictly below,
-      packaged as a record Stage (carrier, decoding, equality, shadow).  The
-      hierarchy is a plain Fixpoint on Brouwer trees returning a Stage.
-      Sub alpha contains the codes at *every* node strictly below alpha, not
-      only at the immediate predecessors, so that placing a code into a
-      higher stage is a constructor injection, definitional on decodings.
+   1. THE EQUALITY IS HETEROGENEOUS and it is not part of a stage.  A `Stage`
+      is a carrier, a decoding and a shadow -- nothing else.  The equalities
+      are defined in Codes/Eq.v, by a double recursion over the Brouwer trees,
+      as relations between codes of TWO stages.  That is what removes the
+      transport data from the codes: v1 could only say "f maps related
+      arguments to related values" through a transport carried by the Pi-code,
+      because its equality was homogeneous.
 
-   2. A Pi-code carries its coherence as transport *data* between the codomain
-      codes at related arguments, with the setoid laws (preservation,
-      composition, identity).  The blueprint states coherence as a Prop about
-      an isomorphism between two different codes; that needs an equality
-      between elements of different codes at the same stage, which cannot be
-      defined before the stage is.  With transports, every condition in
-      Refine only mentions the equality of a single component.
+   2. THE BINDER CLAUSES CARRY THEIR COMPONENTS' EQUALITIES.  A Pi-code's
+      decoding must contain only the EXTENSIONAL functions -- a codomain
+      family is indexed by the domain's elements, and the interpretation has
+      nothing to give at a non-extensional one -- and extensionality is a
+      statement about the heterogeneous equality of the codomain codes, which
+      is the very thing being defined.  Carrying the components' equalities as
+      parameters breaks that circularity (it is what `cPi` does in the setoid
+      universe's univ0.v), and Codes/WF.v then pins them to the canonical
+      ones.  Read positively: a binder code carries its components AS
+      ASSEMBLIES, which is exactly the input a type former expects.
 
-   3. The universe clause does not mention S: its decoding is a parameter,
-      instantiated by the completed lower level (Codes/Levels.v) as a family
-      over every term and accessibility proof, so that no transport along
-      the rank is ever needed.  Ranks therefore never mention universes; the
-      embedding up is a level lift.
+      Sigma carries nothing: a pair is good as soon as its components are.
 
-   4. The decoding of a code contains only self-related elements: Stage_next
-      bundles the equality proof into the decoding with a sig.  This is what
-      makes "El of a Pi-code is the functions respecting the equality" true
-      by construction, and it is forced by Codes/Iso.v: the image of a
-      function under an isomorphism is built by pulling an *arbitrary*
-      argument of the target domain back along the inverse transport, and
-      the pullback is only a legitimate argument of the source function
-      because every element is self-related. *)
+   3. GOODNESS IS INSIDE THE DECODING, clause by clause (the sig at Pi, the
+      WExt at W), not bundled by Stage_next as in v1.  This is what lets a
+      Stage have no equality field at all.
+
+   4. THERE IS NO NEUTRAL CLAUSE.  v1 carried `r_ne`, a code for a stuck type
+      with an empty decoding, to mirror layer 1's LR_ne.  Nothing ever built
+      one: a code is produced by the interpretation from a derivation and a
+      GOOD environment, and the only rule whose subject can have a stuck
+      erasure is `absurd`, whose case is vacuous -- it needs an element of the
+      interpretation of Prf False, of which there are none.  So no code has a
+      stuck shadow, hence no environment can supply a stuck type either, and
+      the clause is unreachable.  Dropping it removes a case from every match
+      and, in the double ones, fifteen.
+
+   5. W IS NEW.  Its decoding is an inductive family of trees and its relation
+      is a recursion on trees, generic in the two stages so that ONE
+      definition serves both the carried equalities (inside the decoding) and
+      the canonical cross-code comparison (in Codes/Eq.v).  The extensional
+      trees need no predicate of their own: `WRel t t` at the carried
+      relations already says "hereditarily, related branches give related
+      subtrees", which is what the setoid universe's `Wext` carves out by an
+      inductive. *)
 
 Definition tyeq A B := exists n, eqty n A B.
 
+Lemma tyeq_sym A B : tyeq A B -> tyeq B A.
+Proof. intros [n H]; exists n; apply eqty_sym; exact H. Qed.
+
+Lemma tyeq_trans A B C : tyeq A B -> tyeq B C -> tyeq A C.
+Proof.
+  intros [n H] [m H']; exists (Nat.max n m); eapply eqty_trans;
+    [apply (eqty_cumul n (Nat.max n m) _ _ (Nat.le_max_l _ _)); exact H
+    |apply (eqty_cumul m (Nat.max n m) _ _ (Nat.le_max_r _ _)); exact H'].
+Qed.
+
+Lemma Good_tyeq T T' u : tyeq T T' -> Good T u -> Good T' u.
+Proof. intros [n E] G; eapply (Rel_resp n T T' E); exact G. Qed.
+
+Lemma Rel_tyeq T T' u u' : tyeq T T' -> Rel T u u' -> Rel T' u u'.
+Proof. intros [n E] H; eapply (Rel_resp n T T' E); exact H. Qed.
+
+(* ------------------------------------------------------------------ *)
+(* The semantic natural numbers, verbatim from v1.                     *)
+(* ------------------------------------------------------------------ *)
+
 (* u is the j-th numeral, level by level, up to weak head evaluation at each
    level.  NOT "eval u (num j)": esucc w is already a value, so it evaluates
-   only to itself, and asking for a syntactically numeral whnf would leave
-   the decoding of N empty at every realiser that is not literally a numeral
-   -- in particular at the erasure of `succ n` for any n that is not already
-   one.  This is the same mistake as a flat NatPer one layer down (see the
-   note on NatPer in Layer1/Per.v); here it matters for the DECODING, so it
-   would have made the interpretation of succ undefined.
+   only to itself, and asking for a syntactically numeral whnf would leave the
+   decoding of N empty at every realiser that is not literally a numeral -- in
+   particular at the erasure of `succ n` for any n that is not already one.
+   This is the same mistake as a flat NatPer one layer down (see the note on
+   NatPer in Layer1/Per.v); here it matters for the DECODING, so it would have
+   made the interpretation of succ undefined.
 
    Unlike NatPer there is no stuck clause, and that is the point: layer 2 is
-   truth-sensitive, so a stuck realiser carries no semantic element. *)
-(* This is Type-valued, not Prop-valued, and deliberately so: the semantic
-   recursor for natrec recurses on j and needs the PREDECESSOR REALISER u' at
-   each step to build a Type-valued element, which a Prop-valued existential
-   would not release.  The equality on the decoding never looks at the
-   witness -- only at j -- so nothing is lost. *)
+   truth-sensitive, so a stuck realiser carries no semantic element.
+
+   This is Type-valued, and deliberately so: the semantic recursor for natrec
+   recurses on j and needs the PREDECESSOR REALISER u' at each step to build a
+   Type-valued element, which a Prop-valued existential would not release. *)
 Fixpoint NatAt (j : nat) (u : etm) : Type :=
   match j with
   | 0 => eval u ezero
@@ -111,228 +147,198 @@ Proof.
       [exact Ha | exact Hb | eapply IH; eassumption].
 Qed.
 
+(* ------------------------------------------------------------------ *)
+(* Stages: the codes available below, their decodings, their shadows.  *)
+(* ------------------------------------------------------------------ *)
+
 Record Stage := {
   St : Type;
   StEl : St -> etm -> Type;
-  StEq : forall s u, StEl s u -> forall u', StEl s u' -> Prop;
   StSh : St -> etm
 }.
 
-(* Point 4 above, as a property: it holds definitionally of every stage in
-   the hierarchy, but has to be assumed where the stage is a parameter. *)
-Definition StGood (st : Stage) : Prop := forall s u x, st.(StEq) s u x u x.
+(* The two shapes of carried equality: on the elements of one code of the
+   stage, and between the elements of two instances of a family. *)
+Definition DomEq (st : Stage) (a : St st) : Type :=
+  forall u, StEl st a u -> forall u', StEl st a u' -> Prop.
 
-Section Refine.
-  Context (st : Stage).
-  Context (Univ : nat -> etm -> Type)
-          (UnivEq : forall m u, Univ m u -> forall u', Univ m u' -> Prop)
-          (UnivOK : nat -> Prop).
+Definition FamEq (st : Stage) (a : St st) (b : forall u, StEl st a u -> St st) : Type :=
+  forall u (x : StEl st a u) u' (x' : StEl st a u') v, StEl st (b u x) v ->
+  forall v', StEl st (b u' x') v' -> Prop.
 
-  Local Notation S := st.(St).
-  Local Notation ElS := st.(StEl).
-  Local Notation eqS := st.(StEq).
-  Local Notation shS := st.(StSh).
+(* ------------------------------------------------------------------ *)
+(* The codes at one stage.                                            *)
+(* ------------------------------------------------------------------ *)
 
-  Definition goodS (s : S) u (x : ElS s u) : Prop := eqS s u x u x.
+Section Codes.
+Context (st : Stage) (UnivOK : nat -> Prop).
 
-  Record Transp (s s' : S) := {
-    tr : forall u, ElS s u -> ElS s' u;
-    tr_eq : forall u x u' x', eqS s u x u' x' -> eqS s' u (tr u x) u' (tr u' x')
-  }.
-  Arguments tr {s s'}.
+Inductive Refine : etm -> Type :=
+| r_nat T : eval T enat -> Refine T
+| r_prop T : eval T eprop -> Refine T
+| r_prf T p : eval T (eprf p) -> Prop -> Refine T
+| r_univ T m : UnivOK m -> eval T (euniv m) -> Refine T
+| r_pi T A1 B1 : eval T (epi A1 B1) ->
+    forall (a : St st) (ea : tyeq (StSh st a) A1) (aeq : DomEq st a)
+           (b : forall u, StEl st a u -> St st)
+           (eb : forall u x, tyeq (StSh st (b u x)) (eapp B1 u))
+           (beq : FamEq st a b),
+    Refine T
+(* Sigma carries only the components: a pair is self-related as soon as its
+   two components are, so there is no condition on the decoding and nothing
+   to state it with. *)
+| r_sig T A1 B1 : eval T (esig A1 B1) ->
+    forall (a : St st) (ea : tyeq (StSh st a) A1)
+           (b : forall u, StEl st a u -> St st)
+           (eb : forall u x, tyeq (StSh st (b u x)) (eapp B1 u)),
+    Refine T
+(* W carries exactly what Pi does, and for the same reason: a tree's
+   branching function has to be extensional. *)
+| r_w T A1 B1 : eval T (ew A1 B1) ->
+    forall (a : St st) (ea : tyeq (StSh st a) A1) (aeq : DomEq st a)
+           (b : forall u, StEl st a u -> St st)
+           (eb : forall u x, tyeq (StSh st (b u x)) (eapp B1 u))
+           (beq : FamEq st a b),
+    Refine T.
 
-  Inductive Refine : etm -> Type :=
-  | r_nat T : eval T enat -> Refine T
-  | r_prop T : eval T eprop -> Refine T
-  | r_prf T p : eval T (eprf p) -> Prop -> Refine T
-  | r_univ T m : UnivOK m -> eval T (euniv m) -> Refine T
-  | r_pi T A0 B0 : eval T (epi A0 B0) ->
-      forall a : S, tyeq (shS a) A0 ->
-      forall b : (forall u, ElS a u -> S),
-      (forall u x, tyeq (shS (b u x)) (eapp B0 u)) ->
-      forall coh : (forall u x u' x', eqS a u x u' x' -> Transp (b u' x') (b u x)),
-      (* composition *)
-      (forall u0 x0 u1 x1 u2 x2
-              (r01 : eqS a u0 x0 u1 x1) (r12 : eqS a u1 x1 u2 x2) (r02 : eqS a u0 x0 u2 x2)
-              v (y : ElS (b u2 x2) v), goodS _ v y ->
-         eqS (b u0 x0) v (tr (coh _ _ _ _ r01) v (tr (coh _ _ _ _ r12) v y))
-                         v (tr (coh _ _ _ _ r02) v y)) ->
-      (* identity *)
-      (forall u x (r : eqS a u x u x) v (y : ElS (b u x) v), goodS _ v y ->
-         eqS (b u x) v (tr (coh _ _ _ _ r) v y) v y) ->
-      Refine T
-  (* Sigma carries EXACTLY the data of Pi -- the domain, the codomain family,
-     its coherence, and the composition and identity laws of that coherence.
-     What differs is only the head the realiser evaluates to, and the
-     decoding: a Pi-code decodes to functions and a Sigma-code to pairs.  The
-     paper puts it as "arguments for Pi; componentwise for Sigma". *)
-  | r_sig T A0 B0 : eval T (esig A0 B0) ->
-      forall a : S, tyeq (shS a) A0 ->
-      forall b : (forall u, ElS a u -> S),
-      (forall u x, tyeq (shS (b u x)) (eapp B0 u)) ->
-      forall coh : (forall u x u' x', eqS a u x u' x' -> Transp (b u' x') (b u x)),
-      (* composition *)
-      (forall u0 x0 u1 x1 u2 x2
-              (r01 : eqS a u0 x0 u1 x1) (r12 : eqS a u1 x1 u2 x2) (r02 : eqS a u0 x0 u2 x2)
-              v (y : ElS (b u2 x2) v), goodS _ v y ->
-         eqS (b u0 x0) v (tr (coh _ _ _ _ r01) v (tr (coh _ _ _ _ r12) v y))
-                         v (tr (coh _ _ _ _ r02) v y)) ->
-      (* identity *)
-      (forall u x (r : eqS a u x u x) v (y : ElS (b u x) v), goodS _ v y ->
-         eqS (b u x) v (tr (coh _ _ _ _ r) v y) v y) ->
-      Refine T
-  | r_ne T N : eval T N -> stuck N -> Refine T.
+(* The trees over a label code a and a branching family b.  Every node
+   carries the layer-1 goodness of its own realiser, because the subtrees of
+   a tree are elements of the same code and so cannot inherit it from a
+   lower stage as Pi's and Sigma's components do. *)
+Inductive WEl (T : etm) (a : St st) (b : forall u, StEl st a u -> St st)
+  : etm -> Type :=
+| wel_sup w u0 (x : StEl st a u0) (f : etm) :
+    eval w (esup u0 f) -> Good T w ->
+    (forall v (y : StEl st (b u0 x) v), WEl T a b (eapp f v)) ->
+    WEl T a b w.
+End Codes.
 
-  Definition El {T} (r : Refine T) (u : etm) : Type :=
-    match r with
-    | r_nat T _ => ({ j : nat & NatAt j u } * Good T u)%type
-    | r_prop T _ => (Prop * Good T u)%type
-    | r_prf T _ _ H => (H * Good T u)%type
-    | r_univ _ m _ _ => Univ m u
-    | r_pi T _ _ _ a _ b _ _ _ _ =>
-        ((forall u' x, ElS (b u' x) (eapp u u')) * Good T u)%type
-    (* a pair is its two projections: the first component's value, and the
-       second one's in the codomain instance that value picks out.  This is
-       the shape SigPer has at layer 1, and it needs no eta-expansion
-       because surjective pairing is a rule of the theory. *)
-    | r_sig T _ _ _ a _ b _ _ _ _ =>
-        ({ x : ElS a (efst u) & ElS (b (efst u) x) (esnd u) } * Good T u)%type
-    | r_ne _ _ _ _ => Empty_set
-    end.
+Arguments r_nat {st UnivOK}. Arguments r_prop {st UnivOK}. Arguments r_prf {st UnivOK}.
+Arguments r_univ {st UnivOK}. Arguments r_pi {st UnivOK}. Arguments r_sig {st UnivOK}.
+Arguments r_w {st UnivOK}.
+Arguments WEl {st}. Arguments wel_sup {st T a b}.
 
-  (* The unary equality.  At Pi it records that the two functions agree, up
-     to the coherence transports, on related arguments in both directions;
-     without both directions neither symmetry nor transitivity is provable.
-     The goodness of the values is not stated: it is automatic, because the
-     decoding of a code contains only self-related elements. *)
-  Definition eqEl {T} (r : Refine T) : forall u, El r u -> forall u', El r u' -> Prop :=
-    match r as r0 return forall u, El r0 u -> forall u', El r0 u' -> Prop with
-    | r_nat T _ => fun u x u' x' =>
-        projT1 (Datatypes.fst x) = projT1 (Datatypes.fst x') /\ Rel T u u'
-    | r_prop T _ => fun u x u' x' => (Datatypes.fst x <-> Datatypes.fst x') /\ Rel T u u'
-    | r_prf T _ _ _ => fun u x u' x' => Rel T u u'
-    | r_univ _ m _ _ => fun u x u' x' => UnivEq m u x u' x'
-    | r_pi T _ _ _ a _ b _ coh _ _ => fun u f u' f' =>
-        (forall u1 x1 u1' x1' (r : eqS a u1 x1 u1' x1') (r' : eqS a u1' x1' u1 x1),
-           eqS (b u1 x1) (eapp u u1) (Datatypes.fst f u1 x1)
-                         (eapp u' u1') (tr (coh _ _ _ _ r) _ (Datatypes.fst f' u1' x1')) /\
-           eqS (b u1' x1') (eapp u' u1') (Datatypes.fst f' u1' x1')
-                           (eapp u u1) (tr (coh _ _ _ _ r') _ (Datatypes.fst f u1 x1)))
-        /\ Rel T u u'
-    (* Componentwise, in both directions as at Pi.  The relation of the FIRST
-       components is existentially bound rather than universally quantified:
-       at Pi the arguments are given from outside, so the clause can quantify
-       over them, but at Sigma they are the elements' own projections, and a
-       universally quantified clause would be vacuous exactly when the first
-       components are unrelated -- which is what has to be excluded. *)
-    | r_sig T _ _ _ a _ b _ coh _ _ => fun u p u' p' =>
-        (exists r : eqS a (efst u) (projT1 (Datatypes.fst p))
-                          (efst u') (projT1 (Datatypes.fst p')),
-           eqS (b (efst u) (projT1 (Datatypes.fst p)))
-               (esnd u) (projT2 (Datatypes.fst p))
-               (esnd u') (tr (coh _ _ _ _ r) _ (projT2 (Datatypes.fst p'))))
-        /\ (exists r' : eqS a (efst u') (projT1 (Datatypes.fst p'))
-                           (efst u) (projT1 (Datatypes.fst p)),
-           eqS (b (efst u') (projT1 (Datatypes.fst p')))
-               (esnd u') (projT2 (Datatypes.fst p'))
-               (esnd u) (tr (coh _ _ _ _ r') _ (projT2 (Datatypes.fst p))))
-        /\ Rel T u u'
-    | r_ne _ _ _ _ => fun _ _ _ _ => True
-    end.
+(* The tree relation.  Generic in the two stages and in the label and branch
+   relations, so that one definition serves both the carried equalities and
+   the canonical cross-code comparison of Codes/Eq.v. *)
+Fixpoint WRel {st st' : Stage} (T T' : etm) (a : St st) (a' : St st')
+  (b : forall u, StEl st a u -> St st) (b' : forall u, StEl st' a' u -> St st')
+  (Rlab : forall u, StEl st a u -> forall u', StEl st' a' u' -> Prop)
+  (Rbr : forall u (x : StEl st a u) u' (x' : StEl st' a' u') v, StEl st (b u x) v ->
+         forall v', StEl st' (b' u' x') v' -> Prop)
+  {w} (t : WEl T a b w) {w'} (t' : WEl T' a' b' w') : Prop :=
+  match t, t' with
+  | wel_sup _ u0 x f _ _ sub, wel_sup _ u0' x' f' _ _ sub' =>
+      Rlab u0 x u0' x' /\
+      (forall v y v' y', Rbr u0 x u0' x' v y v' y' ->
+         WRel T T' a a' b b' Rlab Rbr (sub v y) (sub' v' y'))
+  end.
 
-  Definition U_of : Type := { T : etm & Refine T }.
+(* ------------------------------------------------------------------ *)
+(* The decoding.                                                      *)
+(* ------------------------------------------------------------------ *)
 
-  Definition Stage_next : Stage := {|
-    St := U_of;
-    StEl c u := { x : El (projT2 c) u | eqEl (projT2 c) u x u x };
-    StEq c u x u' x' := eqEl (projT2 c) u (proj1_sig x) u' (proj1_sig x');
-    StSh c := projT1 c
-  |}.
+Section Decode.
+Context (st : Stage) (Univ : nat -> etm -> Type) (UnivOK : nat -> Prop).
 
-  Lemma Stage_next_good : StGood Stage_next.
-  Proof. intros c u x; exact (proj2_sig x). Qed.
-End Refine.
+Definition El {T} (r : Refine st UnivOK T) (u : etm) : Type :=
+  match r with
+  | r_nat T _ => ({ j : nat & NatAt j u } * Good T u)%type
+  | r_prop T _ => (Prop * Good T u)%type
+  | r_prf T _ _ H => (H * Good T u)%type
+  | r_univ _ m _ _ => Univ m u
+  (* the EXTENSIONAL functions: the condition is what makes every element of
+     the decoding self-related, hence a legitimate index of a codomain
+     family one stage up *)
+  | r_pi T _ _ _ a _ aeq b _ beq =>
+      ({ f : forall u1 (x1 : StEl st a u1), StEl st (b u1 x1) (eapp u u1)
+         | forall u1 x1 u1' x1', aeq u1 x1 u1' x1' ->
+             beq u1 x1 u1' x1' _ (f u1 x1) _ (f u1' x1') } * Good T u)%type
+  (* a pair is its two projections: the first component's value, and the
+     second one's in the codomain instance that value picks out.  This is the
+     shape SigPer has at layer 1, and it needs no eta-expansion because
+     surjective pairing is a rule of the theory. *)
+  | r_sig T _ _ _ a _ b _ =>
+      ({ x : StEl st a (efst u) & StEl st (b (efst u) x) (esnd u) } * Good T u)%type
+  (* the extensional trees: `WRel .. t t` unfolds to "hereditarily, related
+     branches give related subtrees", which is the tree's self-relatedness --
+     the same condition as Pi's, so no separate predicate is needed *)
+  | r_w T _ _ _ a _ aeq b _ beq =>
+      ({ t : WEl T a b u | WRel T T a a b b aeq beq t t } * Good T u)%type
+  end.
 
-Arguments tr {st s s'}.
+Definition U_of : Type := { T : etm & Refine st UnivOK T }.
+
+Definition Stage_next : Stage := {|
+  St := U_of;
+  StEl c u := El (projT2 c) u;
+  StSh c := projT1 c
+|}.
+End Decode.
+
+Arguments El {st Univ UnivOK T}.
+Arguments U_of {st} UnivOK.
+
+(* ------------------------------------------------------------------ *)
+(* The hierarchy over Brouwer trees.  Unchanged from v1 except that    *)
+(* only carriers, decodings and shadows have to be dispatched.         *)
+(* ------------------------------------------------------------------ *)
 
 Definition Stage_empty : Stage := {|
   St := Empty_set;
   StEl s := match s with end;
-  StEq s := match s with end;
   StSh s := match s with end
 |}.
 
 Definition Stage_sum (st1 st2 : Stage) : Stage := {|
-  St := (st1.(St) + st2.(St))%type;
-  StEl s := match s with inl s => st1.(StEl) s | inr s => st2.(StEl) s end;
-  StEq s := match s as s0 return forall u, (match s0 with inl s => st1.(StEl) s | inr s => st2.(StEl) s end) u ->
-                                  forall u', (match s0 with inl s => st1.(StEl) s | inr s => st2.(StEl) s end) u' -> Prop with
-            | inl s => st1.(StEq) s
-            | inr s => st2.(StEq) s
-            end;
-  StSh s := match s with inl s => st1.(StSh) s | inr s => st2.(StSh) s end
+  St := (St st1 + St st2)%type;
+  StEl s := match s with inl s => StEl st1 s | inr s => StEl st2 s end;
+  StSh s := match s with inl s => StSh st1 s | inr s => StSh st2 s end
 |}.
 
 Definition Stage_sup T (F : Pred T -> Stage) : Stage := {|
-  St := { p : Pred T & (F p).(St) };
-  StEl s := (F (projT1 s)).(StEl) (projT2 s);
-  StEq s := (F (projT1 s)).(StEq) (projT2 s);
-  StSh s := (F (projT1 s)).(StSh) (projT2 s)
+  St := { p : Pred T & St (F p) };
+  StEl s := StEl (F (projT1 s)) (projT2 s);
+  StSh s := StSh (F (projT1 s)) (projT2 s)
 |}.
 
-Lemma Stage_empty_good : StGood Stage_empty.
-Proof. intros []. Qed.
-
-Lemma Stage_sum_good st1 st2 : StGood st1 -> StGood st2 -> StGood (Stage_sum st1 st2).
-Proof. intros H1 H2 [s|s]; [apply H1 | apply H2]. Qed.
-
-Lemma Stage_sup_good T F : (forall p, StGood (F p)) -> StGood (Stage_sup T F).
-Proof. intros H [p s]; apply H. Qed.
-
 Section Level.
-  Context (Univ : nat -> etm -> Type)
-          (UnivEq : forall m u, Univ m u -> forall u', Univ m u' -> Prop)
-          (UnivOK : nat -> Prop).
+Context (Univ : nat -> etm -> Type) (UnivOK : nat -> Prop).
 
-  (* stage alpha: every code strictly below alpha.  A successor adds the
-     node beta on top of everything below it, a sup collects the branches. *)
-  Fixpoint stage (alpha : Ord) : Stage :=
-    match alpha with
-    | ozero => Stage_empty
-    | osucc beta => Stage_sum (Stage_next (stage beta) Univ UnivEq UnivOK) (stage beta)
-    | osup T f =>
-        Stage_sup T (fun p => Stage_sum (Stage_next (stage (f p)) Univ UnivEq UnivOK) (stage (f p)))
-    end.
+(* stage alpha: every code strictly below alpha.  A successor adds the node
+   beta on top of everything below it, a sup collects the branches. *)
+Fixpoint stage (alpha : Ord) : Stage :=
+  match alpha with
+  | ozero => Stage_empty
+  | osucc beta => Stage_sum (Stage_next (stage beta) Univ UnivOK) (stage beta)
+  | osup T f =>
+      Stage_sup T (fun p =>
+        Stage_sum (Stage_next (stage (f p)) Univ UnivOK) (stage (f p)))
+  end.
 
-  (* The codes at node beta. *)
-  Definition Ust (beta : Ord) : Stage := Stage_next (stage beta) Univ UnivEq UnivOK.
+(* The codes at node beta. *)
+Definition Ust (beta : Ord) : Stage := Stage_next (stage beta) Univ UnivOK.
 
-  Definition Sub alpha : Type := (stage alpha).(St).
-  Definition U beta : Type := (Ust beta).(St).
+Definition Sub alpha : Type := St (stage alpha).
+Definition U beta : Type := St (Ust beta).
 
-  Lemma stage_good alpha : StGood (stage alpha).
-  Proof.
-    induction alpha as [| beta IH | T f IH]; cbn.
-    - apply Stage_empty_good.
-    - apply Stage_sum_good; [apply Stage_next_good | exact IH].
-    - apply Stage_sup_good; intros p; apply Stage_sum_good;
-        [apply Stage_next_good | apply IH].
-  Qed.
+(* Injections, all definitional on decodings and shadows. *)
+Definition U_Sub_succ {beta} (c : U beta) : Sub (osucc beta) := inl c.
+Definition Sub_Sub_succ {beta} (s : Sub beta) : Sub (osucc beta) := inr s.
+Definition U_Sub_sup {T f} (p : Pred T) (c : U (f p)) : Sub (osup T f) :=
+  existT _ p (inl c).
+Definition Sub_Sub_sup {T f} (p : Pred T) (s : Sub (f p)) : Sub (osup T f) :=
+  existT _ p (inr s).
 
-  Lemma Ust_good beta : StGood (Ust beta).
-  Proof. apply Stage_next_good. Qed.
+Lemma El_U_Sub_succ beta (c : U beta) u :
+  StEl (stage (osucc beta)) (U_Sub_succ c) u = StEl (Ust beta) c u.
+Proof. reflexivity. Qed.
 
-  (* Injections, all definitional on decodings, equalities and shadows. *)
-  Definition U_Sub_succ {beta} (c : U beta) : Sub (osucc beta) := inl c.
-  Definition Sub_Sub_succ {beta} (s : Sub beta) : Sub (osucc beta) := inr s.
-  Definition U_Sub_sup {T f} (p : Pred T) (c : U (f p)) : Sub (osup T f) := existT _ p (inl c).
-  Definition Sub_Sub_sup {T f} (p : Pred T) (s : Sub (f p)) : Sub (osup T f) := existT _ p (inr s).
+Lemma El_U_Sub_sup T f (p : Pred T) (c : U (f p)) u :
+  StEl (stage (osup T f)) (U_Sub_sup p c) u = StEl (Ust (f p)) c u.
+Proof. reflexivity. Qed.
 
-  Lemma El_U_Sub_succ beta (c : U beta) u :
-    (stage (osucc beta)).(StEl) (U_Sub_succ c) u = (Ust beta).(StEl) c u.
-  Proof. reflexivity. Qed.
-
-  Lemma El_U_Sub_sup T f (p : Pred T) (c : U (f p)) u :
-    (stage (osup T f)).(StEl) (U_Sub_sup p c) u = (Ust (f p)).(StEl) c u.
-  Proof. reflexivity. Qed.
+Lemma Sh_U_Sub_succ beta (c : U beta) :
+  StSh (stage (osucc beta)) (U_Sub_succ c) = StSh (Ust beta) c.
+Proof. reflexivity. Qed.
 End Level.

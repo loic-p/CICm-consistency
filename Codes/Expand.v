@@ -1,34 +1,22 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def Layer1.Bundle Layer1.Elim.
-From CICM Require Import Ranks.Pred Ranks.Ord Codes.Def Codes.EqPER.
+From CICM Require Import Ranks.Pred Ranks.Ord Codes.Def Codes.Eq Codes.WF Codes.Sym
+  Codes.Str Codes.Sound.
+From Stdlib Require Import Arith Lia.
 
-(* Lemma 8.7: the decoding of a code is closed under expansion and reduction
+(* Lemma 8.7: the decoding of a code is closed under reduction and expansion
    of the realiser, and the two maps are equalities of the code -- which is
-   available, because the equality of a code is heterogeneous in the
-   realiser.  That last clause is what makes the maps natural: any two
-   transports commute with them up to the equality, by tr_eq, so no
-   naturality condition has to be built into Transp. *)
+   sayable because the equality is heterogeneous in the realiser.
 
-Record SExp (st : Stage) := {
-  se_red : forall s u u1, reds u u1 -> st.(StEl) s u -> st.(StEl) s u1;
-  se_exp : forall s u u1, reds u u1 -> st.(StEl) s u1 -> st.(StEl) s u;
-  se_red_rel : forall s u u1 (H : reds u u1) x, st.(StEq) s u x u1 (se_red s u u1 H x);
-  se_exp_rel : forall s u u1 (H : reds u u1) y, st.(StEq) s u (se_exp s u u1 H y) u1 y
-}.
-Arguments se_red {st}. Arguments se_exp {st}.
-Arguments se_red_rel {st}. Arguments se_exp_rel {st}.
-
-(* The same, of the parameter that decodes the universes. *)
-Record UnivExp (Univ : nat -> etm -> Type)
-               (UnivEq : forall m u, Univ m u -> forall u', Univ m u' -> Prop) := {
-  ue_red : forall m u u1, reds u u1 -> Univ m u -> Univ m u1;
-  ue_exp : forall m u u1, reds u u1 -> Univ m u1 -> Univ m u;
-  ue_red_rel : forall m u u1 (H : reds u u1) x, UnivEq m u x u1 (ue_red m u u1 H x);
-  ue_exp_rel : forall m u u1 (H : reds u u1) y, UnivEq m u (ue_exp m u u1 H y) u1 y
-}.
-Arguments ue_red {Univ UnivEq}. Arguments ue_exp {Univ UnivEq}.
-Arguments ue_red_rel {Univ UnivEq}. Arguments ue_exp_rel {Univ UnivEq}.
+   Two clauses differ from v1.  Sigma: when the pair's realiser reduces, its
+   first component's VALUE moves too, so the second component's code moves with
+   it; v1 pushed the second component along the transport the code carries,
+   here it is the coercion of Codes/Str.v and the code equality it needs is the
+   code's own coherence, i.e. a conjunct of well-formedness.  W: only the top
+   node's realiser moves -- the subtrees are indexed by branches, which do not
+   -- so the tree is rebuilt at its root and its self-relatedness is literally
+   the same proposition. *)
 
 Lemma Good_red T u u1 : reds u u1 -> Good T u -> Good T u1.
 Proof. intros H G; eapply Rel_red; [exact H | exact H | exact G]. Qed.
@@ -42,266 +30,450 @@ Proof. intros H G; eapply Rel_red; [apply reds_refl | exact H | exact G]. Qed.
 Lemma Rel_exp_l T u u1 : reds u u1 -> Good T u1 -> Rel T u u1.
 Proof. intros H G; eapply Rel_exp; [exact H | apply reds_refl | exact G]. Qed.
 
+(* the same, of the parameter that decodes the universes *)
+Record UnivExp (Univ : nat -> etm -> Type)
+               (UnivEq : forall m u, Univ m u -> forall m' u', Univ m' u' -> Prop) := {
+  ue_red : forall m u u1, reds u u1 -> Univ m u -> Univ m u1;
+  ue_exp : forall m u u1, reds u u1 -> Univ m u1 -> Univ m u;
+  ue_red_rel : forall m u u1 (H : reds u u1) x, UnivEq m u x m u1 (ue_red m u u1 H x);
+  ue_exp_rel : forall m u u1 (H : reds u u1) y, UnivEq m u (ue_exp m u u1 H y) m u1 y
+}.
+Arguments ue_red {Univ UnivEq}. Arguments ue_exp {Univ UnivEq}.
+Arguments ue_red_rel {Univ UnivEq}. Arguments ue_exp_rel {Univ UnivEq}.
+
+(* ------------------------------------------------------------------ *)
+(* The trees move at their root only.                                  *)
+(* ------------------------------------------------------------------ *)
+
+Definition WEl_red {st : Stage} (T : etm) (a : St st) (b : forall u, StEl st a u -> St st)
+  : forall w w1, reds w w1 -> WEl T a b w -> WEl T a b w1 :=
+  fun w w1 H t =>
+    match t in WEl _ _ _ w0 return reds w0 w1 -> WEl T a b w1 with
+    | wel_sup w0 u0 x f ev gd sub =>
+        fun H' => wel_sup w1 u0 x f (eval_reds_inv _ _ _ H' ev) (Good_red T _ _ H' gd) sub
+    end H.
+
+Definition WEl_exp {st : Stage} (T : etm) (a : St st) (b : forall u, StEl st a u -> St st)
+  : forall w w1, reds w w1 -> WEl T a b w1 -> WEl T a b w :=
+  fun w w1 H t =>
+    match t in WEl _ _ _ w0 return reds w w0 -> WEl T a b w with
+    | wel_sup w0 u0 x f ev gd sub =>
+        fun H' => wel_sup w u0 x f (eval_reds _ _ _ H' ev) (Good_exp T _ _ H' gd) sub
+    end H.
+
+(* moving a tree does not change what its self-relatedness says: the labels
+   and the branches are untouched, only the root's realiser and its two
+   witnesses.  It is one case analysis, because `WEl_red t` is a match on t. *)
+Lemma WRel_red_self {st : Stage} (T : etm) (a : St st) (b : forall u, StEl st a u -> St st)
+  (Rlab : forall u, StEl st a u -> forall u', StEl st a u' -> Prop)
+  (Rbr : forall u (x : StEl st a u) u' (x' : StEl st a u') v, StEl st (b u x) v ->
+         forall v', StEl st (b u' x') v' -> Prop)
+  w w1 (H : reds w w1) (t : WEl T a b w) :
+  WRel T T a a b b Rlab Rbr t t ->
+  WRel T T a a b b Rlab Rbr (WEl_red T a b w w1 H t) (WEl_red T a b w w1 H t).
+Proof. destruct t; cbn; exact (fun h => h). Qed.
+
+Lemma WRel_exp_self {st : Stage} (T : etm) (a : St st) (b : forall u, StEl st a u -> St st)
+  (Rlab : forall u, StEl st a u -> forall u', StEl st a u' -> Prop)
+  (Rbr : forall u (x : StEl st a u) u' (x' : StEl st a u') v, StEl st (b u x) v ->
+         forall v', StEl st (b u' x') v' -> Prop)
+  w w1 (H : reds w w1) (t : WEl T a b w1) :
+  WRel T T a a b b Rlab Rbr t t ->
+  WRel T T a a b b Rlab Rbr (WEl_exp T a b w w1 H t) (WEl_exp T a b w w1 H t).
+Proof. destruct t; cbn; exact (fun h => h). Qed.
+
+(* and moving a tree relates it to itself, for the same reason *)
+Lemma WRel_red_coh {st : Stage} (T : etm) (a : St st) (b : forall u, StEl st a u -> St st)
+  (Rlab : forall u, StEl st a u -> forall u', StEl st a u' -> Prop)
+  (Rbr : forall u (x : StEl st a u) u' (x' : StEl st a u') v, StEl st (b u x) v ->
+         forall v', StEl st (b u' x') v' -> Prop)
+  w w1 (H : reds w w1) (t : WEl T a b w) :
+  WRel T T a a b b Rlab Rbr t t ->
+  WRel T T a a b b Rlab Rbr t (WEl_red T a b w w1 H t).
+Proof. destruct t; cbn; exact (fun h => h). Qed.
+
+Lemma WRel_exp_coh {st : Stage} (T : etm) (a : St st) (b : forall u, StEl st a u -> St st)
+  (Rlab : forall u, StEl st a u -> forall u', StEl st a u' -> Prop)
+  (Rbr : forall u (x : StEl st a u) u' (x' : StEl st a u') v, StEl st (b u x) v ->
+         forall v', StEl st (b u' x') v' -> Prop)
+  w w1 (H : reds w w1) (t : WEl T a b w1) :
+  WRel T T a a b b Rlab Rbr t t ->
+  WRel T T a a b b Rlab Rbr (WEl_exp T a b w w1 H t) t.
+Proof. destruct t; cbn; exact (fun h => h). Qed.
+
 Section ExpRefine.
-  Context (st : Stage).
-  Context (Univ : nat -> etm -> Type)
-          (UnivEq : forall m u, Univ m u -> forall u', Univ m u' -> Prop)
-          (UnivOK : nat -> Prop).
-  Context (SE : SExp st) (UE : UnivExp Univ UnivEq).
-  Context (UnivEq_sym : forall m u x u' x', UnivEq m u x u' x' -> UnivEq m u' x' u x)
-          (UnivEq_trans : forall m u x u' x' u'' x'',
-              UnivEq m u x u' x' -> UnivEq m u' x' u'' x'' -> UnivEq m u x u'' x'')
-          (Hgood : StGood st)
-          (IH : forall s, EqSym st s /\ EqTrans st s).
+Context (st : Stage) (Univ : nat -> etm -> Type)
+        (UnivEq : forall m u, Univ m u -> forall m' u', Univ m' u' -> Prop)
+        (UnivOK : nat -> Prop).
+Context (dg : Cmp st st) (wfS : St st -> Prop) (UE : UnivExp Univ UnivEq).
+(* what the stage below supplies *)
+Context (Sred : forall s, wfS s -> forall u u1, reds u u1 -> StEl st s u -> StEl st s u1)
+        (Sexp : forall s, wfS s -> forall u u1, reds u u1 -> StEl st s u1 -> StEl st s u)
+        (SredRel : forall s (w : wfS s) u u1 (H : reds u u1) x,
+            cEl dg s u x s u1 (Sred s w u u1 H x))
+        (SexpRel : forall s (w : wfS s) u u1 (H : reds u u1) y,
+            cEl dg s u (Sexp s w u u1 H y) s u1 y)
+        (Ssym : forall s u x s' u' x', cEl dg s u x s' u' x' -> cEl dg s' u' x' s u x)
+        (StrE : forall s s' s'' u x u' x' u'' x'', wfS s -> wfS s' -> wfS s'' ->
+            cU dg s s' -> cEl dg s u x s' u' x' -> cEl dg s' u' x' s'' u'' x'' ->
+            cEl dg s u x s'' u'' x'')
+        (Sto : forall s s', wfS s -> wfS s' -> cU dg s s' ->
+            forall u, StEl st s u -> StEl st s' u)
+        (StoCoh : forall s s' w w' (e : cU dg s s') u x,
+            cEl dg s u x s' u (Sto s s' w w' e u x))
+        (Sself : forall s, wfS s -> cU dg s s).
 
-  Local Notation El_ := (El st Univ UnivOK).
-  Local Notation eqEl_ := (eqEl st Univ UnivEq UnivOK).
-  Local Notation eqS := st.(StEq).
+Local Notation El_ := (El (st := st) (Univ := Univ)).
+Local Notation eqEl_ := (eqEl dg UnivEq (UnivOK := UnivOK)).
 
-  (* The two moves a Sigma-code's decoding needs when the realiser reduces.
-     The first component's realiser reduces with the pair; but its VALUE
-     moves too, so the second component's code moves with it, and the
-     coherence of the codomain family is what carries the second component
-     across.  (At Pi nothing of the kind happens: the argument is given from
-     outside and does not reduce.) *)
-  Definition sigRedFst (a : st.(St)) u u1 (H : reds u u1) (z : st.(StEl) a (efst u))
-    : st.(StEl) a (efst u1) := se_red SE a (efst u) (efst u1) (reds_fst u u1 H) z.
-
-  Definition sigRedRel (a : st.(St)) u u1 (H : reds u u1) (z : st.(StEl) a (efst u))
-    : eqS a (efst u) z (efst u1) (sigRedFst a u u1 H z) :=
-    se_red_rel SE a (efst u) (efst u1) (reds_fst u u1 H) z.
-
-  Definition sigRedRel' (a : st.(St)) u u1 (H : reds u u1) (z : st.(StEl) a (efst u))
-    : eqS a (efst u1) (sigRedFst a u u1 H z) (efst u) z :=
-    proj1 (IH a) _ _ _ _ (sigRedRel a u u1 H z).
-
-  Definition sigExpFst (a : st.(St)) u u1 (H : reds u u1) (z : st.(StEl) a (efst u1))
-    : st.(StEl) a (efst u) := se_exp SE a (efst u) (efst u1) (reds_fst u u1 H) z.
-
-  Definition sigExpRel (a : st.(St)) u u1 (H : reds u u1) (z : st.(StEl) a (efst u1))
-    : eqS a (efst u) (sigExpFst a u u1 H z) (efst u1) z :=
-    se_exp_rel SE a (efst u) (efst u1) (reds_fst u u1 H) z.
-
-  Definition elRed {T} (r : Refine st UnivOK T)
-    : forall u u1, reds u u1 -> El_ r u -> El_ r u1 :=
-    match r as r0 return forall u u1, reds u u1 -> El_ r0 u -> El_ r0 u1 with
-    | r_nat _ _ T _ => fun u u1 H x =>
-        (existT _ (projT1 (Datatypes.fst x))
-                (NatAt_red _ _ _ H (projT2 (Datatypes.fst x))),
-         Good_red T u u1 H (Datatypes.snd x))
-    | r_prop _ _ T _ => fun u u1 H x => (Datatypes.fst x, Good_red T u u1 H (Datatypes.snd x))
-    | r_prf _ _ T _ _ _ => fun u u1 H x => (Datatypes.fst x, Good_red T u u1 H (Datatypes.snd x))
-    | r_univ _ _ _ m _ _ => fun u u1 H x => ue_red UE m u u1 H x
-    | r_pi _ _ T _ _ _ a _ b _ _ _ _ => fun u u1 H x =>
-        (fun u' y => se_red SE (b u' y) (eapp u u') (eapp u1 u')
-                            (reds_app _ _ u' H) (Datatypes.fst x u' y),
-         Good_red T u u1 H (Datatypes.snd x))
-    | r_sig _ _ T _ _ _ a _ b _ coh _ _ => fun u u1 H x =>
-        (existT _ (sigRedFst a u u1 H (projT1 (Datatypes.fst x)))
-           (tr (coh _ _ _ _ (sigRedRel' a u u1 H (projT1 (Datatypes.fst x)))) (esnd u1)
-              (se_red SE (b (efst u) (projT1 (Datatypes.fst x))) (esnd u) (esnd u1)
-                 (reds_snd u u1 H) (projT2 (Datatypes.fst x)))),
-         Good_red T u u1 H (Datatypes.snd x))
-    | r_ne _ _ _ _ _ _ => fun u u1 H x => match x with end
-    end.
-
-  Definition elExp {T} (r : Refine st UnivOK T)
-    : forall u u1, reds u u1 -> El_ r u1 -> El_ r u :=
-    match r as r0 return forall u u1, reds u u1 -> El_ r0 u1 -> El_ r0 u with
-    | r_nat _ _ T _ => fun u u1 H y =>
-        (existT _ (projT1 (Datatypes.fst y))
-                (NatAt_exp _ _ _ H (projT2 (Datatypes.fst y))),
-         Good_exp T u u1 H (Datatypes.snd y))
-    | r_prop _ _ T _ => fun u u1 H y => (Datatypes.fst y, Good_exp T u u1 H (Datatypes.snd y))
-    | r_prf _ _ T _ _ _ => fun u u1 H y => (Datatypes.fst y, Good_exp T u u1 H (Datatypes.snd y))
-    | r_univ _ _ _ m _ _ => fun u u1 H y => ue_exp UE m u u1 H y
-    | r_pi _ _ T _ _ _ a _ b _ _ _ _ => fun u u1 H y =>
-        (fun u' z => se_exp SE (b u' z) (eapp u u') (eapp u1 u')
-                            (reds_app _ _ u' H) (Datatypes.fst y u' z),
-         Good_exp T u u1 H (Datatypes.snd y))
-    | r_sig _ _ T _ _ _ a _ b _ coh _ _ => fun u u1 H y =>
-        (existT _ (sigExpFst a u u1 H (projT1 (Datatypes.fst y)))
-           (se_exp SE (b (efst u) (sigExpFst a u u1 H (projT1 (Datatypes.fst y))))
-              (esnd u) (esnd u1) (reds_snd u u1 H)
-              (tr (coh _ _ _ _ (sigExpRel a u u1 H (projT1 (Datatypes.fst y)))) (esnd u1)
-                 (projT2 (Datatypes.fst y)))),
-         Good_exp T u u1 H (Datatypes.snd y))
-    | r_ne _ _ _ _ _ _ => fun u u1 H y => match y with end
-    end.
-
-  Lemma elRed_rel {T} (r : Refine st UnivOK T) :
-    forall u u1 (H : reds u u1) x, eqEl_ r u x u x -> eqEl_ r u x u1 (elRed r u u1 H x).
-  Proof.
-    destruct r as [T e|T e|T p e P0|T m ok e|T A0 B0 e a ea b eb coh compL idL|T A0 B0 e a ea b eb coh compL idL|T N e s0]; cbn;
-      intros u u1 H x G.
-    - split; [reflexivity | apply Rel_red_r; [exact H | exact (Datatypes.snd x)]].
-    - split; [tauto | apply Rel_red_r; [exact H | exact (Datatypes.snd x)]].
-    - apply Rel_red_r; [exact H | exact (Datatypes.snd x)].
-    - apply ue_red_rel.
-    - destruct G as [G _].
-      split; [| apply Rel_red_r; [exact H | exact (Datatypes.snd x)]].
-      intros u2 x2 u2' x2' r2 r2'.
-      destruct (IH (b u2 x2)) as [S2 T2]; destruct (IH (b u2' x2')) as [S2' T2'].
-      destruct (G _ _ _ _ r2 r2') as [G1 G2]; split.
-      + eapply T2; [exact G1 |].
-        apply (tr_eq _ _ _ (coh _ _ _ _ r2)).
-        apply se_red_rel.
-      + eapply T2'; [| exact G2].
-        apply S2'; apply se_red_rel.
-    - (* Sigma: the first component's own reduction relation is the witness;
-         the round trip through the coherence is undone by the composition
-         and identity laws the code carries. *)
-      destruct (IH a) as [Sa Ta].
-      destruct (IH (b (efst u) (projT1 (Datatypes.fst x)))) as [Sb Tb].
-      split; [| split].
-      + exists (sigRedRel a u u1 H (projT1 (Datatypes.fst x))).
-        eapply Tb; [apply se_red_rel |].
-        apply Sb.
-        eapply Tb;
-          [ apply (compL _ _ _ _ _ _
-                     (sigRedRel a u u1 H (projT1 (Datatypes.fst x)))
-                     (sigRedRel' a u u1 H (projT1 (Datatypes.fst x)))
-                     (Hgood a (efst u) (projT1 (Datatypes.fst x))));
-            apply Hgood
-          | apply idL; apply Hgood ].
-      + exists (sigRedRel' a u u1 H (projT1 (Datatypes.fst x))).
-        apply (tr_eq _ _ _ (coh _ _ _ _ (sigRedRel' a u u1 H (projT1 (Datatypes.fst x))))).
-        apply Sb; apply se_red_rel.
-      + apply Rel_red_r; [exact H | exact (Datatypes.snd x)].
-    - destruct x.
-  Qed.
-
-  Lemma elExp_rel {T} (r : Refine st UnivOK T) :
-    forall u u1 (H : reds u u1) y, eqEl_ r u1 y u1 y -> eqEl_ r u (elExp r u u1 H y) u1 y.
-  Proof.
-    destruct r as [T e|T e|T p e P0|T m ok e|T A0 B0 e a ea b eb coh compL idL|T A0 B0 e a ea b eb coh compL idL|T N e s0]; cbn;
-      intros u u1 H y G.
-    - split; [reflexivity | apply Rel_exp_l; [exact H | exact (Datatypes.snd y)]].
-    - split; [tauto | apply Rel_exp_l; [exact H | exact (Datatypes.snd y)]].
-    - apply Rel_exp_l; [exact H | exact (Datatypes.snd y)].
-    - apply ue_exp_rel.
-    - destruct G as [G _].
-      split; [| apply Rel_exp_l; [exact H | exact (Datatypes.snd y)]].
-      intros u2 x2 u2' x2' r2 r2'.
-      destruct (IH (b u2 x2)) as [S2 T2]; destruct (IH (b u2' x2')) as [S2' T2'].
-      destruct (G _ _ _ _ r2 r2') as [G1 G2]; split.
-      + eapply T2; [apply se_exp_rel | exact G1].
-      + eapply T2'; [exact G2 |].
-        apply (tr_eq _ _ _ (coh _ _ _ _ r2')).
-        apply S2; apply se_exp_rel.
-    - (* Sigma, the other way round: here the coherence goes in the direction
-         the transport already has, so only the second direction of the clause
-         has to undo a round trip. *)
-      destruct (IH a) as [Sa Ta].
-      destruct (IH (b (efst u) (sigExpFst a u u1 H (projT1 (Datatypes.fst y))))) as [Sb0 Tb0].
-      destruct (IH (b (efst u1) (projT1 (Datatypes.fst y)))) as [Sb1 Tb1].
-      split; [| split].
-      + exists (sigExpRel a u u1 H (projT1 (Datatypes.fst y))).
-        apply se_exp_rel.
-      + exists (Sa _ _ _ _ (sigExpRel a u u1 H (projT1 (Datatypes.fst y)))).
-        eapply Tb1;
-          [ apply Sb1; eapply Tb1;
-              [ apply (compL _ _ _ _ _ _
-                         (Sa _ _ _ _ (sigExpRel a u u1 H (projT1 (Datatypes.fst y))))
-                         (sigExpRel a u u1 H (projT1 (Datatypes.fst y)))
-                         (Hgood a (efst u1) (projT1 (Datatypes.fst y))));
-                apply Hgood
-              | apply idL; apply Hgood ] |].
-        apply (tr_eq _ _ _ (coh _ _ _ _
-                 (Sa _ _ _ _ (sigExpRel a u u1 H (projT1 (Datatypes.fst y)))))).
-        apply Sb0; apply se_exp_rel.
-      + apply Rel_exp_l; [exact H | exact (Datatypes.snd y)].
-    - destruct y.
-  Qed.
-
-  (* Goodness of the images, which is what the sig in Stage_next asks for. *)
-  Lemma elRed_good {T} (r : Refine st UnivOK T) u u1 (H : reds u u1) x :
-    eqEl_ r u x u x -> eqEl_ r u1 (elRed r u u1 H x) u1 (elRed r u u1 H x).
-  Proof.
-    intros G; pose proof (elRed_rel r u u1 H x G) as R.
-    eapply (eqRefine_trans st Univ UnivEq UnivOK UnivEq_trans Hgood IH);
-      [eapply (eqRefine_sym st Univ UnivEq UnivOK UnivEq_sym); exact R | exact R].
-  Qed.
-
-  Lemma elExp_good {T} (r : Refine st UnivOK T) u u1 (H : reds u u1) y :
-    eqEl_ r u1 y u1 y -> eqEl_ r u (elExp r u u1 H y) u (elExp r u u1 H y).
-  Proof.
-    intros G; pose proof (elExp_rel r u u1 H y G) as R.
-    eapply (eqRefine_trans st Univ UnivEq UnivOK UnivEq_trans Hgood IH);
-      [exact R | eapply (eqRefine_sym st Univ UnivEq UnivOK UnivEq_sym); exact R].
-  Qed.
-
-  Definition SExp_next : SExp (Stage_next st Univ UnivEq UnivOK) :=
-    Build_SExp (Stage_next st Univ UnivEq UnivOK)
-      (fun c u u1 H x =>
-         exist (fun z => eqEl_ (projT2 c) u1 z u1 z)
-               (elRed (projT2 c) u u1 H (proj1_sig x))
-               (elRed_good (projT2 c) u u1 H (proj1_sig x) (proj2_sig x)))
-      (fun c u u1 H y =>
-         exist (fun z => eqEl_ (projT2 c) u z u z)
-               (elExp (projT2 c) u u1 H (proj1_sig y))
-               (elExp_good (projT2 c) u u1 H (proj1_sig y) (proj2_sig y)))
-      (fun c u u1 H x => elRed_rel (projT2 c) u u1 H (proj1_sig x) (proj2_sig x))
-      (fun c u u1 H y => elExp_rel (projT2 c) u u1 H (proj1_sig y) (proj2_sig y)).
-End ExpRefine.
-
-Definition SExp_empty : SExp Stage_empty :=
-  Build_SExp Stage_empty
-    (fun s => match s with end) (fun s => match s with end)
-    (fun s => match s with end) (fun s => match s with end).
-
-Definition SExp_sum st1 st2 (S1 : SExp st1) (S2 : SExp st2) : SExp (Stage_sum st1 st2).
+Definition elRed {T} (r : Refine st UnivOK T) (W : wfRefine dg wfS r)
+  : forall u u1, reds u u1 -> El_ r u -> El_ r u1.
 Proof.
-  refine (Build_SExp (Stage_sum st1 st2)
-            (fun s => match s return forall u u1, reds u u1 ->
-                        (Stage_sum st1 st2).(StEl) s u -> (Stage_sum st1 st2).(StEl) s u1 with
-                      | inl s => se_red S1 s | inr s => se_red S2 s end)
-            (fun s => match s return forall u u1, reds u u1 ->
-                        (Stage_sum st1 st2).(StEl) s u1 -> (Stage_sum st1 st2).(StEl) s u with
-                      | inl s => se_exp S1 s | inr s => se_exp S2 s end)
-            _ _).
-  - intros [s|s]; [apply (se_red_rel S1) | apply (se_red_rel S2)].
-  - intros [s|s]; [apply (se_exp_rel S1) | apply (se_exp_rel S2)].
+  revert W; dest_code r; cbn; intros W u u1 H x.
+  (* nat *)
+  - exact (existT _ (projT1 (Datatypes.fst x))
+             (NatAt_red _ _ _ H (projT2 (Datatypes.fst x))),
+           Good_red _ _ _ H (Datatypes.snd x)).
+  (* prop *)
+  - exact (Datatypes.fst x, Good_red _ _ _ H (Datatypes.snd x)).
+  (* prf *)
+  - exact (Datatypes.fst x, Good_red _ _ _ H (Datatypes.snd x)).
+  (* univ *)
+  - exact (ue_red UE _ _ _ H x).
+  (* pi: every value moves, and the moved function is extensional because the
+     moves are equalities of its codomain codes *)
+  - destruct W as [[wa [wb [aeqc beqc]]] [_ [_ coh]]]; destruct x as [[f fext] gd].
+    refine (exist _ (fun w y => Sred (b w y) (wb w y) (eapp u w) (eapp u1 w)
+                                     (reds_app _ _ w H) (f w y)) _,
+            Good_red _ _ _ H gd).
+    intros w y w' y' Hy; apply beqc.
+    apply (StrE (b w y) (b w y) (b w' y')
+             (eapp u1 w) _ (eapp u w) (f w y) (eapp u1 w') _
+             (wb w y) (wb w y) (wb w' y') (Sself _ (wb w y)));
+      [ apply Ssym, SredRel |].
+    apply (StrE (b w y) (b w' y') (b w' y')
+             (eapp u w) (f w y) (eapp u w') (f w' y') (eapp u1 w') _
+             (wb w y) (wb w' y') (wb w' y') (coh w y w' y' (proj1 (aeqc _ _ _ _) Hy)));
+      [ apply beqc, fext, Hy | apply SredRel ].
+  (* sig: the first component's value moves, so the second component's code
+     moves with it, and the coercion takes it across *)
+  - destruct W as [[wa [wb _]] [_ [_ coh]]]; destruct x as [[y z] gd].
+    refine (existT _ (Sred a wa (efst u) (efst u1) (reds_fst _ _ H) y) _,
+            Good_red _ _ _ H gd).
+    apply (Sto (b (efst u) y) (b (efst u1) (Sred a wa (efst u) (efst u1) (reds_fst _ _ H) y))
+             (wb _ _) (wb _ _) (coh _ _ _ _ (SredRel _ _ _ _ _ _))).
+    exact (Sred (b (efst u) y) (wb _ _) (esnd u) (esnd u1) (reds_snd _ _ H) z).
+  (* w *)
+  - destruct x as [[t tself] gd].
+    exact (exist (fun z => WRel _ _ a a b b aeq beq z z)
+             (WEl_red _ a b u u1 H t) (WRel_red_self _ a b aeq beq u u1 H t tself),
+           Good_red _ _ _ H gd).
 Defined.
 
-Definition SExp_sup T F (H : forall p, SExp (F p)) : SExp (Stage_sup T F) :=
-  Build_SExp (Stage_sup T F)
-    (fun s => se_red (H (projT1 s)) (projT2 s))
-    (fun s => se_exp (H (projT1 s)) (projT2 s))
-    (fun s => se_red_rel (H (projT1 s)) (projT2 s))
-    (fun s => se_exp_rel (H (projT1 s)) (projT2 s)).
+Definition elExp {T} (r : Refine st UnivOK T) (W : wfRefine dg wfS r)
+  : forall u u1, reds u u1 -> El_ r u1 -> El_ r u.
+Proof.
+  revert W; dest_code r; cbn; intros W u u1 H x.
+  - exact (existT _ (projT1 (Datatypes.fst x))
+             (NatAt_exp _ _ _ H (projT2 (Datatypes.fst x))),
+           Good_exp _ _ _ H (Datatypes.snd x)).
+  - exact (Datatypes.fst x, Good_exp _ _ _ H (Datatypes.snd x)).
+  - exact (Datatypes.fst x, Good_exp _ _ _ H (Datatypes.snd x)).
+  - exact (ue_exp UE _ _ _ H x).
+  - destruct W as [[wa [wb [aeqc beqc]]] [_ [_ coh]]]; destruct x as [[f fext] gd].
+    refine (exist _ (fun w y => Sexp (b w y) (wb w y) (eapp u w) (eapp u1 w)
+                                     (reds_app _ _ w H) (f w y)) _,
+            Good_exp _ _ _ H gd).
+    intros w y w' y' Hy; apply beqc.
+    apply (StrE (b w y) (b w y) (b w' y')
+             (eapp u w) _ (eapp u1 w) (f w y) (eapp u w') _
+             (wb w y) (wb w y) (wb w' y') (Sself _ (wb w y)));
+      [ apply SexpRel |].
+    apply (StrE (b w y) (b w' y') (b w' y')
+             (eapp u1 w) (f w y) (eapp u1 w') (f w' y') (eapp u w') _
+             (wb w y) (wb w' y') (wb w' y') (coh w y w' y' (proj1 (aeqc _ _ _ _) Hy)));
+      [ apply beqc, fext, Hy | apply Ssym, SexpRel ].
+  - destruct W as [[wa [wb _]] [_ [_ coh]]]; destruct x as [[y z] gd].
+    refine (existT _ (Sexp a wa (efst u) (efst u1) (reds_fst _ _ H) y) _,
+            Good_exp _ _ _ H gd).
+    apply (Sexp (b (efst u) (Sexp a wa (efst u) (efst u1) (reds_fst _ _ H) y)) (wb _ _)
+             (esnd u) (esnd u1) (reds_snd _ _ H)).
+    apply (Sto (b (efst u1) y)
+             (b (efst u) (Sexp a wa (efst u) (efst u1) (reds_fst _ _ H) y))
+             (wb _ _) (wb _ _)
+             (coh _ _ _ _ (Ssym _ _ _ _ _ _ (SexpRel _ _ _ _ _ _)))).
+    exact z.
+  - destruct x as [[t tself] gd].
+    exact (exist (fun z => WRel _ _ a a b b aeq beq z z)
+             (WEl_exp _ a b u u1 H t) (WRel_exp_self _ a b aeq beq u u1 H t tself),
+           Good_exp _ _ _ H gd).
+Defined.
+End ExpRefine.
+
+(* ------------------------------------------------------------------ *)
+(* The two maps are equalities of the code.                            *)
+(* ------------------------------------------------------------------ *)
+
+Section ExpRel.
+Context (st : Stage) (Univ : nat -> etm -> Type)
+        (UnivEq : forall m u, Univ m u -> forall m' u', Univ m' u' -> Prop)
+        (UnivOK : nat -> Prop).
+Context (dg : Cmp st st) (wfS : St st -> Prop) (UE : UnivExp Univ UnivEq).
+Context (Sred : forall s, wfS s -> forall u u1, reds u u1 -> StEl st s u -> StEl st s u1)
+        (Sexp : forall s, wfS s -> forall u u1, reds u u1 -> StEl st s u1 -> StEl st s u)
+        (SredRel : forall s (w : wfS s) u u1 (H : reds u u1) x,
+            cEl dg s u x s u1 (Sred s w u u1 H x))
+        (SexpRel : forall s (w : wfS s) u u1 (H : reds u u1) y,
+            cEl dg s u (Sexp s w u u1 H y) s u1 y)
+        (Ssym : forall s u x s' u' x', cEl dg s u x s' u' x' -> cEl dg s' u' x' s u x)
+        (StrE : forall s s' s'' u x u' x' u'' x'', wfS s -> wfS s' -> wfS s'' ->
+            cU dg s s' -> cEl dg s u x s' u' x' -> cEl dg s' u' x' s'' u'' x'' ->
+            cEl dg s u x s'' u'' x'')
+        (Sto : forall s s', wfS s -> wfS s' -> cU dg s s' ->
+            forall u, StEl st s u -> StEl st s' u)
+        (StoCoh : forall s s' w w' (e : cU dg s s') u x,
+            cEl dg s u x s' u (Sto s s' w w' e u x))
+        (Sself : forall s, wfS s -> cU dg s s).
+
+Local Notation elRed_ :=
+  (elRed st Univ UnivEq UnivOK dg wfS UE Sred SredRel Ssym StrE Sto Sself).
+Local Notation elExp_ :=
+  (elExp st Univ UnivEq UnivOK dg wfS UE Sexp SexpRel Ssym StrE Sto Sself).
+
+Lemma elRed_rel {T} (r : Refine st UnivOK T) (W : wfRefine dg wfS r) u u1 (H : reds u u1) x :
+  eqEl dg UnivEq r r u x u1 (elRed_ r W u u1 H x).
+Proof.
+  pose proof (eqU_tyeq dg r r (proj2 W)) as ety.
+  revert W ety x; dest_code r; cbn; intros W ety x.
+  - split; [reflexivity | split; [exact ety | apply Rel_red_r; [exact H | exact (Datatypes.snd x)]]].
+  - split; [split; exact (fun h => h) |
+            split; [exact ety | apply Rel_red_r; [exact H | exact (Datatypes.snd x)]]].
+  - split; [exact ety | apply Rel_red_r; [exact H | exact (Datatypes.snd x)]].
+  - split; [apply ue_red_rel | exact ety].
+  (* pi *)
+  - destruct W as [[wa [wb [aeqc beqc]]] [_ [_ coh]]]; destruct x as [[f fext] gd]; cbn.
+    split; [| split; [exact ety | apply Rel_red_r; [exact H | exact gd]]].
+    intros w y w' y' Hy.
+    apply (StrE (b w y) (b w' y') (b w' y')
+             (eapp u w) (f w y) (eapp u w') (f w' y') (eapp u1 w') _
+             (wb w y) (wb w' y') (wb w' y') (coh w y w' y' Hy));
+      [ apply beqc, fext, aeqc, Hy | apply SredRel ].
+  (* sig *)
+  - destruct W as [[wa [wb _]] [_ [_ coh]]]; destruct x as [[y z] gd]; cbn.
+    split; [apply SredRel |].
+    split; [| split; [exact ety | apply Rel_red_r; [exact H | exact gd]]].
+    apply (StrE (b (efst u) y) (b (efst u) y)
+             (b (efst u1) (Sred a wa (efst u) (efst u1) (reds_fst _ _ H) y))
+             (esnd u) z
+             (esnd u1) (Sred (b (efst u) y) (wb _ _) (esnd u) (esnd u1) (reds_snd _ _ H) z)
+             (esnd u1) _
+             (wb _ _) (wb _ _) (wb _ _) (Sself _ (wb _ _)));
+      [ apply SredRel | apply StoCoh ].
+  (* w *)
+  - destruct W as [[wa [wb [aeqc beqc]]] [_ [_ coh]]]; destruct x as [[t tself] gd]; cbn.
+    split; [| split; [exact ety | apply Rel_red_r; [exact H | exact gd]]].
+    apply WRel_red_coh.
+    apply (WRel_mono T T a a b b aeq (fun w y w' y' => cEl dg a w y a w' y')
+             beq (fun w y w' y' v z v' z' => cEl dg (b w y) v z (b w' y') v' z'));
+      [ intros w y w' y' Hy; apply aeqc; exact Hy
+      | intros w y w' y' v z v' z' Hz; apply beqc; exact Hz
+      | exact tself ].
+Qed.
+
+Lemma elExp_rel {T} (r : Refine st UnivOK T) (W : wfRefine dg wfS r) u u1 (H : reds u u1) x :
+  eqEl dg UnivEq r r u (elExp_ r W u u1 H x) u1 x.
+Proof.
+  pose proof (eqU_tyeq dg r r (proj2 W)) as ety.
+  revert W ety x; dest_code r; cbn; intros W ety x.
+  - split; [reflexivity | split; [exact ety | apply Rel_exp_l; [exact H | exact (Datatypes.snd x)]]].
+  - split; [split; exact (fun h => h) |
+            split; [exact ety | apply Rel_exp_l; [exact H | exact (Datatypes.snd x)]]].
+  - split; [exact ety | apply Rel_exp_l; [exact H | exact (Datatypes.snd x)]].
+  - split; [apply ue_exp_rel | exact ety].
+  - destruct W as [[wa [wb [aeqc beqc]]] [_ [_ coh]]]; destruct x as [[f fext] gd]; cbn.
+    split; [| split; [exact ety | apply Rel_exp_l; [exact H | exact gd]]].
+    intros w y w' y' Hy.
+    apply (StrE (b w y) (b w y) (b w' y')
+             (eapp u w) _ (eapp u1 w) (f w y) (eapp u1 w') _
+             (wb w y) (wb w y) (wb w' y') (Sself _ (wb w y)));
+      [ apply SexpRel | apply beqc, fext, aeqc, Hy ].
+  - destruct W as [[wa [wb _]] [_ [_ coh]]]; destruct x as [[y z] gd]; cbn.
+    split; [apply SexpRel |].
+    split; [| split; [exact ety | apply Rel_exp_l; [exact H | exact gd]]].
+    apply (StrE (b (efst u) (Sexp a wa (efst u) (efst u1) (reds_fst _ _ H) y))
+             (b (efst u) (Sexp a wa (efst u) (efst u1) (reds_fst _ _ H) y))
+             (b (efst u1) y)
+             (esnd u) _
+             (esnd u1) (Sto (b (efst u1) y)
+                          (b (efst u) (Sexp a wa (efst u) (efst u1) (reds_fst _ _ H) y))
+                          (wb _ _) (wb _ _)
+                          (coh _ _ _ _
+                             (Ssym _ _ _ _ _ _
+                                (SexpRel a wa (efst u) (efst u1) (reds_fst _ _ H) y)))
+                          (esnd u1) z)
+             (esnd u1) z
+             (wb _ _) (wb _ _) (wb _ _) (Sself _ (wb _ _)));
+      [ apply SexpRel | apply Ssym, StoCoh ].
+  - destruct W as [[wa [wb [aeqc beqc]]] [_ [_ coh]]]; destruct x as [[t tself] gd]; cbn.
+    split; [| split; [exact ety | apply Rel_exp_l; [exact H | exact gd]]].
+    apply WRel_exp_coh.
+    apply (WRel_mono T T a a b b aeq (fun w y w' y' => cEl dg a w y a w' y')
+             beq (fun w y w' y' v z v' z' => cEl dg (b w y) v z (b w' y') v' z'));
+      [ intros w y w' y' Hy; apply aeqc; exact Hy
+      | intros w y w' y' v z v' z' Hz; apply beqc; exact Hz
+      | exact tself ].
+Qed.
+End ExpRel.
+
+(* ------------------------------------------------------------------ *)
+(* The whole hierarchy: one induction on the Brouwer tree, because only *)
+(* ONE stage is involved -- a realiser reduces, the codes do not move.  *)
+(* ------------------------------------------------------------------ *)
 
 Section Level.
-  Context (Univ : nat -> etm -> Type)
-          (UnivEq : forall m u, Univ m u -> forall u', Univ m u' -> Prop)
-          (UnivOK : nat -> Prop).
-  Context (UE : UnivExp Univ UnivEq).
-  Context (UnivEq_sym : forall m u x u' x', UnivEq m u x u' x' -> UnivEq m u' x' u x)
-          (UnivEq_trans : forall m u x u' x' u'' x'',
-              UnivEq m u x u' x' -> UnivEq m u' x' u'' x'' -> UnivEq m u x u'' x'').
+Context (Univ : nat -> etm -> Type)
+        (UnivEq : forall m u, Univ m u -> forall m' u', Univ m' u' -> Prop)
+        (UnivOK : nat -> Prop).
+Context (UErefl : forall m u x, UnivEq m u x m u x)
+        (UEsym : forall m u x m' u' x', UnivEq m u x m' u' x' -> UnivEq m' u' x' m u x)
+        (UEtrans : forall m u x m' u' x' m'' u'' x'',
+            UnivEq m u x m' u' x' -> UnivEq m' u' x' m'' u'' x'' ->
+            UnivEq m u x m'' u'' x'')
+        (UE : UnivExp Univ UnivEq).
 
-  Local Notation stage_ := (stage Univ UnivEq UnivOK).
+Local Notation stage_ := (stage Univ UnivOK).
+Local Notation Ust_ := (Ust Univ UnivOK).
+Local Notation xcmp_ := (xcmp Univ UnivEq UnivOK).
+Local Notation wfsub_ := (wfsub Univ UnivEq UnivOK).
+Local Notation wfc_ := (wfc Univ UnivEq UnivOK).
+Local Notation big_ := (big Univ UnivEq UnivOK UErefl UEsym UEtrans).
 
-  Fixpoint sexp (alpha : Ord) : SExp (stage_ alpha) :=
-    match alpha as a return SExp (stage_ a) with
-    | ozero => SExp_empty
-    | osucc beta =>
-        SExp_sum _ _
-          (SExp_next (stage_ beta) Univ UnivEq UnivOK (sexp beta) UE
-             UnivEq_sym UnivEq_trans (stage_good _ _ _ beta)
-             (eqs_PER Univ UnivEq UnivOK UnivEq_sym UnivEq_trans beta))
-          (sexp beta)
-    | osup T f =>
-        SExp_sup T _ (fun p =>
-          SExp_sum _ _
-            (SExp_next (stage_ (f p)) Univ UnivEq UnivOK (sexp (f p)) UE
-               UnivEq_sym UnivEq_trans (stage_good _ _ _ (f p))
-               (eqs_PER Univ UnivEq UnivOK UnivEq_sym UnivEq_trans (f p)))
-            (sexp (f p)))
-    end.
+Record Exp (alpha : Ord) : Type := {
+  ex_red : forall (s : Sub Univ UnivOK alpha), wfsub_ alpha s ->
+      forall u u1, reds u u1 -> StEl (stage_ alpha) s u -> StEl (stage_ alpha) s u1;
+  ex_exp : forall (s : Sub Univ UnivOK alpha), wfsub_ alpha s ->
+      forall u u1, reds u u1 -> StEl (stage_ alpha) s u1 -> StEl (stage_ alpha) s u;
+  ex_red_rel : forall s (W : wfsub_ alpha s) u u1 (H : reds u u1) x,
+      cEl (xcmp_ alpha alpha) s u x s u1 (ex_red s W u u1 H x);
+  ex_exp_rel : forall s (W : wfsub_ alpha s) u u1 (H : reds u u1) y,
+      cEl (xcmp_ alpha alpha) s u (ex_exp s W u u1 H y) s u1 y
+}.
+Arguments ex_red {alpha}. Arguments ex_exp {alpha}.
+Arguments ex_red_rel {alpha}. Arguments ex_exp_rel {alpha}.
 
-  Definition sexpU (beta : Ord) : SExp (Ust Univ UnivEq UnivOK beta) :=
-    SExp_next (stage_ beta) Univ UnivEq UnivOK (sexp beta) UE
-      UnivEq_sym UnivEq_trans (stage_good _ _ _ beta)
-      (eqs_PER Univ UnivEq UnivOK UnivEq_sym UnivEq_trans beta).
+(* the pieces one stage down, as the clauses above want them *)
+Local Notation Str_ b :=
+  (fun s s' s'' => proj1 (proj2 (pk_tr Univ UnivEq UnivOK b (big_ b) b b s s' s''))).
+Local Notation Sto_ b := (Lto_of Univ UnivEq UnivOK (big_ b) b).
+Local Notation StoCoh_ b := (LtoCoh_of Univ UnivEq UnivOK (big_ b) b).
+Local Notation Sself_ b := (wfsub_self Univ UnivEq UnivOK b).
+Local Notation Ssym_ := (xsym Univ UnivEq UnivOK UEsym).
+
+Definition nodeRed (b : Ord) (E : Exp b) (c : U Univ UnivOK b) (W : wfc_ c)
+  : forall u u1, reds u u1 -> StEl (Ust_ b) c u -> StEl (Ust_ b) c u1 :=
+  elRed (stage_ b) Univ UnivEq UnivOK (xcmp_ b b) (wfsub_ b) UE
+    (ex_red E) (ex_red_rel E) Ssym_ (Str_ b) (Sto_ b) (Sself_ b) (projT2 c) W.
+
+Definition nodeExp (b : Ord) (E : Exp b) (c : U Univ UnivOK b) (W : wfc_ c)
+  : forall u u1, reds u u1 -> StEl (Ust_ b) c u1 -> StEl (Ust_ b) c u :=
+  elExp (stage_ b) Univ UnivEq UnivOK (xcmp_ b b) (wfsub_ b) UE
+    (ex_exp E) (ex_exp_rel E) Ssym_ (Str_ b) (Sto_ b) (Sself_ b) (projT2 c) W.
+
+Definition nodeRedRel (b : Ord) (E : Exp b) (c : U Univ UnivOK b) (W : wfc_ c)
+  : forall u u1 (H : reds u u1) x,
+    cEl (xcmp_ (osucc b) (osucc b)) (inl c) u x (inl c) u1 (nodeRed b E c W u u1 H x) :=
+  elRed_rel (stage_ b) Univ UnivEq UnivOK (xcmp_ b b) (wfsub_ b) UE
+    (ex_red E) (ex_red_rel E) Ssym_ (Str_ b) (Sto_ b) (StoCoh_ b) (Sself_ b) (projT2 c) W.
+
+Definition nodeExpRel (b : Ord) (E : Exp b) (c : U Univ UnivOK b) (W : wfc_ c)
+  : forall u u1 (H : reds u u1) y,
+    cEl (xcmp_ (osucc b) (osucc b)) (inl c) u (nodeExp b E c W u u1 H y) (inl c) u1 y :=
+  elExp_rel (stage_ b) Univ UnivEq UnivOK (xcmp_ b b) (wfsub_ b) UE
+    (ex_exp E) (ex_exp_rel E) Ssym_ (Str_ b) (Sto_ b) (StoCoh_ b) (Sself_ b) (projT2 c) W.
+
+Fixpoint bigExp (alpha : Ord) : Exp alpha :=
+  match alpha as a return Exp a with
+  | ozero => Build_Exp ozero
+      (fun s => Sub0_elim Univ UnivOK _ s) (fun s => Sub0_elim Univ UnivOK _ s)
+      (fun s => Sub0_elim Univ UnivOK _ s) (fun s => Sub0_elim Univ UnivOK _ s)
+  | osucc beta => Build_Exp _
+      (fun s => match s as s0 return wfsub_ (osucc beta) s0 -> forall u u1, reds u u1 ->
+                        StEl (stage_ (osucc beta)) s0 u -> StEl (stage_ (osucc beta)) s0 u1 with
+                | inl c => nodeRed beta (bigExp beta) c
+                | inr t => ex_red (bigExp beta) t
+                end)
+      (fun s => match s as s0 return wfsub_ (osucc beta) s0 -> forall u u1, reds u u1 ->
+                        StEl (stage_ (osucc beta)) s0 u1 -> StEl (stage_ (osucc beta)) s0 u with
+                | inl c => nodeExp beta (bigExp beta) c
+                | inr t => ex_exp (bigExp beta) t
+                end)
+      (fun s => match s as s0 return forall (W : wfsub_ (osucc beta) s0) u u1 (H : reds u u1) x,
+                        cEl (xcmp_ (osucc beta) (osucc beta)) s0 u x s0 u1
+                          ((match s0 as s1 return wfsub_ (osucc beta) s1 -> forall u u1, reds u u1 ->
+                                StEl (stage_ (osucc beta)) s1 u -> StEl (stage_ (osucc beta)) s1 u1 with
+                            | inl c => nodeRed beta (bigExp beta) c
+                            | inr t => ex_red (bigExp beta) t
+                            end) W u u1 H x) with
+                | inl c => nodeRedRel beta (bigExp beta) c
+                | inr t => ex_red_rel (bigExp beta) t
+                end)
+      (fun s => match s as s0 return forall (W : wfsub_ (osucc beta) s0) u u1 (H : reds u u1) y,
+                        cEl (xcmp_ (osucc beta) (osucc beta)) s0 u
+                          ((match s0 as s1 return wfsub_ (osucc beta) s1 -> forall u u1, reds u u1 ->
+                                StEl (stage_ (osucc beta)) s1 u1 -> StEl (stage_ (osucc beta)) s1 u with
+                            | inl c => nodeExp beta (bigExp beta) c
+                            | inr t => ex_exp (bigExp beta) t
+                            end) W u u1 H y) s0 u1 y with
+                | inl c => nodeExpRel beta (bigExp beta) c
+                | inr t => ex_exp_rel (bigExp beta) t
+                end)
+  | osup T f => Build_Exp _
+      (fun s => match s as s0 return wfsub_ (osup T f) s0 -> forall u u1, reds u u1 ->
+                        StEl (stage_ (osup T f)) s0 u -> StEl (stage_ (osup T f)) s0 u1 with
+                | existT _ p (inl c) => nodeRed (f p) (bigExp (f p)) c
+                | existT _ p (inr t) => ex_red (bigExp (f p)) t
+                end)
+      (fun s => match s as s0 return wfsub_ (osup T f) s0 -> forall u u1, reds u u1 ->
+                        StEl (stage_ (osup T f)) s0 u1 -> StEl (stage_ (osup T f)) s0 u with
+                | existT _ p (inl c) => nodeExp (f p) (bigExp (f p)) c
+                | existT _ p (inr t) => ex_exp (bigExp (f p)) t
+                end)
+      (fun s => match s as s0 return forall (W : wfsub_ (osup T f) s0) u u1 (H : reds u u1) x,
+                        cEl (xcmp_ (osup T f) (osup T f)) s0 u x s0 u1
+                          ((match s0 as s1 return wfsub_ (osup T f) s1 -> forall u u1, reds u u1 ->
+                                StEl (stage_ (osup T f)) s1 u -> StEl (stage_ (osup T f)) s1 u1 with
+                            | existT _ p (inl c) => nodeRed (f p) (bigExp (f p)) c
+                            | existT _ p (inr t) => ex_red (bigExp (f p)) t
+                            end) W u u1 H x) with
+                | existT _ p (inl c) => nodeRedRel (f p) (bigExp (f p)) c
+                | existT _ p (inr t) => ex_red_rel (bigExp (f p)) t
+                end)
+      (fun s => match s as s0 return forall (W : wfsub_ (osup T f) s0) u u1 (H : reds u u1) y,
+                        cEl (xcmp_ (osup T f) (osup T f)) s0 u
+                          ((match s0 as s1 return wfsub_ (osup T f) s1 -> forall u u1, reds u u1 ->
+                                StEl (stage_ (osup T f)) s1 u1 -> StEl (stage_ (osup T f)) s1 u with
+                            | existT _ p (inl c) => nodeExp (f p) (bigExp (f p)) c
+                            | existT _ p (inr t) => ex_exp (bigExp (f p)) t
+                            end) W u u1 H y) s0 u1 y with
+                | existT _ p (inl c) => nodeExpRel (f p) (bigExp (f p)) c
+                | existT _ p (inr t) => ex_exp_rel (bigExp (f p)) t
+                end)
+  end.
+
+(* the working interface, at a node *)
+Definition cRed {b} (c : U Univ UnivOK b) (W : wfc_ c) u u1 (H : reds u u1)
+  (x : StEl (Ust_ b) c u) : StEl (Ust_ b) c u1 :=
+  nodeRed b (bigExp b) c W u u1 H x.
+
+Definition cExp {b} (c : U Univ UnivOK b) (W : wfc_ c) u u1 (H : reds u u1)
+  (y : StEl (Ust_ b) c u1) : StEl (Ust_ b) c u :=
+  nodeExp b (bigExp b) c W u u1 H y.
+
+Definition cRed_rel {b} (c : U Univ UnivOK b) (W : wfc_ c) u u1 (H : reds u u1) x
+  : cel Univ UnivEq UnivOK c u x c u1 (cRed c W u u1 H x) :=
+  nodeRedRel b (bigExp b) c W u u1 H x.
+
+Definition cExp_rel {b} (c : U Univ UnivOK b) (W : wfc_ c) u u1 (H : reds u u1) y
+  : cel Univ UnivEq UnivOK c u (cExp c W u u1 H y) c u1 y :=
+  nodeExpRel b (bigExp b) c W u u1 H y.
 End Level.

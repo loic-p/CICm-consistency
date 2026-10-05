@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per Layer1.Def.
 From Stdlib Require Import Arith Lia.
@@ -20,6 +20,7 @@ Proof.
     | A A' m Hm HeA HeA'
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
     | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
+    | A A' A0 B0 A0' B0' PA PB HeA HeA' HA IHA HB IHB
     | A A' N N' HeA HeA' HsN HsN' ].
   - eapply LR_ext; eassumption.
   - eapply LR_exp; eassumption.
@@ -30,6 +31,7 @@ Proof.
     intros C C'; split; intros [P HP]; exists P; apply (HX m Hm); assumption.
   - eapply LR_pi; eauto.
   - eapply LR_sig; eauto.
+  - eapply LR_w; eauto.
   - eapply LR_ne; eauto.
 Qed.
 

@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 From CICM Require Import Layer1.Per.
 From Stdlib Require Import Lia.
@@ -27,6 +27,13 @@ Inductive LR (n : nat) (X : nat -> etm -> etm -> PER -> Prop)
     LR n X A0 A0' PA ->
     (forall u u', PA u u' -> LR n X (eapp B0 u) (eapp B0' u') (PB u u')) ->
     LR n X A A' (SigPer PA PB)
+(* W: the same data as Pi and Sigma -- the label type and the branching
+   family -- and the relation WPer they determine. *)
+| LR_w A A' A0 B0 A0' B0' PA PB :
+    eval A (ew A0 B0) -> eval A' (ew A0' B0') ->
+    LR n X A0 A0' PA ->
+    (forall u u', PA u u' -> LR n X (eapp B0 u) (eapp B0' u') (PB u u')) ->
+    LR n X A A' (WPer PA PB)
 | LR_ne A A' N N' : eval A N -> eval A' N' -> stuck N -> stuck N' ->
     LR n X A A' NePer.
 

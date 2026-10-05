@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck Reduction.Determinism.
 
 (* Relation combinators for layer 1.  Every base combinator adjoins the
@@ -37,6 +37,20 @@ Definition PiPer (PA : PER) (PB : etm -> etm -> PER) : PER := fun f g =>
 
 Definition SigPer (PA : PER) (PB : etm -> etm -> PER) : PER := fun p q =>
   PA (efst p) (efst q) /\ PB (efst p) (efst q) (esnd p) (esnd q).
+
+(* W.  Unlike Pi and Sigma, whose relations are read off the eliminators, a
+   tree is a CONSTRUCTED thing, so its relation is inductive -- like NatPer,
+   one constructor for the shape and one for stuck terms, and for the same
+   reason: `sup a (absurd ..)` is a value that is neither stuck nor a proper
+   tree, so stuck terms have to be admitted at the leaves and not only at the
+   top.  The branches are compared at RELATED indices, which is what makes
+   the relation a PER rather than an equality of trees. *)
+Inductive WPer (PA : PER) (PB : etm -> etm -> PER) : etm -> etm -> Prop :=
+| wp_sup w w' a a' f f' :
+    eval w (esup a f) -> eval w' (esup a' f') -> PA a a' ->
+    (forall u u', PB a a' u u' -> WPer PA PB (eapp f u) (eapp f' u')) ->
+    WPer PA PB w w'
+| wp_stuck w w' : stuckv w -> stuckv w' -> WPer PA PB w w'.
 
 (* PR: the shape-only relation on propositions.  Layer 1 is truth-blind, so
    two propositions are related as soon as both evaluate to Prop-shaped
@@ -82,6 +96,12 @@ Lemma stuckv_rec z s n : stuckv n -> stuckv (enatrec z s n).
 Proof.
   intros [N [[Hr _] Hs]]; exists (enatrec z s N); repeat split;
     [apply reds_rec; assumption | right | ]; apply st_rec; assumption.
+Qed.
+
+Lemma stuckv_wrec s w : stuckv w -> stuckv (ewrec s w).
+Proof.
+  intros [N [[Hr _] Hs]]; exists (ewrec s N); repeat split;
+    [apply reds_wrec; assumption | right | ]; apply st_wrec; assumption.
 Qed.
 
 Lemma stuckv_not_value a v : stuckv a -> eval a v -> value v -> False.

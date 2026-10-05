@@ -1,4 +1,4 @@
-From CICM Require Import core unscoped Syntax.
+From CICM Require Import Syntax.Erased.
 From CICM Require Import Reduction.Def Reduction.Stuck.
 
 (* Lemma 4.1: weak head reduction is deterministic, hence evaluation is
