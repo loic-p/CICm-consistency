@@ -127,7 +127,8 @@ the directory `Tests/` contains a few derivations in our formalised calculus.
 
 The proof has been checked using Rocq 9.3. All the results are axiom-free.
 The proof takes quite a while to type-check on a medium-end laptop (expect
-5 to 10 minutes).
+5 to 10 minutes). You will need an installation of Sulfur, mine was compiled
+from [Kenji Maillard's repository](https://github.com/kyoDralliam/rocq-sulfur/tree/no-repeat).
 
 ## Details
 
