@@ -87,7 +87,7 @@ types as *assemblies* (i.e., proof-relevant PERs) of bounded rank. More
 specifically, we define a universe of assemblies by induction on ranks:
 ```
 Univ 0       = ∅
-Univ (α+1)   = ANat, AProp, APrf p, AUniv, Σ/Π/W of elements of V_α, embeddings
+Univ (α+1)   = ANat, AProp, APrf p, AUniv, Σ/Π/W of elements of Univ α, embeddings
 Univ (sup f) = embeddings
 ```
 Where `ANat` is the assembly of natural numbers, `AProp` is the codiscrete
